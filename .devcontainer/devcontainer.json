@@ -3,9 +3,8 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "web",
   "runServices": ["web", "db", "redis", "worker"],
-  "workspaceFolder": "/app",
+  "workspaceFolder": "/workspace",
   "forwardPorts": [8000],
-  "postStartCommand": "python manage.py migrate --noinput",
   "customizations": {
     "vscode": {
       "extensions": [
