@@ -1,0 +1,20 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}ltlab{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4"
+          integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
+          crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"
+          crossorigin="anonymous"></script>
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased">
+  {% block content %}{% endblock %}
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>
