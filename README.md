@@ -2,7 +2,7 @@
 
 An educational web application for teaching Linear Temporal Logic (LTL) model checking to Computer Science students.
 
-Students build Kripke structures visually, write LTL formulas, and submit them to a background worker that checks whether the property holds — returning a counterexample trace when it does not.
+Students build Kripke structures visually, write LTL formulas, and submit them for checking — returning a counterexample trace when a property does not hold.
 
 ---
 
@@ -11,11 +11,13 @@ Students build Kripke structures visually, write LTL formulas, and submit them t
 | Layer | Technology |
 |-------|-----------|
 | Web framework | Django 5.1 + django-ninja (REST) |
-| Database | PostgreSQL 16 |
+| Database | PostgreSQL 16 (local dev) / Supabase (production) |
 | Task queue | Celery 5 + Redis 7 |
 | Frontend | Tailwind CSS (CDN), HTMX 2, Cytoscape.js 3.30 |
 | Static files | WhiteNoise |
 | Dev environment | VS Code / Cursor Dev Containers |
+| Linting | Ruff |
+| Hosting | Render (backend) |
 
 ---
 
@@ -90,6 +92,7 @@ All variables are read from `.env` (see `.env.example`). Never commit `.env`.
 | `POSTGRES_PASSWORD` | Database password | `change-me` |
 | `REDIS_URL` | Redis connection URL (broker + result backend) | `redis://redis:6379/0` |
 | `ALLOWED_HOSTS` | Comma-separated list of allowed hosts | `localhost,127.0.0.1,0.0.0.0` |
+| `RUN_MIGRATIONS` | Controls whether migrations run on container startup. Hardcoded to `true` in `docker-compose.yml` for local dev — do not set this on Render. | not set |
 
 ---
 
@@ -97,14 +100,18 @@ All variables are read from `.env` (see `.env.example`). Never commit `.env`.
 
 ```
 ltlab/
-├── .cursor/rules/          # Cursor AI agent rules (project conventions)
+├── .github/
+│   └── workflows/
+│       └── ci.yml          # CI/CD pipeline (lint, test, scan, deploy)
 ├── .devcontainer/
 │   └── devcontainer.json   # Dev container config
 ├── .env.example            # Template for required environment variables
 ├── docker-compose.yml      # All four services (web, worker, db, redis)
+├── render.yaml             # Render deployment config
+├── ruff.toml               # Ruff linting config
 └── backend/
     ├── Dockerfile
-    ├── entrypoint.sh       # Runs migrations then execs CMD
+    ├── entrypoint.sh       # Runs migrations on startup if RUN_MIGRATIONS=true
     ├── manage.py
     ├── requirements.txt
     ├── config/
@@ -113,7 +120,8 @@ ltlab/
     │   ├── urls.py         # URL root (/, /admin/, /api/)
     │   └── settings/
     │       ├── base.py     # Shared settings
-    │       └── development.py
+    │       ├── development.py
+    │       └── production.py  # Production settings for Render
     ├── apps/
     │   ├── accounts/       # User auth & student profiles (stub)
     │   ├── exercises/      # Guided exercises (stub)
@@ -123,6 +131,45 @@ ltlab/
         ├── base.html
         └── home.html
 ```
+
+---
+
+## CI/CD Pipeline
+
+The pipeline runs automatically on every push via GitHub Actions and consists of four sequential jobs:
+
+```
+lint → test → scan → deploy
+```
+
+| Job | What it does | Triggers |
+|-----|-------------|---------|
+| `lint` | Runs Ruff to catch syntax and undefined variable errors | Every push |
+| `test` | Runs Django migrations and test suite against Postgres + Redis | Every push |
+| `valnurability scan` | Builds Docker image and runs Trivy vulnerability scan | Every push |
+| `deploy` | Triggers a Render deployment | Manual only (main branch) |
+
+### Running Lint Locally
+
+```bash
+# Check for errors
+ruff check backend
+
+# Auto-fix where possible
+ruff check backend --fix
+```
+
+### Triggering a Deployment
+
+Deployments are manual and can only be triggered from the `main` branch:
+
+1. Go to **Actions** tab on GitHub
+2. Click **CI/CD** workflow
+3. Click **Run workflow**
+4. Select `main` branch
+5. Click **Run workflow**
+
+The pipeline runs lint, test, and scan — if all three pass, the deploy job runs and triggers a Render deployment.
 
 ---
 
@@ -186,18 +233,19 @@ New routers should be created in `apps/<app>/api.py` and mounted in `config/api.
 
 ```
 Browser
-  │  HTTP (port 8000)
+  │  HTTP
   ▼
-ltlab-web  (Django + WhiteNoise)
+Render  (Django + WhiteNoise + Gunicorn)
+  │  Database queries
+  ▼
+Supabase Postgres
   │  Celery task dispatch
   ▼
-ltlab-redis  (broker + result backend)
+Redis  (broker + result backend)
   │
   ▼
-ltlab-worker  (Celery worker — LTL checker)
-  │
-  ▼
-ltlab-db  (PostgreSQL)
+Celery Worker  (LTL checker)
 ```
 
-Migrations run automatically every time the `web` container starts (`entrypoint.sh` + `postStartCommand` in `devcontainer.json`).
+Local development replaces Supabase Postgres with a local Docker Postgres container.
+Migrations run automatically on local startup when `RUN_MIGRATIONS=true` is hardcoded in `docker-compose.yml`.
