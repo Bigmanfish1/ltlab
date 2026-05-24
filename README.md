@@ -150,13 +150,13 @@ lint → test → scan → deploy
 | `deploy` | Triggers a Render deployment | Manual only (main branch) |
 
 ### Running Lint Locally
-
+ 
 ```bash
 # Check for errors
-ruff check backend
-
+docker exec -it ltlab-web ruff check .
+ 
 # Auto-fix where possible
-ruff check backend --fix
+docker exec -it ltlab-web ruff check . --fix
 ```
 
 ### Triggering a Deployment

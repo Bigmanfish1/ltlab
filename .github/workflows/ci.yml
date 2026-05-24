@@ -27,7 +27,7 @@ jobs:
         run: pip install ruff
 
       - name: Run lint
-        run: ruff check backend
+        run: cd backend && ruff check .
 
   test:
     runs-on: ubuntu-latest
