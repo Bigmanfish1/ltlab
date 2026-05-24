@@ -91,7 +91,7 @@ jobs:
         env:
           DJANGO_SETTINGS_MODULE: config.settings.development
 
-  scan:
+  valnurability-scan:
     runs-on: ubuntu-latest
     needs: test
     permissions:
