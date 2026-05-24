@@ -136,7 +136,7 @@ ltlab/
 
 ## CI/CD Pipeline
 
-The pipeline runs automatically on every push via GitHub Actions and consists of four sequential jobs:
+The pipeline runs automatically on every push to main via GitHub Actions and consists of four sequential jobs:
 
 ```
 lint → test → scan → deploy
@@ -144,9 +144,9 @@ lint → test → scan → deploy
 
 | Job | What it does | Triggers |
 |-----|-------------|---------|
-| `lint` | Runs Ruff to catch syntax and undefined variable errors | Every push |
-| `test` | Runs Django migrations and test suite against Postgres + Redis | Every push |
-| `valnurability scan` | Builds Docker image and runs Trivy vulnerability scan | Every push |
+| `lint` | Runs Ruff to catch syntax and undefined variable errors | Push to main, PRs to main |
+| `test` | Runs Django migrations and test suite against Postgres + Redis | Push to main, PRs to main |
+| `scan` | Builds Docker image and runs Trivy vulnerability scan | Push to main, PRs to main |
 | `deploy` | Triggers a Render deployment | Manual only (main branch) |
 
 ### Running Lint Locally
