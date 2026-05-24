@@ -40,6 +40,7 @@ jobs:
       DEBUG: "True"
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/ltlab_test
       REDIS_URL: redis://localhost:6379/0
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout code
@@ -49,6 +50,8 @@ jobs:
         uses: actions/setup-python@v5.6.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
         run: pip install -r backend/requirements.txt
