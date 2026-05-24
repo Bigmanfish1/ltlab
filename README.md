@@ -146,7 +146,7 @@ lint → test → scan → deploy
 |-----|-------------|---------|
 | `lint` | Runs Ruff to catch syntax and undefined variable errors | Push to main, PRs to main |
 | `test` | Runs Django migrations and test suite against Postgres + Redis | Push to main, PRs to main |
-| `scan` | Builds Docker image and runs Trivy vulnerability scan | Push to main, PRs to main |
+| `valnurability scan` | Builds Docker image and runs Trivy vulnerability scan | Push to main, PRs to main |
 | `deploy` | Triggers a Render deployment | Manual only (main branch) |
 
 ### Running Lint Locally
