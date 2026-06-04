@@ -1,0 +1,741 @@
+{% extends "base.html" %}
+
+{% block title %}ltlab — Sandbox{% endblock %}
+
+{% block extra_head %}
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          panel:   '#111111',
+          canvas:  '#0A0A0A',
+          border:  '#1F1F1F',
+          border2: '#2A2A2A',
+          muted:   '#6B6B6B',
+          accent:  '#FF4D00',
+          holds:   '#AEFC00',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body { background: #0A0A0A; }
+  #cy { width: 100%; height: 100%; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #111111; }
+  ::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 2px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col" style="height: 100vh;">
+
+  <!-- ── Top bar ───────────────────────────────────────────────────── -->
+  <header class="h-14 bg-[#111111] border-b border-[#1F1F1F] flex items-center px-4 gap-3 shrink-0 z-10">
+
+    <!-- Breadcrumb -->
+    <a href="/" class="font-mono text-[13px] text-[#FAFAFA] hover:text-[#FF4D00] transition-colors whitespace-nowrap">
+      ltlab<span class="text-[#6B6B6B]">/</span>SANDBOX
+    </a>
+
+    <!-- LTL operator palette -->
+    <div class="hidden sm:flex items-center gap-1 shrink-0">
+      <button onclick="insertOp('G')"  title="Always"      class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">G</button>
+      <button onclick="insertOp('F')"  title="Eventually"  class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">F</button>
+      <button onclick="insertOp('X')"  title="Next"        class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">X</button>
+      <button onclick="insertOp('U')"  title="Until"       class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">U</button>
+      <button onclick="insertOp('¬')"  title="Not"         class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">¬</button>
+      <button onclick="insertOp('∧')"  title="And"         class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">∧</button>
+      <button onclick="insertOp('∨')"  title="Or"          class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">∨</button>
+      <button onclick="insertOp('→')"  title="Implies"     class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">→</button>
+      <button onclick="insertParens()" title="Parentheses"  class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">()</button>
+    </div>
+
+    <!-- Formula input -->
+    <div class="flex-1 min-w-0">
+      <input
+        id="ltl-formula"
+        name="formula"
+        type="text"
+        value="G (p → F q)"
+        placeholder="Enter LTL formula…"
+        class="w-full bg-[#0A0A0A] border border-[#2A2A2A] focus:border-[#FF4D00] px-3 py-2 font-mono text-[13px] text-[#FAFAFA] outline-none rounded transition-colors"
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </div>
+
+    <!-- Run Verification -->
+    <button
+      id="run-btn"
+      hx-post="{% url 'sandbox_verify' %}"
+      hx-target="#result-drawer"
+      hx-swap="innerHTML"
+      hx-include="#ltl-formula, #graph-data"
+      hx-indicator="#run-spinner"
+      class="flex items-center gap-2 bg-[#FF4D00] hover:bg-[#FF6B22] active:bg-[#CC3D00] text-black font-medium text-[13px] px-4 py-2 rounded transition-colors shrink-0 whitespace-nowrap"
+    >
+      <span id="run-spinner" class="htmx-indicator">
+        <svg class="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="31.4" stroke-dashoffset="10"/>
+        </svg>
+      </span>
+      Run Verification
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+      </svg>
+    </button>
+
+  </header>
+
+  <!-- ── Main workspace ────────────────────────────────────────────── -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- Left toolbar -->
+    <nav id="toolbar" class="w-12 bg-[#111111] border-r border-[#1F1F1F] flex flex-col items-center py-3 gap-1 shrink-0 z-10">
+
+      <!-- node -->
+      <button data-tool="node" title="Add node (N)" onclick="setTool('node')"
+        class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/></svg>
+      </button>
+
+      <!-- edge -->
+      <button data-tool="edge" title="Add edge (E)" onclick="setTool('edge')"
+        class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
+      </button>
+
+      <!-- label -->
+      <button data-tool="label" title="Edit label (L)" onclick="setTool('label')"
+        class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+      </button>
+
+      <!-- delete -->
+      <button data-tool="delete" title="Delete (D)" onclick="setTool('delete')"
+        class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+
+      <!-- divider -->
+      <div class="w-6 border-t border-[#1F1F1F] my-1"></div>
+
+      <!-- undo -->
+      <button title="Undo (Ctrl+Z)" onclick="undoAction()"
+        class="w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+      </button>
+
+      <!-- redo -->
+      <button title="Redo (Ctrl+Y)" onclick="redoAction()"
+        class="w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
+      </button>
+
+      <!-- divider -->
+      <div class="w-6 border-t border-[#1F1F1F] my-1"></div>
+
+      <!-- initial state toggle -->
+      <button title="Toggle initial state (I)" onclick="toggleInitial()"
+        class="w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </button>
+
+    </nav>
+
+    <!-- Canvas area -->
+    <div class="flex-1 relative overflow-hidden" style="background:#0A0A0A;">
+      <div id="cy" class="absolute inset-0"></div>
+
+      <!-- Hidden inputs passed to HTMX -->
+      <input type="hidden" id="graph-data" name="graph_data" value="" />
+
+      <!-- Tool mode indicator -->
+      <div id="tool-indicator"
+        class="absolute top-3 left-3 font-mono text-[11px] text-[#6B6B6B] bg-[#111111] border border-[#1F1F1F] px-2 py-1 rounded pointer-events-none select-none">
+        MODE: NODE
+      </div>
+
+      <!-- Result drawer (HTMX target) -->
+      <div id="result-drawer"
+        class="absolute bottom-0 left-0 right-0 bg-[#111111] border-t border-[#1F1F1F] transition-all"
+        style="min-height: 0; max-height: 120px;">
+      </div>
+    </div>
+
+    <!-- Right sidebar: Examples -->
+    <aside class="w-[260px] bg-[#111111] border-l border-[#1F1F1F] flex flex-col shrink-0 overflow-y-auto">
+      <div class="p-5">
+        <div class="font-mono text-[11px] text-[#6B6B6B] tracking-[0.12em] mb-4">EXAMPLES</div>
+
+        <div class="space-y-3">
+
+          <!-- Mutual Exclusion -->
+          <div class="border border-[#1F1F1F] hover:border-[#2A2A2A] p-3 rounded transition-colors">
+            <svg viewBox="0 0 100 60" class="w-full h-12">
+              <defs>
+                <marker id="arr1" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L6,3 z" fill="#6B6B6B"/>
+                </marker>
+              </defs>
+              <line x1="22" y1="20" x2="52" y2="20" stroke="#6B6B6B" stroke-width="1" marker-end="url(#arr1)"/>
+              <line x1="55" y1="23" x2="78" y2="38" stroke="#6B6B6B" stroke-width="1" marker-end="url(#arr1)"/>
+              <line x1="76" y1="38" x2="24" y2="23" stroke="#6B6B6B" stroke-width="1" marker-end="url(#arr1)"/>
+              <circle cx="20" cy="20" r="6" fill="#0A0A0A" stroke="#FAFAFA" stroke-width="1.5"/>
+              <circle cx="55" cy="20" r="6" fill="#0A0A0A" stroke="#FAFAFA" stroke-width="1.5"/>
+              <circle cx="80" cy="40" r="6" fill="#0A0A0A" stroke="#FAFAFA" stroke-width="1.5"/>
+              <text x="20" y="23" text-anchor="middle" fill="#6B6B6B" font-size="5" font-family="monospace">s0</text>
+              <text x="55" y="23" text-anchor="middle" fill="#6B6B6B" font-size="5" font-family="monospace">s1</text>
+              <text x="80" y="43" text-anchor="middle" fill="#6B6B6B" font-size="5" font-family="monospace">s2</text>
+            </svg>
+            <div class="flex items-center justify-between mt-2">
+              <div>
+                <div class="text-[13px] text-[#FAFAFA]">Mutual Exclusion</div>
+                <div class="text-[11px] text-[#6B6B6B] font-mono mt-0.5">G ¬(c1 ∧ c2)</div>
+              </div>
+              <button onclick="loadExample('mutex')" class="text-[12px] text-[#FF4D00] hover:underline whitespace-nowrap ml-2">Load →</button>
+            </div>
+          </div>
+
+          <!-- Request–Grant -->
+          <div class="border border-[#1F1F1F] hover:border-[#2A2A2A] p-3 rounded transition-colors">
+            <svg viewBox="0 0 100 60" class="w-full h-12">
+              <defs>
+                <marker id="arr2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L6,3 z" fill="#6B6B6B"/>
+                </marker>
+              </defs>
+              <line x1="22" y1="30" x2="50" y2="20" stroke="#6B6B6B" stroke-width="1" marker-end="url(#arr2)"/>
+              <line x1="56" y1="20" x2="78" y2="30" stroke="#6B6B6B" stroke-width="1" marker-end="url(#arr2)"/>
+              <line x1="76" y1="33" x2="25" y2="33" stroke="#6B6B6B" stroke-width="1" marker-end="url(#arr2)"/>
+              <circle cx="20" cy="30" r="6" fill="#0A0A0A" stroke="#FAFAFA" stroke-width="1.5"/>
+              <circle cx="53" cy="18" r="6" fill="#0A0A0A" stroke="#FAFAFA" stroke-width="1.5"/>
+              <circle cx="80" cy="30" r="6" fill="#0A0A0A" stroke="#FAFAFA" stroke-width="1.5"/>
+              <text x="20" y="47" text-anchor="middle" fill="#6B6B6B" font-size="5" font-family="monospace">idle</text>
+              <text x="53" y="10" text-anchor="middle" fill="#6B6B6B" font-size="5" font-family="monospace">req</text>
+              <text x="80" y="47" text-anchor="middle" fill="#6B6B6B" font-size="5" font-family="monospace">grant</text>
+            </svg>
+            <div class="flex items-center justify-between mt-2">
+              <div>
+                <div class="text-[13px] text-[#FAFAFA]">Request–Grant</div>
+                <div class="text-[11px] text-[#6B6B6B] font-mono mt-0.5">G (req → F grant)</div>
+              </div>
+              <button onclick="loadExample('reqgrant')" class="text-[12px] text-[#FF4D00] hover:underline whitespace-nowrap ml-2">Load →</button>
+            </div>
+          </div>
+
+          <!-- Traffic Light -->
+          <div class="border border-[#1F1F1F] hover:border-[#2A2A2A] p-3 rounded transition-colors">
+            <svg viewBox="0 0 100 60" class="w-full h-12">
+              <defs>
+                <marker id="arr3" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L6,3 z" fill="#6B6B6B"/>
+                </marker>
+              </defs>
+              <line x1="26" y1="20" x2="48" y2="20" stroke="#6B6B6B" stroke-width="1" marker-end="url(#arr3)"/>
+              <line x1="60" y1="20" x2="76" y2="30" stroke="#6B6B6B" stroke-width="1" marker-end="url(#arr3)"/>
+              <line x1="74" y1="36" x2="60" y2="44" stroke="#6B6B6B" stroke-width="1" marker-end="url(#arr3)"/>
+              <line x1="48" y1="44" x2="26" y2="36" stroke="#6B6B6B" stroke-width="1" marker-end="url(#arr3)"/>
+              <circle cx="20" cy="20" r="6" fill="#0A0A0A" stroke="#FF4D00" stroke-width="1.5"/>
+              <circle cx="54" cy="20" r="6" fill="#0A0A0A" stroke="#AEFC00" stroke-width="1.5"/>
+              <circle cx="80" cy="33" r="6" fill="#0A0A0A" stroke="#FAFAFA" stroke-width="1.5"/>
+              <circle cx="54" cy="46" r="6" fill="#0A0A0A" stroke="#FAFAFA" stroke-width="1.5"/>
+              <text x="20" y="10" text-anchor="middle" fill="#6B6B6B" font-size="4.5" font-family="monospace">red</text>
+              <text x="54" y="10" text-anchor="middle" fill="#6B6B6B" font-size="4.5" font-family="monospace">green</text>
+              <text x="80" y="52" text-anchor="middle" fill="#6B6B6B" font-size="4.5" font-family="monospace">amber</text>
+            </svg>
+            <div class="flex items-center justify-between mt-2">
+              <div>
+                <div class="text-[13px] text-[#FAFAFA]">Traffic Light</div>
+                <div class="text-[11px] text-[#6B6B6B] font-mono mt-0.5">G F green</div>
+              </div>
+              <button onclick="loadExample('traffic')" class="text-[12px] text-[#FF4D00] hover:underline whitespace-nowrap ml-2">Load →</button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Info block -->
+        <div class="mt-6 border border-[#1F1F1F] rounded p-3">
+          <div class="font-mono text-[11px] text-[#6B6B6B] tracking-[0.12em] mb-2">OPERATORS</div>
+          <div class="space-y-1 font-mono text-[11px] text-[#6B6B6B]">
+            <div><span class="text-[#FAFAFA]">G φ</span> — always φ</div>
+            <div><span class="text-[#FAFAFA]">F φ</span> — eventually φ</div>
+            <div><span class="text-[#FAFAFA]">X φ</span> — next φ</div>
+            <div><span class="text-[#FAFAFA]">φ U ψ</span> — φ until ψ</div>
+            <div><span class="text-[#FAFAFA]">¬ φ</span> — not φ</div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+  </div><!-- end main workspace -->
+</div><!-- end outer flex -->
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+// ── Cytoscape style ───────────────────────────────────────────────────────────
+const CY_STYLE = [
+  {
+    selector: 'node',
+    style: {
+      'background-color': '#0A0A0A',
+      'border-color': '#FAFAFA',
+      'border-width': 2,
+      'label': 'data(label)',
+      'color': '#FAFAFA',
+      'font-family': 'monospace',
+      'font-size': 11,
+      'text-valign': 'center',
+      'text-halign': 'center',
+      'text-wrap': 'wrap',
+      'width': 44,
+      'height': 44,
+    }
+  },
+  {
+    selector: 'node[?initial]',
+    style: {
+      'border-color': '#FF4D00',
+      'border-width': 3,
+    }
+  },
+  {
+    selector: 'node:selected',
+    style: {
+      'border-color': '#FF4D00',
+      'border-width': 3,
+      'background-color': '#1A0A00',
+    }
+  },
+  {
+    // Edge source highlight during edge-drawing mode
+    selector: '.edge-source',
+    style: {
+      'border-color': '#FF4D00',
+      'border-width': 3,
+      'background-color': '#1A0800',
+    }
+  },
+  {
+    selector: 'edge',
+    style: {
+      'width': 2,
+      'line-color': '#6B6B6B',
+      'target-arrow-color': '#6B6B6B',
+      'target-arrow-shape': 'triangle',
+      'curve-style': 'bezier',
+      'arrow-scale': 1.2,
+    }
+  },
+  {
+    selector: 'edge:selected',
+    style: {
+      'line-color': '#FF4D00',
+      'target-arrow-color': '#FF4D00',
+    }
+  },
+];
+
+// ── Initial graph elements ────────────────────────────────────────────────────
+const INITIAL_ELEMENTS = [
+  { data: { id: 's0', name: 's0', label: 's0\n{p}',   props: ['p'],    initial: true  }, position: { x: 220, y: 220 } },
+  { data: { id: 's1', name: 's1', label: 's1\n{q}',   props: ['q'],    initial: false }, position: { x: 460, y: 220 } },
+  { data: { id: 's2', name: 's2', label: 's2\n{p,q}', props: ['p','q'],initial: false }, position: { x: 340, y: 380 } },
+  { data: { id: 'e0', source: 's0', target: 's1' } },
+  { data: { id: 'e1', source: 's1', target: 's2' } },
+  { data: { id: 'e2', source: 's2', target: 's0' } },
+];
+
+// ── Example presets ───────────────────────────────────────────────────────────
+const EXAMPLES = {
+  mutex: {
+    formula: 'G ¬(c1 ∧ c2)',
+    elements: [
+      { data: { id: 'n', name: 'n', label: 'n\n{}',     props: [],       initial: true  }, position: { x: 150, y: 250 } },
+      { data: { id: 'c1', name: 'c1', label: 'c1\n{c1}', props: ['c1'],   initial: false }, position: { x: 350, y: 150 } },
+      { data: { id: 'c2', name: 'c2', label: 'c2\n{c2}', props: ['c2'],   initial: false }, position: { x: 350, y: 350 } },
+      { data: { id: 'e0', source: 'n',  target: 'c1' } },
+      { data: { id: 'e1', source: 'n',  target: 'c2' } },
+      { data: { id: 'e2', source: 'c1', target: 'n'  } },
+      { data: { id: 'e3', source: 'c2', target: 'n'  } },
+    ]
+  },
+  reqgrant: {
+    formula: 'G (req → F grant)',
+    elements: [
+      { data: { id: 'idle',  name: 'idle',  label: 'idle\n{}',     props: [],       initial: true  }, position: { x: 150, y: 270 } },
+      { data: { id: 'req',   name: 'req',   label: 'req\n{req}',   props: ['req'],  initial: false }, position: { x: 340, y: 130 } },
+      { data: { id: 'grant', name: 'grant', label: 'grant\n{grant}',props: ['grant'],initial: false}, position: { x: 530, y: 270 } },
+      { data: { id: 'e0', source: 'idle',  target: 'req'   } },
+      { data: { id: 'e1', source: 'req',   target: 'grant' } },
+      { data: { id: 'e2', source: 'grant', target: 'idle'  } },
+    ]
+  },
+  traffic: {
+    formula: 'G F green',
+    elements: [
+      { data: { id: 'red',   name: 'red',   label: 'red\n{red}',   props: ['red'],  initial: true  }, position: { x: 150, y: 250 } },
+      { data: { id: 'green', name: 'green', label: 'green\n{green}',props: ['green'],initial: false}, position: { x: 340, y: 130 } },
+      { data: { id: 'amber', name: 'amber', label: 'amber\n{amber}',props: ['amber'],initial: false}, position: { x: 530, y: 250 } },
+      { data: { id: 'rr',    name: 'red2',  label: 'red2\n{red}',  props: ['red'],  initial: false }, position: { x: 340, y: 370 } },
+      { data: { id: 'e0', source: 'red',   target: 'green' } },
+      { data: { id: 'e1', source: 'green', target: 'amber' } },
+      { data: { id: 'e2', source: 'amber', target: 'rr'    } },
+      { data: { id: 'e3', source: 'rr',    target: 'red'   } },
+    ]
+  },
+};
+
+// ── Undo / redo stacks ────────────────────────────────────────────────────────
+let undoStack = [];
+let redoStack = [];
+
+function saveSnapshot() {
+  undoStack.push(cy.json());
+  redoStack = [];
+}
+
+function undoAction() {
+  if (!undoStack.length) return;
+  redoStack.push(cy.json());
+  cy.json(undoStack.pop());
+  syncGraphData();
+}
+
+function redoAction() {
+  if (!redoStack.length) return;
+  undoStack.push(cy.json());
+  cy.json(redoStack.pop());
+  syncGraphData();
+}
+
+// ── Sync graph JSON to hidden input ──────────────────────────────────────────
+function syncGraphData() {
+  document.getElementById('graph-data').value = JSON.stringify(cy.json());
+}
+
+// ── Node counter ──────────────────────────────────────────────────────────────
+let nodeCounter = 3;
+function nextNodeId() {
+  return 's' + (nodeCounter++);
+}
+
+// ── Tool state ────────────────────────────────────────────────────────────────
+let currentTool = 'node';
+let edgeSource = null;  // first node clicked when in 'edge' mode
+
+function setTool(tool) {
+  // Clear any pending edge source selection
+  if (edgeSource) {
+    edgeSource.removeClass('edge-source');
+    edgeSource = null;
+  }
+
+  currentTool = tool;
+
+  // Update toolbar active indicator
+  document.querySelectorAll('.tool-btn').forEach(btn => {
+    const bar = btn.querySelector('.tool-active-bar');
+    if (bar) bar.remove();
+    btn.classList.remove('text-[#FAFAFA]');
+  });
+  const activeBtn = document.querySelector(`.tool-btn[data-tool="${tool}"]`);
+  if (activeBtn) {
+    const bar = document.createElement('span');
+    bar.className = 'tool-active-bar absolute left-0 top-1 bottom-1 w-[2px] bg-[#FF4D00]';
+    activeBtn.appendChild(bar);
+    activeBtn.classList.add('text-[#FAFAFA]');
+  }
+
+  // Update tool indicator label
+  document.getElementById('tool-indicator').textContent = 'MODE: ' + tool.toUpperCase();
+
+  // Disable panning in edge mode so clicks land precisely on nodes
+  cy.userPanningEnabled(tool !== 'edge');
+}
+
+// ── Toggle initial state ──────────────────────────────────────────────────────
+function toggleInitial() {
+  const selected = cy.$('node:selected');
+  if (!selected.length) return;
+  saveSnapshot();
+  selected.forEach(n => {
+    n.data('initial', !n.data('initial'));
+  });
+  syncGraphData();
+}
+
+// ── Load example ──────────────────────────────────────────────────────────────
+function loadExample(name) {
+  const ex = EXAMPLES[name];
+  if (!ex) return;
+  saveSnapshot();
+  cy.elements().remove();
+  cy.add(ex.elements);
+  cy.layout({ name: 'preset' }).run();
+  document.getElementById('ltl-formula').value = ex.formula;
+  syncGraphData();
+}
+
+// ── LTL operator insertion ────────────────────────────────────────────────────
+function insertOp(op) {
+  const input = document.getElementById('ltl-formula');
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  const val = input.value;
+  const insert = (start === end) ? op + ' ' : op;
+  input.value = val.slice(0, start) + insert + val.slice(end);
+  input.focus();
+  input.setSelectionRange(start + insert.length, start + insert.length);
+}
+
+function insertParens() {
+  const input = document.getElementById('ltl-formula');
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  const val = input.value;
+  const selected = val.slice(start, end);
+  const insert = '(' + selected + ')';
+  input.value = val.slice(0, start) + insert + val.slice(end);
+  input.focus();
+  // Place cursor just inside the opening paren if nothing was selected,
+  // otherwise place it after the closing paren
+  const cursor = selected.length ? start + insert.length : start + 1;
+  input.setSelectionRange(cursor, cursor);
+}
+
+// ── Inline label editor ───────────────────────────────────────────────────────
+function openLabelEditor(node) {
+  const pos = node.renderedPosition();
+  const container = document.getElementById('cy');
+  const rect = container.getBoundingClientRect();
+
+  const existing = document.getElementById('label-editor');
+  if (existing) existing.remove();
+
+  const inputStyle = `
+    background: #0A0A0A;
+    border: 1px solid #2A2A2A;
+    color: #FAFAFA;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 3px 7px;
+    border-radius: 3px;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+  `;
+
+  const panel = document.createElement('div');
+  panel.id = 'label-editor';
+  panel.style.cssText = `
+    position: absolute;
+    left: ${pos.x + rect.left - 75}px;
+    top:  ${pos.y + rect.top  + 28}px;
+    width: 150px;
+    background: #111111;
+    border: 1px solid #FF4D00;
+    border-radius: 6px;
+    padding: 8px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  `;
+
+  const nameLabel = document.createElement('div');
+  nameLabel.textContent = 'NAME';
+  nameLabel.style.cssText = 'font-family:monospace;font-size:10px;color:#6B6B6B;letter-spacing:0.1em;';
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.value = node.data('name') || node.id();
+  nameInput.placeholder = 'state name';
+  nameInput.style.cssText = inputStyle;
+
+  const propsLabel = document.createElement('div');
+  propsLabel.textContent = 'PROPS';
+  propsLabel.style.cssText = 'font-family:monospace;font-size:10px;color:#6B6B6B;letter-spacing:0.1em;margin-top:2px;';
+
+  const propsInput = document.createElement('input');
+  propsInput.type = 'text';
+  propsInput.value = (node.data('props') || []).join(', ');
+  propsInput.placeholder = 'p, q, …';
+  propsInput.style.cssText = inputStyle;
+
+  panel.appendChild(nameLabel);
+  panel.appendChild(nameInput);
+  panel.appendChild(propsLabel);
+  panel.appendChild(propsInput);
+  document.body.appendChild(panel);
+  nameInput.focus();
+  nameInput.select();
+
+  let committed = false;
+  function commit() {
+    if (committed) return;
+    committed = true;
+    saveSnapshot();
+    const name = nameInput.value.trim() || node.id();
+    const props = propsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    node.data('name', name);
+    node.data('props', props);
+    const propsStr = props.length ? '\n{' + props.join(',') + '}' : '';
+    node.data('label', name + propsStr);
+    panel.remove();
+    document.removeEventListener('mousedown', outsideHandler);
+    syncGraphData();
+  }
+
+  function outsideHandler(e) {
+    if (!panel.contains(e.target)) commit();
+  }
+  // Defer to avoid the current click that opened the editor from immediately closing it
+  setTimeout(() => document.addEventListener('mousedown', outsideHandler), 0);
+
+  nameInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); propsInput.focus(); propsInput.select(); }
+    if (e.key === 'Escape') { committed = true; panel.remove(); document.removeEventListener('mousedown', outsideHandler); }
+  });
+  propsInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') commit();
+    if (e.key === 'Escape') { committed = true; panel.remove(); document.removeEventListener('mousedown', outsideHandler); }
+  });
+}
+
+// ── Cytoscape init ────────────────────────────────────────────────────────────
+const cy = cytoscape({
+  container: document.getElementById('cy'),
+  elements: INITIAL_ELEMENTS,
+  style: CY_STYLE,
+  layout: { name: 'preset' },
+  minZoom: 0.2,
+  maxZoom: 4,
+  boxSelectionEnabled: true,
+});
+
+// ── Node tap handler ──────────────────────────────────────────────────────────
+cy.on('tap', 'node', function(evt) {
+  const node = evt.target;
+
+  if (currentTool === 'delete') {
+    saveSnapshot();
+    node.remove();
+    syncGraphData();
+    return;
+  }
+
+  if (currentTool === 'label') {
+    openLabelEditor(node);
+    return;
+  }
+
+  if (currentTool === 'edge') {
+    if (!edgeSource) {
+      // First click: select source
+      edgeSource = node;
+      node.addClass('edge-source');
+      document.getElementById('tool-indicator').textContent = 'MODE: EDGE — click target';
+    } else if (edgeSource.id() === node.id()) {
+      // Clicked same node: cancel
+      edgeSource.removeClass('edge-source');
+      edgeSource = null;
+      document.getElementById('tool-indicator').textContent = 'MODE: EDGE';
+    } else {
+      // Second click: create edge
+      saveSnapshot();
+      const edgeId = 'e' + edgeSource.id() + '_' + node.id() + '_' + Date.now();
+      cy.add({ group: 'edges', data: { id: edgeId, source: edgeSource.id(), target: node.id() } });
+      edgeSource.removeClass('edge-source');
+      edgeSource = null;
+      document.getElementById('tool-indicator').textContent = 'MODE: EDGE';
+      syncGraphData();
+    }
+    return;
+  }
+});
+
+// ── Edge tap handler ──────────────────────────────────────────────────────────
+cy.on('tap', 'edge', function(evt) {
+  if (currentTool === 'delete') {
+    saveSnapshot();
+    evt.target.remove();
+    syncGraphData();
+  }
+});
+
+// ── Canvas background tap: add node ──────────────────────────────────────────
+cy.on('tap', function(evt) {
+  if (evt.target !== cy) return; // only background taps
+
+  // Cancel any pending edge source on background click
+  if (currentTool === 'edge' && edgeSource) {
+    edgeSource.removeClass('edge-source');
+    edgeSource = null;
+    document.getElementById('tool-indicator').textContent = 'MODE: EDGE';
+    return;
+  }
+
+  if (currentTool === 'node') {
+    saveSnapshot();
+    const id = nextNodeId();
+    cy.add({
+      group: 'nodes',
+      data: { id, name: id, label: id, props: [], initial: false },
+      position: evt.position,
+    });
+    syncGraphData();
+  }
+});
+
+// ── Sync after drag ───────────────────────────────────────────────────────────
+cy.on('dragfree', 'node', function() {
+  syncGraphData();
+});
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+  if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+  const key = e.key.toLowerCase();
+  if (key === 'n') setTool('node');
+  if (key === 'e') setTool('edge');
+  if (key === 'l') setTool('label');
+  if (key === 'd') setTool('delete');
+  if (key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undoAction(); }
+  if (key === 'y' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); redoAction(); }
+  if (key === 'delete' || key === 'backspace') {
+    const sel = cy.$(':selected');
+    if (sel.length) { saveSnapshot(); sel.remove(); syncGraphData(); }
+  }
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+setTool('node');
+syncGraphData();
+
+// HTMX: show result drawer when content arrives
+document.body.addEventListener('htmx:afterSwap', function(e) {
+  if (e.detail.target.id === 'result-drawer') {
+    const drawer = document.getElementById('result-drawer');
+    if (drawer.innerHTML.trim()) {
+      drawer.style.minHeight = '100px';
+    }
+  }
+});
+</script>
+
+<!-- HTMX spinner style -->
+<style>
+  .htmx-indicator { display: none; }
+  .htmx-request .htmx-indicator { display: inline-flex; }
+  .htmx-request.htmx-indicator { display: inline-flex; }
+</style>
+{% endblock %}

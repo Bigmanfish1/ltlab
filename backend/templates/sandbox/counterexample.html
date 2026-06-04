@@ -1,0 +1,617 @@
+{% extends "base.html" %}
+
+{% block title %}ltlab — Counterexample{% endblock %}
+
+{% block extra_head %}
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          panel:   '#111111',
+          canvas:  '#0A0A0A',
+          border:  '#1F1F1F',
+          border2: '#2A2A2A',
+          muted:   '#6B6B6B',
+          accent:  '#FF4D00',
+          holds:   '#AEFC00',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body { background: #0A0A0A; }
+  #cy { width: 100%; height: 100%; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #111111; }
+  ::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 2px; }
+
+  .trace-row {
+    transition: background-color 200ms ease;
+    cursor: default;
+  }
+  .trace-row--active {
+    background-color: #1A0A00;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col" style="height: 100vh;">
+
+  <!-- ── Top bar ────────────────────────────────────────────────────── -->
+  <header class="h-14 bg-[#111111] border-b border-[#1F1F1F] flex items-center px-4 gap-3 shrink-0 z-10">
+
+    <!-- Breadcrumb -->
+    <div class="flex items-center gap-1 font-mono text-[13px] whitespace-nowrap shrink-0">
+      <a href="/" class="text-[#FAFAFA] hover:text-[#FF4D00] transition-colors">ltlab</a>
+      <span class="text-[#6B6B6B]">/</span>
+      <a href="/sandbox/" class="text-[#FAFAFA] hover:text-[#FF4D00] transition-colors">SANDBOX</a>
+      <span class="text-[#6B6B6B]">/</span>
+      <span class="text-[#6B6B6B]">COUNTEREXAMPLE</span>
+    </div>
+
+    <!-- Formula display (populated by JS to allow subformula highlighting) -->
+    <div class="flex-1 min-w-0">
+      <div id="header-formula"
+        class="font-mono text-[13px] text-[#FAFAFA] truncate">{{ formula }}</div>
+    </div>
+
+    <!-- Status badge -->
+    <div class="shrink-0 font-mono text-[11px] text-[#FF4D00] bg-[#1F0D0D] border border-[#FF4D00] px-2 py-1 rounded tracking-[0.08em]">
+      VIOLATED
+    </div>
+
+  </header>
+
+  <!-- ── Main workspace ─────────────────────────────────────────────── -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- Canvas area -->
+    <div class="flex-1 relative overflow-hidden" style="background:#0A0A0A;">
+      <div id="cy" class="absolute inset-0"></div>
+
+      <!-- Step / mode indicator overlay -->
+      <div id="step-indicator"
+        class="absolute top-3 left-3 font-mono text-[11px] text-[#6B6B6B] bg-[#111111] border border-[#1F1F1F] px-2 py-1 rounded pointer-events-none select-none">
+        OVERVIEW
+      </div>
+
+      <!-- State context panel — slides up when a step is active -->
+      <div id="state-panel"
+        class="absolute bottom-10 left-3 right-3 pointer-events-none select-none"
+        style="transition: opacity 250ms ease, transform 250ms ease; opacity: 0; transform: translateY(6px);">
+        <div id="state-panel-inner"
+          class="bg-[#111111] border border-[#1F1F1F] rounded overflow-hidden"
+          style="max-width: 420px;">
+
+          <!-- Title row -->
+          <div id="state-panel-title"
+            class="flex items-center justify-between px-4 py-2.5 border-b border-[#1F1F1F]">
+            <div class="flex items-center gap-2">
+              <span class="font-mono text-[11px] text-[#6B6B6B] tracking-[0.1em]">STATE</span>
+              <span id="state-panel-name" class="font-mono text-[13px] text-[#FAFAFA]"></span>
+            </div>
+            <div id="state-panel-badge" class="font-mono text-[10px] px-2 py-0.5 rounded tracking-[0.08em]"></div>
+          </div>
+
+          <div class="px-4 py-3 space-y-3">
+
+            <!-- Props row -->
+            <div class="flex items-start gap-3">
+              <span class="font-mono text-[10px] text-[#6B6B6B] tracking-[0.1em] w-16 shrink-0 mt-0.5">HOLDS</span>
+              <div id="state-panel-props" class="flex gap-1 flex-wrap"></div>
+            </div>
+
+            <!-- Formula being checked -->
+            <div class="flex items-start gap-3">
+              <span class="font-mono text-[10px] text-[#6B6B6B] tracking-[0.1em] w-16 shrink-0 mt-0.5">CHECKING</span>
+              <div id="state-panel-checking" class="font-mono text-[12px] text-[#FAFAFA]"></div>
+            </div>
+
+            <!-- Explanation -->
+            <div class="flex items-start gap-3">
+              <span class="font-mono text-[10px] text-[#6B6B6B] tracking-[0.1em] w-16 shrink-0 mt-0.5">WHY</span>
+              <div id="state-panel-reason"
+                class="font-mono text-[11px] text-[#AAAAAA] leading-relaxed"></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Keyboard hint -->
+      <div class="absolute bottom-3 left-3 font-mono text-[10px] text-[#3A3A3A] pointer-events-none select-none">
+        ← → arrow keys to step
+      </div>
+    </div>
+
+    <!-- ── Right sidebar ──────────────────────────────────────────── -->
+    <aside class="w-[280px] bg-[#111111] border-l border-[#1F1F1F] flex flex-col shrink-0">
+
+      <!-- Formula section -->
+      <div class="p-5 border-b border-[#1F1F1F]">
+        <div class="font-mono text-[11px] text-[#6B6B6B] tracking-[0.12em] mb-3">FORMULA</div>
+        <div id="sidebar-formula" class="font-mono text-[13px] text-[#FAFAFA] leading-relaxed">{{ formula }}</div>
+      </div>
+
+      <!-- Trace section -->
+      <div class="p-5 flex-1 overflow-y-auto">
+        <div class="font-mono text-[11px] text-[#6B6B6B] tracking-[0.12em] mb-4">TRACE</div>
+        <div class="space-y-2" id="trace-list">
+
+          {% for step in trace %}
+          <div class="trace-row flex items-start gap-3 px-2 py-2 rounded -mx-2"
+               data-step="{{ forloop.counter0 }}">
+
+            <!-- Step index -->
+            <div class="font-mono text-[11px] text-[#6B6B6B] w-5 mt-0.5 shrink-0 select-none">
+              {{ forloop.counter0|stringformat:"02d" }}
+            </div>
+
+            <!-- State name + props -->
+            <div class="flex-1 min-w-0">
+              <div class="font-mono text-[13px] text-[#FAFAFA] mb-1.5">{{ step.state }}</div>
+              <div class="flex gap-1 flex-wrap">
+                {% for prop in step.props %}
+                <span class="font-mono text-[10px] px-1.5 py-0.5 bg-[#0A0A0A] border border-[#1F1F1F] text-[#AEFC00]">
+                  {{ prop }}
+                </span>
+                {% empty %}
+                <span class="font-mono text-[10px] px-1.5 py-0.5 bg-[#0A0A0A] border border-[#1F1F1F] text-[#3A3A3A]">
+                  {}
+                </span>
+                {% endfor %}
+              </div>
+            </div>
+
+            <!-- OK / violation icon -->
+            <div class="mt-0.5 shrink-0">
+              {% if step.ok %}
+              <!-- check -->
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="#AEFC00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              {% else %}
+              <!-- x -->
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="#FF4D00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+              {% endif %}
+            </div>
+
+          </div>
+          {% empty %}
+          <div class="font-mono text-[11px] text-[#6B6B6B]">No trace available.</div>
+          {% endfor %}
+
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="p-5 border-t border-[#1F1F1F] space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+
+          <!-- Step back -->
+          <button id="btn-prev" onclick="goTo(currentStep - 1)"
+            class="flex items-center justify-center gap-1.5 border border-[#2A2A2A] py-2
+                   text-[12px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] transition-colors rounded">
+            <!-- ArrowLeft -->
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"/>
+              <polyline points="12 19 5 12 12 5"/>
+            </svg>
+            Step Back
+          </button>
+
+          <!-- Step forward -->
+          <button id="btn-next" onclick="goTo(currentStep + 1)"
+            class="flex items-center justify-center gap-1.5 border border-[#2A2A2A] py-2
+                   text-[12px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] transition-colors rounded">
+            Step Fwd
+            <!-- ArrowRight -->
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"/>
+              <polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </button>
+
+        </div>
+
+        <!-- Back to exercise -->
+        <a href="/sandbox/"
+          class="block w-full bg-[#FF4D00] hover:bg-[#FF6B22] active:bg-[#CC3D00]
+                 text-black text-center py-2.5 text-[13px] font-medium
+                 transition-colors rounded">
+          Back to Exercise
+        </a>
+      </div>
+
+    </aside>
+  </div>
+
+</div>
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+// ── Data from server ───────────────────────────────────────────────────────────
+const TRACE               = {{ trace_json|safe }};
+const GRAPH_DATA          = {{ graph_json|safe }};
+const VIOLATING_EDGES     = {{ violating_edges_json|safe }};
+const FORMULA             = {{ formula_json|safe }};
+const VIOLATING_SUBFORMULA = {{ violating_subformula_json|safe }};
+
+// ── Cytoscape style ────────────────────────────────────────────────────────────
+// All elements start at very low opacity (dim non-trace).
+// Classes are toggled to progressively reveal the trace path.
+const CY_STYLE = [
+  {
+    selector: 'node',
+    style: {
+      'background-color': '#0A0A0A',
+      'border-color':     '#3A3A3A',
+      'border-width':     2,
+      'label':            'data(label)',
+      'color':            '#4A4A4A',
+      'font-family':      'monospace',
+      'font-size':        11,
+      'text-valign':      'center',
+      'text-halign':      'center',
+      'text-wrap':        'wrap',
+      'width':            44,
+      'height':           44,
+      'opacity':          0.18,
+      'transition-property':  'opacity border-color border-width background-color color',
+      'transition-duration':  '280ms',
+      'transition-timing-function': 'ease-in-out',
+    }
+  },
+  {
+    selector: 'node[?initial]',
+    style: {
+      'border-color': '#5A2A00',
+    }
+  },
+  {
+    selector: 'edge',
+    style: {
+      'width':               2,
+      'line-color':          '#222222',
+      'target-arrow-color':  '#222222',
+      'target-arrow-shape':  'triangle',
+      'curve-style':         'bezier',
+      'arrow-scale':         1.2,
+      'opacity':             0.18,
+      'transition-property': 'opacity line-color target-arrow-color width',
+      'transition-duration': '280ms',
+      'transition-timing-function': 'ease-in-out',
+    }
+  },
+  // On-trace elements (part of the trace path but not yet reached)
+  {
+    selector: 'node.on-trace',
+    style: {
+      'opacity':      0.45,
+      'border-color': '#5A5A5A',
+      'color':        '#888888',
+    }
+  },
+  {
+    selector: 'edge.on-trace',
+    style: {
+      'opacity':             0.35,
+      'line-color':          '#4A4A4A',
+      'target-arrow-color':  '#4A4A4A',
+    }
+  },
+  // Visited: stepped through, now in the past
+  {
+    selector: 'node.visited',
+    style: {
+      'opacity':      0.60,
+      'border-color': '#7A7A7A',
+      'color':        '#BBBBBB',
+    }
+  },
+  {
+    selector: 'edge.visited',
+    style: {
+      'opacity':             0.50,
+      'line-color':          '#6B6B6B',
+      'target-arrow-color':  '#6B6B6B',
+    }
+  },
+  // Active step: the current trace position
+  {
+    selector: 'node.active-step',
+    style: {
+      'opacity':          1,
+      'border-color':     '#FF4D00',
+      'border-width':     4,
+      'background-color': '#2A0800',
+      'color':            '#FAFAFA',
+    }
+  },
+  {
+    selector: 'edge.active-step',
+    style: {
+      'opacity':             1,
+      'line-color':          '#FF4D00',
+      'target-arrow-color':  '#FF4D00',
+      'width':               3,
+    }
+  },
+];
+
+// ── Cytoscape init ─────────────────────────────────────────────────────────────
+const cy = cytoscape({
+  container: document.getElementById('cy'),
+  elements:  (GRAPH_DATA && GRAPH_DATA.elements) ? GRAPH_DATA.elements : [],
+  style:     CY_STYLE,
+  layout:    { name: 'preset' },
+  minZoom:   0.2,
+  maxZoom:   4,
+  // Read-only: pan/zoom allowed, but no node dragging or selection
+  autoungrabify:    true,
+  autounselectify:  true,
+  boxSelectionEnabled: false,
+});
+
+// Fit the full graph on load
+cy.ready(function() {
+  if (cy.elements().length) cy.fit(cy.elements(), 60);
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function getEdge(sourceId, targetId) {
+  const found = cy.edges(`[source="${sourceId}"][target="${targetId}"]`);
+  return found.length ? found.first() : null;
+}
+
+function escHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// ── Pre-compute trace geometry ─────────────────────────────────────────────────
+// Unique node IDs that appear anywhere in the trace
+const traceNodeIds = [...new Set(TRACE.map(t => t.state))];
+
+// Consecutive edge pairs along the trace path
+const traceEdgePairs = [];
+for (let i = 1; i < TRACE.length; i++) {
+  traceEdgePairs.push([TRACE[i - 1].state, TRACE[i].state]);
+}
+
+// ── Apply the "overview" class state (all trace elements dimly visible) ─────────
+function applyOverview() {
+  cy.elements().removeClass('active-step visited on-trace');
+  traceNodeIds.forEach(id => {
+    const n = cy.$('#' + id);
+    if (n.length) n.addClass('on-trace');
+  });
+  traceEdgePairs.forEach(([s, t]) => {
+    const e = getEdge(s, t);
+    if (e) e.addClass('on-trace');
+  });
+}
+
+// ── Step state ─────────────────────────────────────────────────────────────────
+let currentStep = -1;   // -1 = overview (no active node)
+
+function goTo(n) {
+  currentStep = Math.max(-1, Math.min(TRACE.length - 1, n));
+
+  // Reset all classes then re-apply from scratch
+  cy.elements().removeClass('active-step visited on-trace');
+
+  // All trace elements start at on-trace opacity
+  traceNodeIds.forEach(id => {
+    const nd = cy.$('#' + id);
+    if (nd.length) nd.addClass('on-trace');
+  });
+  traceEdgePairs.forEach(([s, t]) => {
+    const e = getEdge(s, t);
+    if (e) e.addClass('on-trace');
+  });
+
+  if (currentStep === -1) {
+    document.getElementById('step-indicator').textContent = 'OVERVIEW';
+  } else {
+    // Mark steps 0 .. currentStep-1 as visited
+    for (let i = 0; i < currentStep; i++) {
+      const nd = cy.$('#' + TRACE[i].state);
+      if (nd.length) nd.removeClass('on-trace').addClass('visited');
+      if (i > 0) {
+        const e = getEdge(TRACE[i - 1].state, TRACE[i].state);
+        if (e) e.removeClass('on-trace').addClass('visited');
+      }
+    }
+
+    // Mark currentStep as active
+    const activeNode = cy.$('#' + TRACE[currentStep].state);
+    if (activeNode.length) {
+      activeNode.removeClass('on-trace visited').addClass('active-step');
+    }
+    if (currentStep > 0) {
+      const activeEdge = getEdge(TRACE[currentStep - 1].state, TRACE[currentStep].state);
+      if (activeEdge) activeEdge.removeClass('on-trace visited').addClass('active-step');
+    }
+
+    // Animate viewport to frame the active node
+    if (activeNode.length) {
+      cy.animate({ fit: { eles: activeNode, padding: 120 }, duration: 350 });
+    }
+
+    const label = TRACE[currentStep].state;
+    document.getElementById('step-indicator').textContent =
+      'STEP ' + String(currentStep + 1).padStart(2, '0') + ' \u2014 ' + label;
+  }
+
+  // Sync sidebar trace row highlight
+  document.querySelectorAll('.trace-row').forEach((row, i) => {
+    row.classList.toggle('trace-row--active', i === currentStep);
+  });
+  // Scroll active row into view inside the sidebar
+  const activeRow = document.querySelector('.trace-row--active');
+  if (activeRow) activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+  updateButtons();
+  updateStatePanel();
+  syncFormulaDisplay();
+}
+
+function updateButtons() {
+  const prev = document.getElementById('btn-prev');
+  const next = document.getElementById('btn-next');
+  const atStart = currentStep <= -1;
+  const atEnd   = currentStep >= TRACE.length - 1;
+  prev.disabled      = atStart;
+  prev.style.opacity = atStart ? '0.35' : '1';
+  next.disabled      = atEnd;
+  next.style.opacity = atEnd   ? '0.35' : '1';
+}
+
+// ── Canvas state-context panel ─────────────────────────────────────────────────
+function updateStatePanel() {
+  const panel = document.getElementById('state-panel');
+
+  if (currentStep < 0) {
+    // Hide panel
+    panel.style.opacity   = '0';
+    panel.style.transform = 'translateY(6px)';
+    return;
+  }
+
+  const step = TRACE[currentStep];
+  const ok   = step.ok;
+
+  // Title
+  document.getElementById('state-panel-name').textContent = step.state;
+
+  // Badge
+  const badge = document.getElementById('state-panel-badge');
+  if (ok) {
+    badge.textContent        = 'SATISFIED';
+    badge.style.color        = '#AEFC00';
+    badge.style.background   = '#0D1F0D';
+    badge.style.border       = '1px solid #2A4A2A';
+    document.getElementById('state-panel-title').style.borderLeftColor = '';
+  } else {
+    badge.textContent        = 'VIOLATED';
+    badge.style.color        = '#FF4D00';
+    badge.style.background   = '#1F0D0D';
+    badge.style.border       = '1px solid #4A2020';
+  }
+
+  // Left accent border on title bar reflects status
+  const titleBar = document.getElementById('state-panel-title');
+  titleBar.style.borderLeftWidth = '3px';
+  titleBar.style.borderLeftStyle = 'solid';
+  titleBar.style.borderLeftColor = ok ? '#AEFC00' : '#FF4D00';
+
+  // Props
+  const propsEl = document.getElementById('state-panel-props');
+  propsEl.innerHTML = '';
+  if (step.props && step.props.length) {
+    step.props.forEach(p => {
+      const span = document.createElement('span');
+      span.className   = 'font-mono text-[10px] px-1.5 py-0.5 bg-[#0A0A0A] border border-[#1F1F1F] text-[#AEFC00]';
+      span.textContent = p;
+      propsEl.appendChild(span);
+    });
+  } else {
+    const span = document.createElement('span');
+    span.className   = 'font-mono text-[10px] px-1.5 py-0.5 bg-[#0A0A0A] border border-[#1F1F1F] text-[#3A3A3A]';
+    span.textContent = '∅ (none)';
+    propsEl.appendChild(span);
+  }
+
+  // Checking — highlight the per-step active token (green if ok, red if violated)
+  const checkEl   = document.getElementById('state-panel-checking');
+  const highlight = step.highlight || '';
+  const hlColor   = ok ? '#AEFC00' : '#FF4D00';
+  if (highlight && FORMULA.includes(highlight)) {
+    const idx    = FORMULA.indexOf(highlight);
+    const before = escHtml(FORMULA.slice(0, idx));
+    const mid    = escHtml(highlight);
+    const after  = escHtml(FORMULA.slice(idx + highlight.length));
+    checkEl.innerHTML =
+      before +
+      `<span style="border-bottom:2px solid ${hlColor};padding-bottom:1px;color:${hlColor};">${mid}</span>` +
+      after;
+  } else {
+    checkEl.textContent = FORMULA;
+  }
+
+  // Reason / explanation
+  document.getElementById('state-panel-reason').textContent =
+    step.reason || (ok ? 'Condition satisfied at this state.' : 'Condition violated at this state.');
+
+  // Show with animation
+  panel.style.opacity   = '1';
+  panel.style.transform = 'translateY(0)';
+}
+
+// ── Formula display with dynamic per-step highlighting ─────────────────────────
+// highlight: token/subformula to underline  color: CSS color string
+function renderFormulaHighlighted(containerId, highlight, color) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (highlight && FORMULA.includes(highlight)) {
+    const idx    = FORMULA.indexOf(highlight);
+    const before = escHtml(FORMULA.slice(0, idx));
+    const mid    = escHtml(highlight);
+    const after  = escHtml(FORMULA.slice(idx + highlight.length));
+    el.innerHTML =
+      before +
+      `<span style="border-bottom:2px solid ${color};padding-bottom:2px;color:${color};">${mid}</span>` +
+      after;
+  } else {
+    el.textContent = FORMULA;
+  }
+}
+
+// Sync both formula displays to the current step (or overview)
+function syncFormulaDisplay() {
+  if (currentStep < 0) {
+    // Overview: dim highlight of the overall violating subformula
+    renderFormulaHighlighted('header-formula',  VIOLATING_SUBFORMULA, '#6B3A2A');
+    renderFormulaHighlighted('sidebar-formula', VIOLATING_SUBFORMULA, '#6B3A2A');
+  } else {
+    const step  = TRACE[currentStep];
+    const color = step.ok ? '#AEFC00' : '#FF4D00';
+    renderFormulaHighlighted('header-formula',  step.highlight || '', color);
+    renderFormulaHighlighted('sidebar-formula', step.highlight || '', color);
+  }
+}
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    goTo(currentStep + 1);
+  }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    goTo(currentStep - 1);
+  }
+});
+
+// ── Boot ───────────────────────────────────────────────────────────────────────
+applyOverview();
+updateButtons();
+updateStatePanel();
+syncFormulaDisplay();
+</script>
+{% endblock %}
