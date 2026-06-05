@@ -1,20 +1,94 @@
-{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}ltlab{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/htmx.org@2.0.4"
-          integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
-          crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"
-          crossorigin="anonymous"></script>
-  {% block extra_head %}{% endblock %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ModelCheck Edu{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'bg-primary': '#0A0A0A',
+                        'bg-secondary': '#111111',
+                        'bg-tertiary': '#1F1F1F',
+                        'border-primary': '#1F1F1F',
+                        'border-secondary': '#2A2A2A',
+                        'text-primary': '#FAFAFA',
+                        'text-secondary': '#6B6B6B',
+                        'accent-orange': '#FF4D00',
+                        'accent-lime': '#AEFC00',
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
+                        'mono': ['JetBrains Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
 </head>
-<body class="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased">
-  {% block content %}{% endblock %}
-  {% block extra_scripts %}{% endblock %}
+<body class="bg-bg-primary text-text-primary antialiased">
+    {% if user.is_authenticated %}
+    <nav class="border-b border-border-primary">
+        <div class="max-w-[1280px] mx-auto px-12 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-8">
+                <a href="{% url 'dashboard:dashboard_redirect' %}" class="text-sm font-semibold text-text-primary hover:text-white transition-colors">
+                    ModelCheck Edu
+                </a>
+                <div class="flex gap-6">
+                    <a href="{% url 'dashboard:dashboard_redirect' %}" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
+                        Dashboard
+                    </a>
+                    {% if user.is_student %}
+                    <a href="#" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
+                        Sandbox
+                    </a>
+                    {% endif %}
+                    {% if user.is_teacher %}
+                    <a href="#" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
+                        Manage Exercises
+                    </a>
+                    <a href="#" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
+                        Analytics
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <span class="text-[13px] text-text-secondary">{{ user.username }}</span>
+                <a href="{% url 'accounts:logout' %}" class="px-3 py-1.5 text-xs bg-bg-secondary border border-border-secondary hover:border-accent-orange transition-colors rounded">
+                    Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+
+    {% if messages %}
+    <div class="max-w-[1280px] mx-auto px-12 pt-4">
+        {% for message in messages %}
+        <div class="px-4 py-3 mb-2 rounded text-bg-primary text-[13px] {% if message.tags == 'error' %}bg-accent-orange{% else %}bg-accent-lime{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

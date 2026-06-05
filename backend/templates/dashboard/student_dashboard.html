@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Student Dashboard - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<div class="px-12 py-16 max-w-[1280px] mx-auto">
+    <div class="mb-3 text-[11px] tracking-[0.14em] text-text-secondary font-mono uppercase">
+        Continue
+    </div>
+
+    <h1 class="text-5xl text-text-primary mb-10 tracking-tight" style="letter-spacing: -0.02em;">
+        Pick up where you left off.
+    </h1>
+
+    <div class="mb-3 flex items-center justify-between font-mono text-[11px] text-text-secondary">
+        <span>OVERALL PROGRESS</span>
+        <span class="text-text-primary">{{ overall_progress }}%</span>
+    </div>
+    <div class="h-0.5 w-full bg-bg-tertiary mb-16 relative overflow-hidden">
+        <div class="h-full bg-accent-lime transition-all duration-300" style="width: {{ overall_progress }}%;"></div>
+    </div>
+
+    <div class="grid grid-cols-4 gap-4 mb-16">
+        {% for module in modules %}
+        <a 
+            href="{% if module.status != 'locked' %}#{% else %}javascript:void(0){% endif %}" 
+            class="relative bg-bg-secondary border border-border-primary hover:border-border-secondary transition-colors rounded p-5 group
+                   {% if module.status == 'locked' %}opacity-50 cursor-not-allowed hover:border-border-primary{% else %}cursor-pointer{% endif %}"
+        >
+            <div class="absolute top-0 left-0 bottom-0 w-[3px] 
+                        {% if module.status == 'complete' %}bg-accent-lime
+                        {% elif module.status == 'in-progress' %}bg-accent-orange
+                        {% else %}bg-border-secondary{% endif %}">
+            </div>
+            
+            <div class="pl-2">
+                <div class="text-text-primary text-sm font-medium mb-1.5">
+                    {{ module.name }}
+                </div>
+                
+                <div class="font-mono text-[11px] text-text-secondary mb-8">
+                    {{ module.difficulty }}
+                </div>
+                
+                <div class="font-mono text-[32px] text-accent-orange" style="letter-spacing: -0.04em;">
+                    {{ module.completion }}<span class="text-base text-text-secondary">%</span>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    <div class="grid grid-cols-3 border-t border-border-primary pt-6">
+        <div>
+            <div class="font-mono text-[11px] text-text-secondary tracking-[0.12em] mb-2">
+                EXERCISES DONE
+            </div>
+            <div class="font-mono text-[40px] text-text-primary" style="letter-spacing: -0.04em;">
+                {{ exercises_done }}
+            </div>
+        </div>
+        
+        <div>
+            <div class="font-mono text-[11px] text-text-secondary tracking-[0.12em] mb-2">
+                ACCURACY
+            </div>
+            <div class="font-mono text-[40px] text-text-primary" style="letter-spacing: -0.04em;">
+                {{ accuracy }}%
+            </div>
+        </div>
+        
+        <div>
+            <div class="font-mono text-[11px] text-text-secondary tracking-[0.12em] mb-2">
+                DAY STREAK
+            </div>
+            <div class="font-mono text-[40px] text-text-primary" style="letter-spacing: -0.04em;">
+                {{ day_streak }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
