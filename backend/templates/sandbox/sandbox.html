@@ -2,7 +2,9 @@
 
 {% block title %}ltlab — Sandbox{% endblock %}
 
-{% block extra_head %}
+{% block extra_css %}
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
 <script>
   tailwind.config = {
     theme: {
@@ -278,7 +280,7 @@
 {% endblock %}
 
 
-{% block extra_scripts %}
+{% block extra_js %}
 <script>
 // ── Cytoscape style ───────────────────────────────────────────────────────────
 const CY_STYLE = [

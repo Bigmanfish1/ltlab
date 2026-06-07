@@ -2,7 +2,8 @@
 
 {% block title %}ltlab — Counterexample{% endblock %}
 
-{% block extra_head %}
+{% block extra_css %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
 <script>
   tailwind.config = {
     theme: {
@@ -240,7 +241,7 @@
 {% endblock %}
 
 
-{% block extra_scripts %}
+{% block extra_js %}
 <script>
 // ── Data from server ───────────────────────────────────────────────────────────
 const TRACE               = {{ trace_json|safe }};
