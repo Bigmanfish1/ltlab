@@ -1,0 +1,50 @@
+{% if status == "holds" %}
+<div class="h-full flex flex-col justify-center px-4 gap-2">
+  <div class="flex items-center justify-between border-l-2 border-[#AEFC00] bg-[#0D1F0D] px-4 py-2 font-mono text-[12px] text-[#AEFC00]">
+    <span>&#10003; Property holds.</span>
+    <button onclick="document.getElementById('result-drawer').innerHTML = ''" class="text-[#6B6B6B] hover:text-[#FAFAFA] ml-4 text-lg leading-none">&times;</button>
+  </div>
+  {% if trace %}
+  <div class="font-mono text-[11px] text-[#6B6B6B] px-1">
+    Trace: {{ trace }}
+  </div>
+  {% endif %}
+</div>
+
+{% elif status == "violated" %}
+<div class="h-full flex items-center gap-4 px-4">
+  <div class="flex-1 min-w-0 flex flex-col gap-1.5 border-l-2 border-[#FF4D00] bg-[#1F0D0D] px-4 py-2">
+    <div class="flex items-center justify-between font-mono text-[12px] text-[#FF4D00]">
+      <span>&#10007; Property violated.</span>
+      <button onclick="document.getElementById('result-drawer').innerHTML = ''" class="text-[#6B6B6B] hover:text-[#FAFAFA] ml-4 text-lg leading-none">&times;</button>
+    </div>
+    {% if trace %}
+    <div class="font-mono text-[11px] text-[#6B6B6B] truncate">
+      Counterexample: {{ trace }}
+    </div>
+    {% endif %}
+  </div>
+
+  <form method="POST" action="{% url 'sandbox_counterexample' %}" class="shrink-0">
+    {% csrf_token %}
+    <input type="hidden" name="formula"               value="{{ formula }}">
+    <input type="hidden" name="graph_data"            value="{{ graph_data }}">
+    <input type="hidden" name="trace_json"            value="{{ trace_json }}">
+    <input type="hidden" name="violating_states_json" value="{{ violating_states_json }}">
+    <input type="hidden" name="violating_edges_json"  value="{{ violating_edges_json }}">
+    <input type="hidden" name="violating_subformula"  value="{{ violating_subformula }}">
+    <button type="submit"
+      class="font-mono text-[12px] text-[#FF4D00] hover:text-[#FF6B22] whitespace-nowrap transition-colors">
+      View Counterexample &#8594;
+    </button>
+  </form>
+</div>
+
+{% elif status == "error" %}
+<div class="h-full flex flex-col justify-center px-4 gap-2">
+  <div class="flex items-center justify-between border-l-2 border-[#6B6B6B] bg-[#111111] px-4 py-2 font-mono text-[12px] text-[#6B6B6B]">
+    <span>{{ message }}</span>
+    <button onclick="document.getElementById('result-drawer').innerHTML = ''" class="text-[#6B6B6B] hover:text-[#FAFAFA] ml-4 text-lg leading-none">&times;</button>
+  </div>
+</div>
+{% endif %}

@@ -19,7 +19,7 @@
                     {% if request.resolver_match.url_name == 'exercises' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
               Exercises
           </a>
-          <a href="#" 
+          <a href="{% url 'sandbox' %}" 
             class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors
                     {% if request.resolver_match.url_name == 'sandbox' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
               Sandbox
