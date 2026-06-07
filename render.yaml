@@ -24,24 +24,4 @@ services:
         sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
-    preDeployCommand: python manage.py migrate --noinput && python manage.py collectstatic --noinput
-    dockerCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
-
-  - type: worker
-    name: ltlab-worker
-    runtime: docker
-    rootDir: backend
-    dockerfilePath: backend/Dockerfile
-    branch: main
-    region: frankfurt
-    plan: free
-    envVars:
-      - key: DJANGO_SETTINGS_MODULE
-        value: config.settings.production
-      - key: SECRET_KEY
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: REDIS_URL
-        sync: false
-    dockerCommand: celery -A config.celery worker --loglevel=info
+    dockerCommand: ./start-web.sh
