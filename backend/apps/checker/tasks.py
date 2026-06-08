@@ -1,15 +1,31 @@
 from celery import shared_task
 
+from .engine import check_ltl, cytoscape_to_kripke, lasso_to_trace_steps
+
 
 @shared_task
 def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
-    """
-    Placeholder for the LTL model checking task.
+    """Celery task: check an LTL formula against a Cytoscape.js Kripke structure.
 
-    Receives a Kripke structure (as a JSON-serialisable dict from Cytoscape.js)
-    and an LTL formula string. Returns a result dict indicating whether the
-    property holds and, if not, a counterexample trace.
+    Returns a dict ready for JSON serialisation:
+      {"result": "satisfied"}
+    or
+      {"result": "violated",
+       "trace": [{"state", "props", "ok", "highlight", "reason", "cycle_back"}, ...]}
 
-    This will be implemented in the Engine Integration phase.
+    Raises ValueError (propagated as a Celery task failure) for invalid
+    formulas or malformed graphs.
     """
-    raise NotImplementedError("LTL model checking engine not yet implemented.")
+    kripke, bdd_dict, spot_id_to_node = cytoscape_to_kripke(kripke_graph)
+    result = check_ltl(kripke, bdd_dict, ltl_formula)
+
+    if result["result"] == "violated":
+        result["trace"] = lasso_to_trace_steps(
+            result.pop("prefix"),
+            result.pop("cycle"),
+            ltl_formula,
+            kripke_graph,
+            spot_id_to_node,
+        )
+
+    return result

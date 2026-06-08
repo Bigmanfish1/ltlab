@@ -99,7 +99,7 @@
     <nav id="toolbar" class="w-12 bg-[#111111] border-r border-[#1F1F1F] flex flex-col items-center py-3 gap-1 shrink-0 z-10">
 
       <!-- node -->
-      <button data-tool="node" title="Add node (N)" onclick="setTool('node')"
+      <button data-tool="node" title="Select / double-click canvas to add node (N)" onclick="setTool('node')"
         class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/></svg>
       </button>
@@ -159,6 +159,12 @@
       <div id="tool-indicator"
         class="absolute top-3 left-3 font-mono text-[11px] text-[#6B6B6B] bg-[#111111] border border-[#1F1F1F] px-2 py-1 rounded pointer-events-none select-none">
         MODE: NODE
+      </div>
+
+      <!-- No-initial-state hint — shown whenever the graph has no initial state -->
+      <div id="no-initial-hint"
+        class="absolute top-3 left-1/2 -translate-x-1/2 font-mono text-[11px] text-[#6B6B6B] bg-[#111111] border border-[#1F1F1F] px-3 py-1 rounded pointer-events-none select-none hidden">
+        No initial state — select a node and press&nbsp;<span class="text-[#FAFAFA]">I</span>
       </div>
 
       <!-- Result drawer (HTMX target) -->
@@ -343,6 +349,40 @@ const CY_STYLE = [
       'target-arrow-color': '#FF4D00',
     }
   },
+  {
+    // Self-loops rendered as a small loop at top-right of the node
+    selector: 'edge[source = target]',
+    style: {
+      'curve-style': 'loop',
+      'loop-direction': '-45deg',
+      'loop-sweep': '-45deg',
+      'control-point-step-size': 40,
+    }
+  },
+  {
+    // Phantom node: invisible point used only to anchor the initial-state entry arrow
+    selector: 'node[?phantom]',
+    style: {
+      'width': 1,
+      'height': 1,
+      'background-color': 'transparent',
+      'border-width': 0,
+      'label': '',
+      'events': 'no',
+    }
+  },
+  {
+    // Entry arrow from phantom node into the initial state
+    selector: 'edge[?phantom]',
+    style: {
+      'width': 2,
+      'line-color': '#FF4D00',
+      'target-arrow-color': '#FF4D00',
+      'target-arrow-shape': 'triangle',
+      'curve-style': 'bezier',
+      'events': 'no',
+    }
+  },
 ];
 
 // ── Initial graph elements ────────────────────────────────────────────────────
@@ -372,9 +412,9 @@ const EXAMPLES = {
   reqgrant: {
     formula: 'G (req → F grant)',
     elements: [
-      { data: { id: 'idle',  name: 'idle',  label: 'idle\n{}',     props: [],       initial: true  }, position: { x: 150, y: 270 } },
-      { data: { id: 'req',   name: 'req',   label: 'req\n{req}',   props: ['req'],  initial: false }, position: { x: 340, y: 130 } },
-      { data: { id: 'grant', name: 'grant', label: 'grant\n{grant}',props: ['grant'],initial: false}, position: { x: 530, y: 270 } },
+      { data: { id: 'idle',  name: 'idle',  label: 'idle\n{}',      props: [],        initial: true  }, position: { x: 150, y: 270 } },
+      { data: { id: 'req',   name: 'req',   label: 'req\n{req}',    props: ['req'],   initial: false }, position: { x: 340, y: 130 } },
+      { data: { id: 'grant', name: 'grant', label: 'grant\n{grant}',props: ['grant'], initial: false }, position: { x: 530, y: 270 } },
       { data: { id: 'e0', source: 'idle',  target: 'req'   } },
       { data: { id: 'e1', source: 'req',   target: 'grant' } },
       { data: { id: 'e2', source: 'grant', target: 'idle'  } },
@@ -383,10 +423,10 @@ const EXAMPLES = {
   traffic: {
     formula: 'G F green',
     elements: [
-      { data: { id: 'red',   name: 'red',   label: 'red\n{red}',   props: ['red'],  initial: true  }, position: { x: 150, y: 250 } },
-      { data: { id: 'green', name: 'green', label: 'green\n{green}',props: ['green'],initial: false}, position: { x: 340, y: 130 } },
-      { data: { id: 'amber', name: 'amber', label: 'amber\n{amber}',props: ['amber'],initial: false}, position: { x: 530, y: 250 } },
-      { data: { id: 'rr',    name: 'red2',  label: 'red2\n{red}',  props: ['red'],  initial: false }, position: { x: 340, y: 370 } },
+      { data: { id: 'red',   name: 'red',   label: 'red\n{red}',    props: ['red'],   initial: true  }, position: { x: 150, y: 250 } },
+      { data: { id: 'green', name: 'green', label: 'green\n{green}',props: ['green'], initial: false }, position: { x: 340, y: 130 } },
+      { data: { id: 'amber', name: 'amber', label: 'amber\n{amber}',props: ['amber'], initial: false }, position: { x: 530, y: 250 } },
+      { data: { id: 'rr',    name: 'red2',  label: 'red2\n{red}',   props: ['red'],   initial: false }, position: { x: 340, y: 370 } },
       { data: { id: 'e0', source: 'red',   target: 'green' } },
       { data: { id: 'e1', source: 'green', target: 'amber' } },
       { data: { id: 'e2', source: 'amber', target: 'rr'    } },
@@ -399,28 +439,46 @@ const EXAMPLES = {
 let undoStack = [];
 let redoStack = [];
 
+// Returns cy.json() with all phantom elements stripped — used for undo/redo
+// snapshots and for the hidden graph-data input sent to the server.
+function getCleanGraphJson() {
+  const raw = cy.json();
+  const els = raw.elements || {};
+  return {
+    ...raw,
+    elements: {
+      nodes: (els.nodes || []).filter(n => !n.data.phantom),
+      edges: (els.edges || []).filter(e => !e.data.phantom),
+    },
+  };
+}
+
 function saveSnapshot() {
-  undoStack.push(cy.json());
+  undoStack.push(getCleanGraphJson());
   redoStack = [];
 }
 
 function undoAction() {
   if (!undoStack.length) return;
-  redoStack.push(cy.json());
+  redoStack.push(getCleanGraphJson());
   cy.json(undoStack.pop());
+  refreshAllInitialArrows();
+  updateInitialHint();
   syncGraphData();
 }
 
 function redoAction() {
   if (!redoStack.length) return;
-  undoStack.push(cy.json());
+  undoStack.push(getCleanGraphJson());
   cy.json(redoStack.pop());
+  refreshAllInitialArrows();
+  updateInitialHint();
   syncGraphData();
 }
 
 // ── Sync graph JSON to hidden input ──────────────────────────────────────────
 function syncGraphData() {
-  document.getElementById('graph-data').value = JSON.stringify(cy.json());
+  document.getElementById('graph-data').value = JSON.stringify(getCleanGraphJson());
 }
 
 // ── Node counter ──────────────────────────────────────────────────────────────
@@ -431,10 +489,9 @@ function nextNodeId() {
 
 // ── Tool state ────────────────────────────────────────────────────────────────
 let currentTool = 'node';
-let edgeSource = null;  // first node clicked when in 'edge' mode
+let edgeSource = null;
 
 function setTool(tool) {
-  // Clear any pending edge source selection
   if (edgeSource) {
     edgeSource.removeClass('edge-source');
     edgeSource = null;
@@ -442,7 +499,6 @@ function setTool(tool) {
 
   currentTool = tool;
 
-  // Update toolbar active indicator
   document.querySelectorAll('.tool-btn').forEach(btn => {
     const bar = btn.querySelector('.tool-active-bar');
     if (bar) bar.remove();
@@ -456,22 +512,171 @@ function setTool(tool) {
     activeBtn.classList.add('text-[#FAFAFA]');
   }
 
-  // Update tool indicator label
   document.getElementById('tool-indicator').textContent = 'MODE: ' + tool.toUpperCase();
-
-  // Disable panning in edge mode so clicks land precisely on nodes
   cy.userPanningEnabled(tool !== 'edge');
 }
 
 // ── Toggle initial state ──────────────────────────────────────────────────────
+// Enforces exactly one initial state. Clears all nodes, then sets the first
+// selected node (unless it was already initial — toggled off in that case).
 function toggleInitial() {
-  const selected = cy.$('node:selected');
+  const selected = cy.$('node:selected').filter(n => !n.data('phantom'));
   if (!selected.length) return;
   saveSnapshot();
-  selected.forEach(n => {
-    n.data('initial', !n.data('initial'));
-  });
+  const node = selected.first();
+  const wasInitial = !!node.data('initial');
+  cy.nodes().forEach(n => n.data('initial', false));
+  if (!wasInitial) node.data('initial', true);
+  refreshAllInitialArrows();
+  updateInitialHint();
   syncGraphData();
+}
+
+// ── Initial state entry arrow (phantom node approach) ─────────────────────────
+// Places an invisible phantom node to the left of each initial state and
+// connects it with an orange arrow — standard Kripke entry-arrow notation.
+function refreshInitialArrow(node) {
+  cy.remove(`#phantom_${node.id()}`);
+  cy.remove(`#phantom_edge_${node.id()}`);
+  if (node.data('initial')) {
+    const pos = node.position();
+    cy.add([
+      {
+        group: 'nodes',
+        data: { id: `phantom_${node.id()}`, phantom: true },
+        position: { x: pos.x - 70, y: pos.y },
+      },
+      {
+        group: 'edges',
+        data: {
+          id: `phantom_edge_${node.id()}`,
+          source: `phantom_${node.id()}`,
+          target: node.id(),
+          phantom: true,
+        },
+      },
+    ]);
+  }
+}
+
+function refreshAllInitialArrows() {
+  cy.remove('[?phantom]');
+  cy.nodes().filter(n => n.data('initial') && !n.data('phantom')).forEach(n => {
+    refreshInitialArrow(n);
+  });
+}
+
+// ── No-initial-state canvas hint ─────────────────────────────────────────────
+function updateInitialHint() {
+  const hasInitial = cy.nodes('[?initial]').filter(n => !n.data('phantom')).length > 0;
+  document.getElementById('no-initial-hint').classList.toggle('hidden', hasInitial);
+}
+
+// ── Inline warning in result drawer ──────────────────────────────────────────
+function showDrawerWarning(msg) {
+  const drawer = document.getElementById('result-drawer');
+  drawer.style.minHeight = '100px';
+  drawer.innerHTML = `
+    <div class="h-full flex flex-col justify-center px-4 gap-2">
+      <div class="flex items-center justify-between border-l-2 border-[#6B6B6B] bg-[#111111] px-4 py-2 font-mono text-[12px] text-[#6B6B6B]">
+        <span>${msg}</span>
+        <button onclick="document.getElementById('result-drawer').innerHTML='';document.getElementById('result-drawer').style.minHeight='0';"
+          class="text-[#6B6B6B] hover:text-[#FAFAFA] ml-4 text-lg leading-none">&times;</button>
+      </div>
+    </div>
+  `;
+}
+
+// ── Right-click context menu ──────────────────────────────────────────────────
+let contextMenu = null;
+
+function showContextMenu(node, renderedPos) {
+  if (contextMenu) { contextMenu.remove(); contextMenu = null; }
+
+  contextMenu = document.createElement('div');
+  contextMenu.style.cssText = `
+    position: fixed;
+    left: ${renderedPos.x}px;
+    top: ${renderedPos.y}px;
+    background: #111111;
+    border: 1px solid #2A2A2A;
+    border-radius: 6px;
+    padding: 4px 0;
+    z-index: 200;
+    min-width: 180px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  `;
+
+  const items = [
+    {
+      label: 'Edit labels',
+      action: () => openLabelEditor(node),
+    },
+    {
+      label: node.data('initial') ? 'Clear initial state  (I)' : 'Set as initial state  (I)',
+      action: () => {
+        saveSnapshot();
+        const wasInitial = !!node.data('initial');
+        cy.nodes().forEach(n => n.data('initial', false));
+        if (!wasInitial) node.data('initial', true);
+        refreshAllInitialArrows();
+        updateInitialHint();
+        syncGraphData();
+      },
+    },
+    {
+      label: 'Add self-loop',
+      action: () => {
+        saveSnapshot();
+        cy.add({ group: 'edges', data: {
+          id: 'e' + node.id() + '_self_' + Date.now(),
+          source: node.id(),
+          target: node.id(),
+        }});
+        syncGraphData();
+      },
+    },
+    {
+      label: 'Delete  (D)',
+      action: () => {
+        saveSnapshot();
+        node.remove();
+        updateInitialHint();
+        syncGraphData();
+      },
+    },
+  ];
+
+  items.forEach(item => {
+    const btn = document.createElement('button');
+    btn.textContent = item.label;
+    btn.style.cssText = `
+      display: block; width: 100%; text-align: left;
+      padding: 7px 14px;
+      font-family: monospace; font-size: 12px;
+      color: #FAFAFA; background: transparent; border: none; cursor: pointer;
+      white-space: nowrap;
+    `;
+    btn.onmouseenter = () => { btn.style.background = '#1A1A1A'; btn.style.color = '#FF4D00'; };
+    btn.onmouseleave = () => { btn.style.background = 'transparent'; btn.style.color = '#FAFAFA'; };
+    btn.onclick = () => {
+      item.action();
+      if (contextMenu) { contextMenu.remove(); contextMenu = null; }
+    };
+    contextMenu.appendChild(btn);
+  });
+
+  document.body.appendChild(contextMenu);
+
+  setTimeout(() => {
+    document.addEventListener('mousedown', function closeMenu(e) {
+      if (contextMenu && !contextMenu.contains(e.target)) {
+        contextMenu.remove();
+        contextMenu = null;
+        document.removeEventListener('mousedown', closeMenu);
+      }
+    });
+  }, 0);
 }
 
 // ── Load example ──────────────────────────────────────────────────────────────
@@ -483,6 +688,8 @@ function loadExample(name) {
   cy.add(ex.elements);
   cy.layout({ name: 'preset' }).run();
   document.getElementById('ltl-formula').value = ex.formula;
+  refreshAllInitialArrows();
+  updateInitialHint();
   syncGraphData();
 }
 
@@ -507,8 +714,6 @@ function insertParens() {
   const insert = '(' + selected + ')';
   input.value = val.slice(0, start) + insert + val.slice(end);
   input.focus();
-  // Place cursor just inside the opening paren if nothing was selected,
-  // otherwise place it after the closing paren
   const cursor = selected.length ? start + insert.length : start + 1;
   input.setSelectionRange(cursor, cursor);
 }
@@ -541,7 +746,7 @@ function openLabelEditor(node) {
     position: absolute;
     left: ${pos.x + rect.left - 75}px;
     top:  ${pos.y + rect.top  + 28}px;
-    width: 150px;
+    width: 155px;
     background: #111111;
     border: 1px solid #FF4D00;
     border-radius: 6px;
@@ -573,10 +778,27 @@ function openLabelEditor(node) {
   propsInput.placeholder = 'p, q, …';
   propsInput.style.cssText = inputStyle;
 
+  // Initial state toggle row — wrapping label makes the whole row clickable
+  const initRow = document.createElement('label');
+  initRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:4px;cursor:pointer;padding:2px 0;';
+
+  const initCheck = document.createElement('input');
+  initCheck.type = 'checkbox';
+  initCheck.checked = !!node.data('initial');
+  initCheck.style.cssText = 'accent-color:#FF4D00;width:13px;height:13px;cursor:pointer;flex-shrink:0;';
+
+  const initSpan = document.createElement('span');
+  initSpan.textContent = 'INITIAL STATE';
+  initSpan.style.cssText = 'font-family:monospace;font-size:10px;color:#6B6B6B;letter-spacing:0.1em;user-select:none;';
+
+  initRow.appendChild(initCheck);
+  initRow.appendChild(initSpan);
+
   panel.appendChild(nameLabel);
   panel.appendChild(nameInput);
   panel.appendChild(propsLabel);
   panel.appendChild(propsInput);
+  panel.appendChild(initRow);
   document.body.appendChild(panel);
   nameInput.focus();
   nameInput.select();
@@ -588,10 +810,18 @@ function openLabelEditor(node) {
     saveSnapshot();
     const name = nameInput.value.trim() || node.id();
     const props = propsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    const wasInitial = !!node.data('initial');
+    const nowInitial = !!initCheck.checked;
     node.data('name', name);
     node.data('props', props);
     const propsStr = props.length ? '\n{' + props.join(',') + '}' : '';
     node.data('label', name + propsStr);
+    if (wasInitial !== nowInitial) {
+      cy.nodes().forEach(n => n.data('initial', false));
+      if (nowInitial) node.data('initial', true);
+      refreshAllInitialArrows();
+      updateInitialHint();
+    }
     panel.remove();
     document.removeEventListener('mousedown', outsideHandler);
     syncGraphData();
@@ -600,7 +830,6 @@ function openLabelEditor(node) {
   function outsideHandler(e) {
     if (!panel.contains(e.target)) commit();
   }
-  // Defer to avoid the current click that opened the editor from immediately closing it
   setTimeout(() => document.addEventListener('mousedown', outsideHandler), 0);
 
   nameInput.addEventListener('keydown', e => {
@@ -627,10 +856,12 @@ const cy = cytoscape({
 // ── Node tap handler ──────────────────────────────────────────────────────────
 cy.on('tap', 'node', function(evt) {
   const node = evt.target;
+  if (node.data('phantom')) return;
 
   if (currentTool === 'delete') {
     saveSnapshot();
     node.remove();
+    updateInitialHint();
     syncGraphData();
     return;
   }
@@ -642,17 +873,20 @@ cy.on('tap', 'node', function(evt) {
 
   if (currentTool === 'edge') {
     if (!edgeSource) {
-      // First click: select source
       edgeSource = node;
       node.addClass('edge-source');
-      document.getElementById('tool-indicator').textContent = 'MODE: EDGE — click target';
+      document.getElementById('tool-indicator').textContent = 'MODE: EDGE — click target (or same node for self-loop)';
     } else if (edgeSource.id() === node.id()) {
-      // Clicked same node: cancel
+      // Same node clicked again → create a self-loop
+      saveSnapshot();
+      const edgeId = 'e' + node.id() + '_self_' + Date.now();
+      cy.add({ group: 'edges', data: { id: edgeId, source: node.id(), target: node.id() } });
       edgeSource.removeClass('edge-source');
       edgeSource = null;
       document.getElementById('tool-indicator').textContent = 'MODE: EDGE';
+      syncGraphData();
     } else {
-      // Second click: create edge
+      // Different node → create directed edge
       saveSnapshot();
       const edgeId = 'e' + edgeSource.id() + '_' + node.id() + '_' + Date.now();
       cy.add({ group: 'edges', data: { id: edgeId, source: edgeSource.id(), target: node.id() } });
@@ -667,6 +901,7 @@ cy.on('tap', 'node', function(evt) {
 
 // ── Edge tap handler ──────────────────────────────────────────────────────────
 cy.on('tap', 'edge', function(evt) {
+  if (evt.target.data('phantom')) return;
   if (currentTool === 'delete') {
     saveSnapshot();
     evt.target.remove();
@@ -674,33 +909,74 @@ cy.on('tap', 'edge', function(evt) {
   }
 });
 
-// ── Canvas background tap: add node ──────────────────────────────────────────
+// ── Canvas background tap: cancel edge source, deselect (never adds a node) ───
 cy.on('tap', function(evt) {
-  if (evt.target !== cy) return; // only background taps
+  if (evt.target !== cy) return;
 
-  // Cancel any pending edge source on background click
   if (currentTool === 'edge' && edgeSource) {
     edgeSource.removeClass('edge-source');
     edgeSource = null;
     document.getElementById('tool-indicator').textContent = 'MODE: EDGE';
     return;
   }
-
-  if (currentTool === 'node') {
-    saveSnapshot();
-    const id = nextNodeId();
-    cy.add({
-      group: 'nodes',
-      data: { id, name: id, label: id, props: [], initial: false },
-      position: evt.position,
-    });
-    syncGraphData();
-  }
+  // Single click on empty canvas intentionally does nothing else —
+  // Cytoscape deselects any selected elements automatically.
 });
 
-// ── Sync after drag ───────────────────────────────────────────────────────────
-cy.on('dragfree', 'node', function() {
+// ── Double-click on empty canvas: add node (works in every tool mode) ─────────
+cy.on('dblclick', function(evt) {
+  if (evt.target !== cy) return;
+  saveSnapshot();
+  const id = nextNodeId();
+  const isFirstInitial = cy.nodes().filter(n => !n.data('phantom') && n.data('initial')).length === 0;
+  cy.add({
+    group: 'nodes',
+    data: { id, name: id, label: id, props: [], initial: isFirstInitial },
+    position: evt.position,
+  });
+  if (isFirstInitial) refreshInitialArrow(cy.getElementById(id));
+  updateInitialHint();
   syncGraphData();
+});
+
+// ── Double-click on node: open label editor (not in edge/delete tool) ─────────
+cy.on('dblclick', 'node', function(evt) {
+  const node = evt.target;
+  if (node.data('phantom')) return;
+  if (currentTool === 'edge') return;   // edge double-tap creates self-loop via two taps
+  if (!node.inside()) return;           // node may have been deleted by first tap in delete mode
+  openLabelEditor(node);
+});
+
+// ── Right-click on node: context menu ────────────────────────────────────────
+cy.on('cxttap', 'node', function(evt) {
+  if (evt.target.data('phantom')) return;
+  showContextMenu(evt.target, evt.renderedPosition);
+});
+
+// Suppress the browser's native context menu on the Cytoscape canvas so only
+// our custom menu appears when the user right-clicks a node.
+document.getElementById('cy').addEventListener('contextmenu', function(e) {
+  e.preventDefault();
+});
+
+// ── Reposition phantom arrow when initial state is dragged ────────────────────
+cy.on('dragfree', 'node', function(evt) {
+  const node = evt.target;
+  if (!node.data('phantom') && node.data('initial')) {
+    refreshInitialArrow(node);
+  }
+  syncGraphData();
+});
+
+// ── Clean up phantom node when its host node is deleted ──────────────────────
+cy.on('remove', 'node', function(evt) {
+  const node = evt.target;
+  if (!node.data('phantom')) {
+    const phantom = cy.$(`#phantom_${node.id()}`);
+    if (phantom.length) phantom.remove();
+    updateInitialHint();
+  }
 });
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
@@ -711,19 +987,40 @@ document.addEventListener('keydown', function(e) {
   if (key === 'e') setTool('edge');
   if (key === 'l') setTool('label');
   if (key === 'd') setTool('delete');
+  if (key === 'i') toggleInitial();
   if (key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undoAction(); }
   if (key === 'y' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); redoAction(); }
   if (key === 'delete' || key === 'backspace') {
-    const sel = cy.$(':selected');
-    if (sel.length) { saveSnapshot(); sel.remove(); syncGraphData(); }
+    const sel = cy.$(':selected').filter(el => !el.data('phantom'));
+    if (sel.length) { saveSnapshot(); sel.remove(); updateInitialHint(); syncGraphData(); }
+  }
+});
+
+// ── Pre-submit validation ─────────────────────────────────────────────────────
+document.getElementById('run-btn').addEventListener('htmx:beforeRequest', function(e) {
+  const realNodes = cy.nodes().filter(n => !n.data('phantom'));
+  if (realNodes.length === 0) {
+    e.preventDefault();
+    showDrawerWarning('Graph is empty — add at least one state before verifying.');
+    return;
+  }
+  const realInitials = realNodes.filter(n => n.data('initial'));
+  if (realInitials.length === 0) {
+    e.preventDefault();
+    showDrawerWarning('No initial state — select a state and press I (or right-click) to mark it as initial.');
+  } else if (realInitials.length > 1) {
+    e.preventDefault();
+    showDrawerWarning('Multiple initial states found — exactly one is required. Select the correct state and press I.');
   }
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 setTool('node');
+refreshAllInitialArrows();
+updateInitialHint();
 syncGraphData();
 
-// HTMX: show result drawer when content arrives
+// HTMX: expand result drawer when content arrives
 document.body.addEventListener('htmx:afterSwap', function(e) {
   if (e.detail.target.id === 'result-drawer') {
     const drawer = document.getElementById('result-drawer');
