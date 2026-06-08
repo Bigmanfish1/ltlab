@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Teacher Dashboard - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<div class="px-12 py-12 max-w-[1280px] mx-auto">
+    <h1 class="text-[32px] text-text-primary font-semibold tracking-tight mb-1" style="letter-spacing: -0.02em;">
+        Good morning, {{ teacher_name }}.
+    </h1>
+    <div class="text-sm text-text-secondary mb-10">Here's how your class is doing.</div>
+
+    <div class="grid grid-cols-3 gap-4 mb-12">
+        {% for stat in stats %}
+        <div class="bg-bg-secondary border border-border-primary p-6 rounded">
+            <div class="font-mono text-[11px] text-text-secondary tracking-[0.12em] mb-3">{{ stat.label }}</div>
+            <div class="text-5xl text-text-primary font-bold mb-2 leading-none" style="letter-spacing: -0.04em;">
+                {{ stat.value }}
+            </div>
+            <div class="text-xs font-mono {% if stat.positive %}text-accent-lime{% else %}text-accent-orange{% endif %}">
+                {{ stat.delta }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="grid grid-cols-[65%_35%] gap-8">
+        <div>
+            <div class="text-[13px] text-text-secondary tracking-[0.12em] mb-4">RECENT ACTIVITY</div>
+            <div>
+                {% for item in activity %}
+                <div class="h-12 flex items-center gap-3 border-b border-border-primary">
+                    <div class="w-8 h-8 bg-bg-tertiary flex items-center justify-center font-mono text-[11px] text-text-primary">
+                        {{ item.initials }}
+                    </div>
+                    <span class="w-1.5 h-1.5 rounded-full {% if item.type == 'done' %}bg-accent-lime{% else %}bg-accent-orange{% endif %}"></span>
+                    <div class="flex-1 text-[13px] text-text-primary">{{ item.text }}</div>
+                    <div class="text-xs text-text-secondary font-mono">{{ item.time }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div>
+            <div class="text-[13px] text-text-secondary tracking-[0.12em] mb-4">QUICK ACTIONS</div>
+            <div class="space-y-2">
+                <a href="#" class="w-full h-11 px-4 bg-bg-secondary border border-border-secondary flex items-center justify-between text-[13px] text-text-primary hover:border-accent-orange transition-colors rounded group">
+                    <span>Create New Exercise</span>
+                    <span class="text-text-secondary group-hover:text-accent-orange transition-colors">→</span>
+                </a>
+                <a href="#" class="w-full h-11 px-4 bg-bg-secondary border border-border-secondary flex items-center justify-between text-[13px] text-text-primary hover:border-accent-orange transition-colors rounded group">
+                    <span>Manage Modules</span>
+                    <span class="text-text-secondary group-hover:text-accent-orange transition-colors">→</span>
+                </a>
+                <a href="#" class="w-full h-11 px-4 bg-bg-secondary border border-border-secondary flex items-center justify-between text-[13px] text-text-primary hover:border-accent-orange transition-colors rounded group">
+                    <span>View Full Analytics</span>
+                    <span class="text-text-secondary group-hover:text-accent-orange transition-colors">→</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
