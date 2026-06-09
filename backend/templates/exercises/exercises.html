@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Exercises - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-bg-primary">
+    {% include "header.html" %}
+    <!-- Exercises List -->
+    <div class="max-w-[1280px] mx-auto px-12 py-8">
+        <div class="mb-4 text-sm font-mono text-text-secondary tracking-wider">
+            EXERCISES
+        </div>
+
+        <div class="space-y-3">
+            {% for item in exercises_data %}
+                <a 
+                    href="{% url 'exercise_canvas' item.exercise.id %}"
+                class="block bg-bg-secondary border border-border-primary hover:border-border-secondary transition-colors rounded p-5 group"
+            >
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-3 mb-2">
+                            <h3 class="text-lg text-text-primary font-medium group-hover:text-white transition-colors">
+                                {{ item.exercise.title }}
+                            </h3>
+                            {% if item.is_completed %}
+                            <span class="font-mono text-[11px] px-2 py-0.5 bg-accent-lime text-bg-primary rounded">
+                                ✓
+                            </span>
+                            {% endif %}
+                        </div>
+                        <p class="text-sm text-text-secondary mb-3">
+                            {{ item.exercise.description|truncatewords:30 }}
+                        </p>
+                        <div class="flex items-center gap-4 text-xs font-mono text-text-secondary">
+                            <span>•</span>
+                            <span>{{ item.exercise.hints|length }} hints available</span>
+                            {% if item.attempt_count > 0 %}
+                            <span>•</span>
+                            <span>{{ item.attempt_count }} attempt{{ item.attempt_count|pluralize }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="ml-4 text-text-secondary group-hover:text-accent-orange transition-colors">
+                        →
+                    </div>
+                </div>
+            </a>
+            {% empty %}
+            <div class="text-center py-12 text-text-secondary">
+                No exercises available yet.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
