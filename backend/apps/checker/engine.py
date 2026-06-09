@@ -97,7 +97,8 @@ def cytoscape_to_kripke(graph: dict) -> tuple:
 
     Raises
     ------
-    ValueError  for structural problems (no states, no/multiple initial states).
+    ValueError  for structural problems (no states, no/multiple initial states,
+                or deadlock states with no outgoing transition).
     """
     _require_spot()
 
@@ -170,11 +171,32 @@ def cytoscape_to_kripke(graph: dict) -> tuple:
 
     k.set_init_state(node_id_to_spot[initial_nodes[0]["data"]["id"]])
 
+    nodes_with_successor: set[str] = set()
     for e in raw_edges:
         src = e["data"].get("source")
         tgt = e["data"].get("target")
         if src in node_id_to_spot and tgt in node_id_to_spot:
             k.new_edge(node_id_to_spot[src], node_id_to_spot[tgt])
+            nodes_with_successor.add(src)
+
+    # A Kripke structure must have a TOTAL transition relation: every state
+    # needs at least one outgoing transition (a self-loop counts).  A state
+    # with no successor is a deadlock — no infinite path can pass through it,
+    # so LTL formulas become vacuously true and the model checker would report
+    # misleading "holds" results.  Reject such graphs with a clear message.
+    deadlocks = [
+        n["data"]["id"]
+        for n in raw_nodes
+        if n["data"]["id"] not in nodes_with_successor
+    ]
+    if deadlocks:
+        names = ", ".join(sorted(deadlocks))
+        raise ValueError(
+            f"State(s) with no outgoing transition: {names}. "
+            "A Kripke structure must be total — every state needs at least one "
+            "successor. Add a transition or a self-loop. (Otherwise the graph has "
+            "no infinite paths and every formula holds vacuously.)"
+        )
 
     return k, d, spot_id_to_node
 
@@ -221,49 +243,29 @@ def check_ltl(kripke, bdd_dict, formula_str: str) -> dict:
 
     run = run.reduce()
 
-    # In spottl / SPOT 2.13, kripke.intersecting_run() returns a run whose
-    # steps live in the PRODUCT automaton (kripke × negated TBA).  The step.s
-    # field is a product-state pointer whose hash() combines both halves and
-    # therefore never matches the plain kripke state-number keys we built in
-    # cytoscape_to_kripke.
-    #
-    # However, step.label is set to the outgoing transition's condition which,
-    # for a kripke structure, equals cond(current_kripke_state).  This is
-    # because all outgoing transitions from kripke state s carry cond(s), and
-    # the product transition is valid only when the TBA condition is implied by
-    # cond(s), so cond(s) & tba_cond = cond(s).
-    #
-    # We identify the kripke state for each step by scanning state_condition(n)
-    # for all n and comparing with BDD equality (== on buddy bdd objects tests
-    # canonical root-node identity, i.e. same boolean function).
-    try:
-        n_states = kripke.num_states()
-    except Exception:
-        n_states = 0
-
-    def _label_to_sid(label) -> int | None:
-        """Return the kripke state number whose BDD condition matches label."""
-        for sid in range(n_states):
-            try:
-                if kripke.state_condition(sid) == label:
-                    return sid
-            except Exception:
-                pass
-        return None
-
+    # kripke.intersecting_run() returns a run OF THE KRIPKE (its states are
+    # kripke state pointers, not product states).  Digraph-backed automata in
+    # SPOT expose state_number(state*) which maps a state pointer back to the
+    # integer state number we used as the key in cytoscape_to_kripke.  That is
+    # the canonical, version-stable way to recover the original node.
     def _step_sid(step) -> int:
-        sid = _label_to_sid(step.label)
-        if sid is not None:
-            return sid
-        # Fallback for older SPOT builds where step.s is already an integer
-        # state number (or its hash() returns a usable key).
         s = step.s
         if isinstance(s, int):
             return s
         try:
-            return s.hash()
-        except AttributeError:
-            return id(s)
+            return kripke.state_number(s)
+        except Exception:
+            pass
+        # Last-resort fallback: match the step's outgoing condition against
+        # each state's BDD condition (state_condition compares by canonical
+        # BDD root, so equal boolean functions compare equal).
+        try:
+            for sid in range(kripke.num_states()):
+                if kripke.state_condition(sid) == step.label:
+                    return sid
+        except Exception:
+            pass
+        return id(s)
 
     return {
         "result": "violated",

@@ -170,10 +170,23 @@ class TestCytoscapeToKripke(TestCase):
         kripke, bdd_dict, id_map = self._convert(
             [{"id": "s0", "props": ["p"], "initial": True},
              {"id": "s1", "props": ["q"]}],
-            [("s0", "s1")],
+            [("s0", "s1"), ("s1", "s0")],
         )
         self.assertIsNotNone(kripke)
         self.assertEqual(len(id_map), 2)
+
+    def test_deadlock_state_raises(self):
+        """A state with no outgoing transition breaks Kripke totality."""
+        from .engine import cytoscape_to_kripke
+        with self.assertRaises(ValueError) as ctx:
+            cytoscape_to_kripke(_graph(
+                [{"id": "s0", "props": ["p"], "initial": True},
+                 {"id": "s1", "props": ["q"]}],
+                [("s0", "s1")],   # s1 has no successor → deadlock
+            ))
+        msg = str(ctx.exception).lower()
+        self.assertIn("outgoing", msg)
+        self.assertIn("s1", str(ctx.exception))
 
     def test_no_nodes_raises(self):
         from .engine import cytoscape_to_kripke
@@ -203,7 +216,9 @@ class TestCytoscapeToKripke(TestCase):
                     {"data": {"id": "s0", "props": ["p"], "initial": True}},
                     {"data": {"id": "phantom_s0", "phantom": True}},
                 ],
-                "edges": [],
+                "edges": [
+                    {"data": {"source": "s0", "target": "s0"}},
+                ],
             }
         }
         kripke, bdd_dict, id_map = cytoscape_to_kripke(graph)

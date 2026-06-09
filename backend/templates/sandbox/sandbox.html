@@ -1008,9 +1008,26 @@ document.getElementById('run-btn').addEventListener('htmx:beforeRequest', functi
   if (realInitials.length === 0) {
     e.preventDefault();
     showDrawerWarning('No initial state — select a state and press I (or right-click) to mark it as initial.');
+    return;
   } else if (realInitials.length > 1) {
     e.preventDefault();
     showDrawerWarning('Multiple initial states found — exactly one is required. Select the correct state and press I.');
+    return;
+  }
+
+  // Totality check: every state needs at least one outgoing transition (a
+  // self-loop counts). A deadlock state means there are no infinite paths, so
+  // every LTL formula would hold vacuously — warn instead of misleading "holds".
+  const deadlocks = realNodes
+    .filter(n => n.outgoers('edge').filter(ed => !ed.data('phantom')).length === 0)
+    .map(n => n.data('name') || n.id());
+  if (deadlocks.length > 0) {
+    e.preventDefault();
+    showDrawerWarning(
+      'State(s) with no outgoing transition: ' + deadlocks.join(', ') +
+      '. Every state needs at least one successor (add a transition or a self-loop). ' +
+      'Otherwise the graph has no infinite paths and every formula holds vacuously.'
+    );
   }
 });
 
