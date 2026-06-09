@@ -62,7 +62,7 @@
                         </div>
                     </div>
                     <div class="mt-3 text-xs text-text-secondary font-mono">
-                        Model: {{ kripke_model.name }} • States: {{ kripke_model.states|length }} • Initial: {{ kripke_model.initial_state }}
+                        • States: {{ kripke_model.states|length }} • Initial: {{ kripke_model.initial_state }}
                     </div>
                 </div>
 
@@ -93,7 +93,7 @@
                                 id="submit-btn"
                                 class="px-6 py-1.5 bg-accent-orange hover:opacity-90 transition-opacity rounded text-sm font-medium text-text-primary"
                             >
-                                Check Formula
+                                Check Answer
                             </button>
                         </div>
                     </div>
@@ -157,11 +157,13 @@
                             <div class="text-text-secondary">X φ</div>
                             <div class="text-text-primary">Next</div>
                             <div class="text-text-secondary">G φ</div>
-                            <div class="text-text-primary">Globally</div>
+                            <div class="text-text-primary">Always</div>
                             <div class="text-text-secondary">F φ</div>
-                            <div class="text-text-primary">Finally</div>
+                            <div class="text-text-primary">Eventually</div>
                             <div class="text-text-secondary">φ U ψ</div>
                             <div class="text-text-primary">Until</div>
+                            <div class="text-text-secondary">¬ φ</div>
+                            <div class="text-text-primary">Not</div>
                         </div>
                     </div>
                 </div>

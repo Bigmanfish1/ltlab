@@ -33,7 +33,6 @@
                             {{ item.exercise.description|truncatewords:30 }}
                         </p>
                         <div class="flex items-center gap-4 text-xs font-mono text-text-secondary">
-                            <span>Model: {{ item.exercise.kripke_model.name }}</span>
                             <span>•</span>
                             <span>{{ item.exercise.hints|length }} hints available</span>
                             {% if item.attempt_count > 0 %}

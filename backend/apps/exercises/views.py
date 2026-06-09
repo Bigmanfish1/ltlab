@@ -9,7 +9,6 @@ import json
 # Mock data for testing
 MOCK_KRIPKE_MODEL = {
     'id': 1,
-    'name': 'Simple Traffic Light',
     'description': 'A basic traffic light system',
     'states': [
         {'id': 's0', 'label': 'Green', 'props': ['green']},
