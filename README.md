@@ -216,6 +216,33 @@ docker exec -it ltlab-web python manage.py shell
 docker exec -it ltlab-web bash
 ```
 
+### Setting a User's Role (teacher / student)
+
+Every user is a `student` by default on their first Google sign-in. To promote
+someone to `teacher`, flip the role on their `Profile`.
+
+> **The user must sign in once first** so their `Profile` row exists, otherwise
+> the command errors with "No profile for `<email>`".
+
+```bash
+# Local (Docker)
+docker exec -it ltlab-web python manage.py set_role <email> teacher
+
+# Demote back to student
+docker exec -it ltlab-web python manage.py set_role <email> student
+```
+
+In **production**, run the same command without the `docker exec` prefix from the
+Render service **Shell** tab (it runs against the Supabase database):
+
+```bash
+python manage.py set_role <email> teacher
+```
+
+> **Note:** logging out uses `scope=global` — it revokes *every* session for that
+> user, not just the current browser. Expected in production; during local
+> testing it means hitting logout signs you out everywhere.
+
 ### Checking Logs
 
 ```bash
