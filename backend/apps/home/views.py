@@ -1,18 +1,12 @@
-from django.shortcuts import redirect, render
+from django.shortcuts import render
 
 from apps.accounts.middleware import supabase_login_required
 
 
 @supabase_login_required
 def home(request):
-    if request.profile is None:
-        # Authenticated but no Profile row — clear session cookies to break
-        # the redirect loop (login_view redirects back to "/" for authed users).
-        response = redirect("/accounts/login/")
-        response.delete_cookie("sb-access-token", samesite="Lax")
-        response.delete_cookie("sb-refresh-token", samesite="Lax")
-        return response
-
+    # supabase_login_required guarantees request.profile is set (it bounces the
+    # authenticated-but-no-Profile state to re-login).
     modules_data = [
         {
             "id": 1,

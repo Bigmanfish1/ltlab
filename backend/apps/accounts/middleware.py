@@ -7,9 +7,10 @@ from django.shortcuts import redirect
 from gotrue.errors import AuthApiError
 from supabase import create_client
 
-from config.supabase_client import get_supabase_client
+from config.supabase_client import get_cached_user
 
-from .constants import ACCESS_TOKEN_MAX_AGE, LOGIN_URL, REFRESH_TOKEN_MAX_AGE
+from .auth_cookies import clear_auth_cookies, set_auth_cookies
+from .constants import LOGIN_URL
 from .models import Profile
 
 logger = logging.getLogger(__name__)
@@ -27,9 +28,9 @@ class SupabaseAuthMiddleware:
 
         if token:
             try:
-                supabase = get_supabase_client()
-                user_response = supabase.auth.get_user(token)
-                request.supabase_user = user_response.user
+                # Cached per token for a few seconds; only a cache miss hits the
+                # network (see config.supabase_client.get_cached_user).
+                request.supabase_user = get_cached_user(token)
                 if request.supabase_user:
                     request.profile = Profile.objects.filter(
                         email=request.supabase_user.email
@@ -59,11 +60,7 @@ class SupabaseAuthMiddleware:
         response = self.get_response(request)
 
         if request._refreshed_session:
-            is_secure = request.is_secure()
-            common = {"httponly": True, "secure": is_secure, "samesite": "Lax"}
-            sess = request._refreshed_session
-            response.set_cookie("sb-access-token", sess.access_token, max_age=ACCESS_TOKEN_MAX_AGE, **common)
-            response.set_cookie("sb-refresh-token", sess.refresh_token, max_age=REFRESH_TOKEN_MAX_AGE, **common)
+            set_auth_cookies(response, request._refreshed_session, request.is_secure())
 
         return response
 
@@ -105,11 +102,36 @@ class HtmxAuthRedirectMiddleware:
         return response
 
 
+def _redirect_if_no_profile(request):
+    """Shared gate for protected views.
+
+    Returns a redirect response when the request must be bounced, else None.
+    An authenticated Supabase user with no Profile row is a broken state (row
+    deleted, or the user's email changed in Supabase so the email join key no
+    longer matches — see Profile / _get_or_create_profile). Clear the session so
+    a clean re-login recreates the Profile, rather than letting each view invent
+    its own recovery.
+    """
+    if request.supabase_user is None:
+        return redirect(LOGIN_URL)
+    if request.profile is None:
+        logger.warning(
+            "Authenticated Supabase user %s has no Profile (deleted or email "
+            "changed); forcing re-login.",
+            getattr(request.supabase_user, "email", "?"),
+        )
+        response = redirect(LOGIN_URL)
+        clear_auth_cookies(response)
+        return response
+    return None
+
+
 def supabase_login_required(view_func):
     @functools.wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        if request.supabase_user is None:
-            return redirect(LOGIN_URL)
+        bounce = _redirect_if_no_profile(request)
+        if bounce is not None:
+            return bounce
         return view_func(request, *args, **kwargs)
     return wrapper
 
@@ -117,9 +139,10 @@ def supabase_login_required(view_func):
 def teacher_required(view_func):
     @functools.wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        if request.supabase_user is None:
-            return redirect(LOGIN_URL)
-        if request.profile is None or request.profile.role != Profile.ROLE_TEACHER:
+        bounce = _redirect_if_no_profile(request)
+        if bounce is not None:
+            return bounce
+        if request.profile.role != Profile.ROLE_TEACHER:
             return redirect("/")
         return view_func(request, *args, **kwargs)
     return wrapper
