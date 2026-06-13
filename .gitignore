@@ -30,6 +30,13 @@ backend/mediafiles/
 *.swp
 *.swo
 
+# Claude Code
+CLAUDE.md
+.claude/
+.agents/
+skills-lock.json
+repomix-output.xml
+
 # OS
 .DS_Store
 Thumbs.db
