@@ -32,7 +32,7 @@ class SupabaseAuthMiddleware:
                 request.supabase_user = user_response.user
                 if request.supabase_user:
                     request.profile = Profile.objects.filter(
-                        supabase_user_id=request.supabase_user.id
+                        email=request.supabase_user.email
                     ).first()
             except AuthApiError:
                 # Access token expired — attempt silent refresh
@@ -45,7 +45,7 @@ class SupabaseAuthMiddleware:
                         request._refreshed_session = result.session
                         if request.supabase_user:
                             request.profile = Profile.objects.filter(
-                                supabase_user_id=request.supabase_user.id
+                                email=request.supabase_user.email
                             ).first()
                     except Exception:
                         # Refresh failed (revoked/expired refresh token) — stay

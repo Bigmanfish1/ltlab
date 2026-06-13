@@ -9,10 +9,13 @@ class Profile(models.Model):
         (ROLE_TEACHER, "Teacher"),
     ]
 
-    supabase_user_id = models.UUIDField(unique=True)
     email = models.EmailField(unique=True)
+    name = models.CharField(max_length=255, blank=True, default="")
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_STUDENT)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "Users"
 
     def __str__(self):
         return f"{self.email} ({self.role})"

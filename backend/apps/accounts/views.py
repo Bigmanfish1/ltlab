@@ -64,20 +64,20 @@ def _pop_pkce_verifier(supabase) -> str | None:
 
 
 def _get_or_create_profile(user) -> Profile:
+    # The Supabase auth id is a UUID; the Users table keys on an int8 identity
+    # column, so email (unique on both sides, verified by Google) is the join key.
+    name = (user.user_metadata or {}).get("full_name", "")
     try:
-        # atomic() so a losing race on the unique supabase_user_id raises
-        # IntegrityError cleanly instead of poisoning the request transaction.
+        # atomic() so a losing race on the unique email raises IntegrityError
+        # cleanly instead of poisoning the request transaction.
         with transaction.atomic():
             profile, _ = Profile.objects.get_or_create(
-                supabase_user_id=user.id,
-                defaults={"email": user.email},
+                email=user.email,
+                defaults={"name": name},
             )
     except IntegrityError:
         # Concurrent first login created the row first — fetch theirs.
-        profile = Profile.objects.get(supabase_user_id=user.id)
-    if profile.email != user.email:
-        profile.email = user.email
-        profile.save(update_fields=["email"])
+        profile = Profile.objects.get(email=user.email)
     return profile
 
 
