@@ -96,6 +96,29 @@ All variables are read from `.env` (see `.env.example`). Never commit `.env`.
 
 ---
 
+## Authentication
+
+Sign-in is **Google OAuth via Supabase** (PKCE flow) — not Django's built-in auth.
+A user clicks "Continue with Google", Supabase handles the OAuth handshake, and on
+return the app creates/updates a `Profile` row (the `Users` table) and stores the
+Supabase session in `sb-access-token` / `sb-refresh-token` cookies.
+
+**How a request is authenticated (every page load):**
+
+- The access token is a Supabase **JWT**, signed with an ES256 key. `SupabaseAuthMiddleware`
+  verifies it **locally** — checks the signature against Supabase's public key (fetched
+  once from the JWKS endpoint and cached), plus expiry/audience/issuer. No network call to
+  Supabase on the hot path. If the token is expired, it silently refreshes using the refresh
+  token.
+- The user is linked to their `Profile` by **email** (the join key).
+
+**Logout** revokes the session at Supabase (`scope=global` — signs the user out of *every*
+device) **and** adds the session to a small in-process denylist so the still-unexpired access
+token stops working immediately. The denylist is per-process, which is correct for the single
+gunicorn worker in production; scaling to multiple workers would need a shared store.
+
+---
+
 ## Project Structure
 
 ```
