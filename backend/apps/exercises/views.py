@@ -1,9 +1,11 @@
-from django.shortcuts import render, get_object_or_404, redirect
-from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST
-from django.utils import timezone
 import json
+
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+
+from apps.accounts.middleware import supabase_login_required
 
 
 # Mock data for testing
@@ -99,6 +101,7 @@ def get_mock_exercise(exercise_id):
             return exercise
     return None
 
+@supabase_login_required
 def exercises(request):
     exercises_data = []
     for exercise in MOCK_EXERCISES:
@@ -115,6 +118,7 @@ def exercises(request):
     return render(request, 'exercises/exercises.html', context)
 
 
+@supabase_login_required
 def exercise_canvas(request, exercise_id):
     """Exercise canvas with Kripke model, formula input, and submission"""
     exercise = get_mock_exercise(exercise_id)
@@ -146,6 +150,7 @@ def exercise_canvas(request, exercise_id):
     return render(request, 'exercises/exercise_canvas.html', context)
 
 
+@supabase_login_required
 @require_POST
 def submit_formula(request, exercise_id):
     """Handle formula submission and check correctness"""
@@ -189,6 +194,7 @@ def submit_formula(request, exercise_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@supabase_login_required
 def get_hint(request, exercise_id):
     """Get next hint for exercise"""
     exercise = get_mock_exercise(exercise_id)
