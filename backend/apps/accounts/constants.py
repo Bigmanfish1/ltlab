@@ -1,0 +1,5 @@
+ACCESS_TOKEN_MAX_AGE = 60 * 60
+REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24 * 7
+PKCE_VERIFIER_MAX_AGE = 60 * 10
+PKCE_VERIFIER_COOKIE = "sb-pkce-verifier"
+LOGIN_URL = "/accounts/login/"
