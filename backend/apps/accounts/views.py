@@ -1,19 +1,22 @@
+import httpx
 from urllib.parse import urlencode, urlparse
 
+from django.conf import settings
 from django.contrib import messages
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 from gotrue.errors import AuthApiError
+from supabase import create_client
 
-from config.supabase_client import get_supabase_client
-
+from .constants import (
+    ACCESS_TOKEN_MAX_AGE,
+    LOGIN_URL,
+    PKCE_VERIFIER_COOKIE,
+    PKCE_VERIFIER_MAX_AGE,
+    REFRESH_TOKEN_MAX_AGE,
+)
 from .models import Profile
-
-ACCESS_TOKEN_MAX_AGE = 60 * 60
-REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24 * 7
-PKCE_VERIFIER_MAX_AGE = 60 * 10
-PKCE_VERIFIER_COOKIE = "sb-pkce-verifier"
 
 AUTH_ERROR_MESSAGES = {
     "bad_oauth_callback": "Google sign-in failed. Please try again.",
@@ -34,8 +37,8 @@ def _set_auth_cookies(response, session, is_secure: bool) -> None:
 
 
 def _clear_auth_cookies(response) -> None:
-    response.delete_cookie("sb-access-token")
-    response.delete_cookie("sb-refresh-token")
+    response.delete_cookie("sb-access-token", samesite="Lax")
+    response.delete_cookie("sb-refresh-token", samesite="Lax")
 
 
 def _auth_error_message(e: AuthApiError) -> str:
@@ -62,6 +65,15 @@ def _get_or_create_profile(user) -> Profile:
 
 @require_http_methods(["GET"])
 def login_view(request):
+    """Render the login landing page. OAuth is initiated by google_oauth_view."""
+    if request.supabase_user:
+        return redirect("/")
+    return render(request, "accounts/login.html")
+
+
+@require_http_methods(["GET"])
+def google_oauth_view(request):
+    """Initiate the Google OAuth PKCE flow and redirect to the provider."""
     if request.supabase_user:
         return redirect("/")
 
@@ -74,7 +86,10 @@ def login_view(request):
         redirect_to = f"{redirect_to}?{urlencode({'next': next_url})}"
 
     try:
-        supabase = get_supabase_client()
+        # Fresh client per request — PKCE verifier lives in the client's
+        # in-memory _storage, so a shared singleton would let concurrent
+        # logins overwrite each other's verifier.
+        supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
         result = supabase.auth.sign_in_with_oauth(
             {
                 "provider": "google",
@@ -95,7 +110,7 @@ def login_view(request):
         return response
     except Exception:
         messages.error(request, "Couldn't reach Google sign-in. Please try again.")
-        return redirect("/")
+        return redirect("accounts:login")
 
 
 @require_http_methods(["GET"])
@@ -108,7 +123,7 @@ def oauth_callback_view(request):
     verifier = request.COOKIES.get(PKCE_VERIFIER_COOKIE)
 
     try:
-        supabase = get_supabase_client()
+        supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
         result = supabase.auth.exchange_code_for_session(
             {"auth_code": code, "code_verifier": verifier}
         )
@@ -136,11 +151,21 @@ def logout_view(request):
     token = request.COOKIES.get("sb-access-token")
     if token:
         try:
-            supabase = get_supabase_client()
-            supabase.auth.sign_out()
+            # Call the Supabase logout endpoint directly with the user's token.
+            # The shared singleton client has no session stored, so
+            # supabase.auth.sign_out() would be a no-op against the server.
+            httpx.post(
+                f"{settings.SUPABASE_URL}/auth/v1/logout",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "apikey": settings.SUPABASE_ANON_KEY,
+                },
+                params={"scope": "global"},
+                timeout=5.0,
+            )
         except Exception:
             pass
 
-    response = redirect("/accounts/login/")
+    response = redirect(LOGIN_URL)
     _clear_auth_cookies(response)
     return response
