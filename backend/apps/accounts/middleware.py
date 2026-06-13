@@ -1,4 +1,5 @@
 import functools
+import logging
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from django.conf import settings
@@ -10,6 +11,8 @@ from config.supabase_client import get_supabase_client
 
 from .constants import ACCESS_TOKEN_MAX_AGE, LOGIN_URL, REFRESH_TOKEN_MAX_AGE
 from .models import Profile
+
+logger = logging.getLogger(__name__)
 
 
 class SupabaseAuthMiddleware:
@@ -45,9 +48,13 @@ class SupabaseAuthMiddleware:
                                 supabase_user_id=request.supabase_user.id
                             ).first()
                     except Exception:
-                        pass
+                        # Refresh failed (revoked/expired refresh token) — stay
+                        # anonymous, but record it so a broken Supabase is visible.
+                        logger.warning("Supabase token refresh failed", exc_info=True)
             except Exception:
-                pass
+                # Unexpected error validating the token (e.g. Supabase down or
+                # misconfigured). Fail closed to anonymous, but don't go silent.
+                logger.exception("Supabase auth check failed")
 
         response = self.get_response(request)
 
