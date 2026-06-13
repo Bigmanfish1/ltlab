@@ -90,6 +90,16 @@
       </svg>
     </button>
 
+    <!-- Auth -->
+    {% if request.supabase_user %}
+    <form method="post" action="{% url 'accounts:logout' %}" class="shrink-0">
+      {% csrf_token %}
+      <button type="submit" class="font-mono text-[11px] text-[#6B6B6B] hover:text-[#FF4D00] transition-colors uppercase tracking-[0.12em] cursor-pointer">
+        Logout
+      </button>
+    </form>
+    {% endif %}
+
   </header>
 
   <!-- ── Main workspace ────────────────────────────────────────────── -->
