@@ -1,10 +1,12 @@
 import httpx
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
+from django.db import IntegrityError, transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 from gotrue.errors import AuthApiError
 from supabase import create_client
@@ -25,9 +27,18 @@ AUTH_ERROR_MESSAGES = {
 }
 
 
-def _is_safe_redirect(url: str) -> bool:
-    parsed = urlparse(url)
-    return not parsed.netloc and not parsed.scheme
+def _safe_next(url: str, request) -> str:
+    """Return url if it points within this site, else '/'.
+
+    Uses Django's host/scheme check, which (unlike a hand-rolled urlparse)
+    also rejects backslash tricks like '/\\evil.com' that browsers normalise
+    into a protocol-relative redirect to an external host.
+    """
+    if url and url_has_allowed_host_and_scheme(
+        url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return url
+    return ""
 
 
 def _set_auth_cookies(response, session, is_secure: bool) -> None:
@@ -53,10 +64,17 @@ def _pop_pkce_verifier(supabase) -> str | None:
 
 
 def _get_or_create_profile(user) -> Profile:
-    profile, _ = Profile.objects.get_or_create(
-        supabase_user_id=user.id,
-        defaults={"email": user.email},
-    )
+    try:
+        # atomic() so a losing race on the unique supabase_user_id raises
+        # IntegrityError cleanly instead of poisoning the request transaction.
+        with transaction.atomic():
+            profile, _ = Profile.objects.get_or_create(
+                supabase_user_id=user.id,
+                defaults={"email": user.email},
+            )
+    except IntegrityError:
+        # Concurrent first login created the row first — fetch theirs.
+        profile = Profile.objects.get(supabase_user_id=user.id)
     if profile.email != user.email:
         profile.email = user.email
         profile.save(update_fields=["email"])
@@ -77,9 +95,7 @@ def google_oauth_view(request):
     if request.supabase_user:
         return redirect("/")
 
-    next_url = request.GET.get("next", "")
-    if next_url and not _is_safe_redirect(next_url):
-        next_url = ""
+    next_url = _safe_next(request.GET.get("next", ""), request)
 
     redirect_to = request.build_absolute_uri(reverse("accounts:callback"))
     if next_url:
@@ -134,11 +150,13 @@ def oauth_callback_view(request):
         messages.error(request, "Something went wrong. Please try again.")
         return redirect("accounts:login")
 
+    if not result.session or not result.user:
+        messages.error(request, "Google sign-in failed. Please try again.")
+        return redirect("accounts:login")
+
     _get_or_create_profile(result.user)
 
-    next_url = request.GET.get("next", "/")
-    if not _is_safe_redirect(next_url):
-        next_url = "/"
+    next_url = _safe_next(request.GET.get("next", ""), request) or "/"
 
     response = redirect(next_url)
     _set_auth_cookies(response, result.session, request.is_secure())
