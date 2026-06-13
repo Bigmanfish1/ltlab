@@ -5,6 +5,8 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from apps.accounts.middleware import supabase_login_required
+
 
 def _stub_highlight(ok: bool, props: list, violating_subformula: str, formula: str) -> str:
     """Return the formula token to highlight at this trace step.
@@ -58,6 +60,7 @@ def _stub_reason(props: list, ok: bool, violating_subformula: str, formula: str)
     )
 
 
+@supabase_login_required
 @csrf_exempt
 @require_POST
 def verify_ltl(request):
@@ -163,6 +166,7 @@ def verify_ltl(request):
     return render(request, "sandbox/result.html", context)
 
 
+@supabase_login_required
 @csrf_exempt
 @require_POST
 def counterexample(request):
