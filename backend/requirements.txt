@@ -6,6 +6,8 @@ whitenoise>=6.8
 django-ninja>=1.3
 gunicorn>=22.0
 ruff>=0.4
-supabase>=2.0
-gotrue>=2.0
+# Pinned to <3 — views._pop_pkce_verifier relies on supabase-py/gotrue 2.x
+# internal storage attrs (_storage_key/_storage); a major bump can break login.
+supabase>=2.0,<3.0
+gotrue>=2.0,<3.0
 httpx>=0.27

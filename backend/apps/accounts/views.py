@@ -1,3 +1,4 @@
+import logging
 import httpx
 from urllib.parse import urlencode
 
@@ -11,14 +12,15 @@ from django.views.decorators.http import require_http_methods
 from gotrue.errors import AuthApiError
 from supabase import create_client
 
+from .auth_cookies import clear_auth_cookies, set_auth_cookies
 from .constants import (
-    ACCESS_TOKEN_MAX_AGE,
     LOGIN_URL,
     PKCE_VERIFIER_COOKIE,
     PKCE_VERIFIER_MAX_AGE,
-    REFRESH_TOKEN_MAX_AGE,
 )
 from .models import Profile
+
+logger = logging.getLogger(__name__)
 
 AUTH_ERROR_MESSAGES = {
     "bad_oauth_callback": "Google sign-in failed. Please try again.",
@@ -41,17 +43,6 @@ def _safe_next(url: str, request) -> str:
     return ""
 
 
-def _set_auth_cookies(response, session, is_secure: bool) -> None:
-    common = {"httponly": True, "secure": is_secure, "samesite": "Lax"}
-    response.set_cookie("sb-access-token", session.access_token, max_age=ACCESS_TOKEN_MAX_AGE, **common)
-    response.set_cookie("sb-refresh-token", session.refresh_token, max_age=REFRESH_TOKEN_MAX_AGE, **common)
-
-
-def _clear_auth_cookies(response) -> None:
-    response.delete_cookie("sb-access-token", samesite="Lax")
-    response.delete_cookie("sb-refresh-token", samesite="Lax")
-
-
 def _auth_error_message(e: AuthApiError) -> str:
     return AUTH_ERROR_MESSAGES.get(e.code, str(e.message))
 
@@ -66,6 +57,9 @@ def _pop_pkce_verifier(supabase) -> str | None:
 def _get_or_create_profile(user) -> Profile:
     # The Supabase auth id is a UUID; the Users table keys on an int8 identity
     # column, so email (unique on both sides, verified by Google) is the join key.
+    # Caveat: email is the *only* link, so if a user's Supabase email changes the
+    # old row is orphaned and a fresh one is created here (role/history reset).
+    # Callers must guarantee user.email is set (the OAuth callback checks this).
     name = (user.user_metadata or {}).get("full_name", "")
     try:
         # atomic() so a losing race on the unique email raises IntegrityError
@@ -125,6 +119,10 @@ def google_oauth_view(request):
             )
         return response
     except Exception:
+        # Includes breakage in _pop_pkce_verifier's use of supabase-py internals
+        # on a dependency bump — log it so the cause isn't hidden behind the
+        # generic message below.
+        logger.exception("Google OAuth initiation failed")
         messages.error(request, "Couldn't reach Google sign-in. Please try again.")
         return redirect("accounts:login")
 
@@ -154,12 +152,18 @@ def oauth_callback_view(request):
         messages.error(request, "Google sign-in failed. Please try again.")
         return redirect("accounts:login")
 
+    # email is the Profile join key, so refuse to proceed without one rather than
+    # creating a NULL-email row (which would 500 on the get_or_create fallback).
+    if not result.user.email:
+        messages.error(request, AUTH_ERROR_MESSAGES["provider_email_needs_verification"])
+        return redirect("accounts:login")
+
     _get_or_create_profile(result.user)
 
     next_url = _safe_next(request.GET.get("next", ""), request) or "/"
 
     response = redirect(next_url)
-    _set_auth_cookies(response, result.session, request.is_secure())
+    set_auth_cookies(response, result.session, request.is_secure())
     response.delete_cookie(PKCE_VERIFIER_COOKIE)
     return response
 
@@ -185,5 +189,5 @@ def logout_view(request):
             pass
 
     response = redirect(LOGIN_URL)
-    _clear_auth_cookies(response)
+    clear_auth_cookies(response)
     return response
