@@ -42,6 +42,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.accounts.middleware.SupabaseAuthMiddleware",
+    "apps.accounts.middleware.HtmxAuthRedirectMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -90,6 +92,9 @@ STORAGES = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+SUPABASE_URL = env("SUPABASE_URL", default="")
+SUPABASE_ANON_KEY = env("SUPABASE_ANON_KEY", default="")
 
 # Celery
 CELERY_BROKER_URL = env("REDIS_URL", default="redis://redis:6379/0")
