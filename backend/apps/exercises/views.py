@@ -168,8 +168,8 @@ def submit_formula(request, exercise_id):
         if not submitted_formula:
             return JsonResponse({'error': 'Formula cannot be empty'}, status=400)
 
-        # Check if formula is correct
-        is_correct = submitted_formula.strip() == exercise['correct_formula'].strip()
+        # Check if formula is correct (submitted_formula already stripped above)
+        is_correct = submitted_formula == exercise['correct_formula'].strip()
 
         # Generate counterexample if incorrect
         counterexample = None
