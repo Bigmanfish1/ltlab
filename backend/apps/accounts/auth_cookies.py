@@ -9,10 +9,13 @@ from .constants import ACCESS_TOKEN_MAX_AGE, REFRESH_TOKEN_MAX_AGE
 
 ACCESS_TOKEN_COOKIE = "sb-access-token"
 REFRESH_TOKEN_COOKIE = "sb-refresh-token"
+# SameSite must match between set and clear or some browsers refuse to delete
+# the cookie — keep it in one place.
+COOKIE_SAMESITE = "Lax"
 
 
 def set_auth_cookies(response, session, is_secure: bool) -> None:
-    common = {"httponly": True, "secure": is_secure, "samesite": "Lax"}
+    common = {"httponly": True, "secure": is_secure, "samesite": COOKIE_SAMESITE}
     response.set_cookie(
         ACCESS_TOKEN_COOKIE, session.access_token, max_age=ACCESS_TOKEN_MAX_AGE, **common
     )
@@ -22,5 +25,5 @@ def set_auth_cookies(response, session, is_secure: bool) -> None:
 
 
 def clear_auth_cookies(response) -> None:
-    response.delete_cookie(ACCESS_TOKEN_COOKIE, samesite="Lax")
-    response.delete_cookie(REFRESH_TOKEN_COOKIE, samesite="Lax")
+    response.delete_cookie(ACCESS_TOKEN_COOKIE, samesite=COOKIE_SAMESITE)
+    response.delete_cookie(REFRESH_TOKEN_COOKIE, samesite=COOKIE_SAMESITE)
