@@ -18,6 +18,7 @@ from .constants import (
     PKCE_VERIFIER_COOKIE,
     PKCE_VERIFIER_MAX_AGE,
 )
+from .jwt_auth import revoke_session, verify_token
 from .models import Profile
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,14 @@ def oauth_callback_view(request):
 def logout_view(request):
     token = request.COOKIES.get("sb-access-token")
     if token:
+        # Deny this session locally until the token would expire anyway, so
+        # logout takes effect immediately despite stateless JWT verification.
+        try:
+            claims = verify_token(token)
+            revoke_session(claims.get("session_id"), claims.get("exp", 0))
+        except Exception:
+            pass  # already expired/invalid — nothing to revoke
+
         try:
             # Call the Supabase logout endpoint directly with the user's token.
             # The shared singleton client has no session stored, so

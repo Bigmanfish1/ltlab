@@ -1,30 +1,49 @@
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import jwt
+from cryptography.hazmat.primitives.asymmetric import ec
+from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError
 from django.test import RequestFactory, TestCase
 
 from apps.accounts.constants import LOGIN_URL
+from apps.accounts.jwt_auth import (
+    SupabaseUser,
+    _revoked_sessions,
+    is_session_revoked,
+    revoke_session,
+    verify_token,
+)
 from apps.accounts.middleware import (
     SupabaseAuthMiddleware,
     supabase_login_required,
     teacher_required,
 )
 from apps.accounts.models import Profile
-from apps.accounts.views import _get_or_create_profile
-from config import supabase_client
-from config.supabase_client import get_cached_user
+from apps.accounts.views import _get_or_create_profile, logout_view
 
 
 def fake_user(email="alice@uni.edu", name="Alice Example", uid="uuid-123"):
-    """Stand-in for a Supabase gotrue User object."""
+    """Stand-in for a Supabase gotrue User object (refresh path)."""
     return SimpleNamespace(
         id=uid,
         email=email,
         user_metadata={"full_name": name} if name else {},
     )
+
+
+def fake_claims(email="alice@uni.edu", name="Alice Example", sub="uuid-123", session_id="sess-1"):
+    """Stand-in for verified Supabase JWT claims."""
+    return {
+        "sub": sub,
+        "email": email,
+        "user_metadata": {"full_name": name} if name else {},
+        "session_id": session_id,
+    }
 
 
 class ProfileModelTests(TestCase):
@@ -138,9 +157,98 @@ class DecoratorTests(TestCase):
         self.assertEqual(teacher_required(self._view())(request), "OK")
 
 
+class JwtAuthTests(TestCase):
+    def setUp(self):
+        _revoked_sessions.clear()
+
+    def tearDown(self):
+        _revoked_sessions.clear()
+
+    def test_supabase_user_reads_claims(self):
+        u = SupabaseUser(fake_claims())
+        self.assertEqual(u.id, "uuid-123")
+        self.assertEqual(u.email, "alice@uni.edu")
+        self.assertEqual(u.user_metadata["full_name"], "Alice Example")
+        self.assertEqual(u.session_id, "sess-1")
+
+    def test_revoked_session_until_exp(self):
+        revoke_session("sess-1", time.time() + 100)
+        self.assertTrue(is_session_revoked("sess-1"))
+
+    def test_revocation_lapses_and_prunes_at_exp(self):
+        revoke_session("sess-1", time.time() - 1)  # already past exp
+        self.assertFalse(is_session_revoked("sess-1"))
+        self.assertNotIn("sess-1", _revoked_sessions)
+
+    def test_unknown_session_not_revoked(self):
+        self.assertFalse(is_session_revoked("nope"))
+
+    def test_none_session_id_is_noop(self):
+        revoke_session(None, time.time() + 100)
+        self.assertFalse(is_session_revoked(None))
+
+
+class VerifyTokenTests(TestCase):
+    """Exercise the real ES256 signature/claim checks with a locally-generated
+    key (the JWKS lookup is patched to return our public key)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.priv = ec.generate_private_key(ec.SECP256R1())
+        cls.iss = f"{settings.SUPABASE_URL}/auth/v1"
+
+    def _token(self, **overrides):
+        claims = {
+            "sub": "uuid-1",
+            "email": "alice@uni.edu",
+            "session_id": "s1",
+            "aud": "authenticated",
+            "iss": self.iss,
+            "exp": int(time.time()) + 600,
+        }
+        claims.update(overrides)
+        return jwt.encode(claims, self.priv, algorithm="ES256")
+
+    def _patch_key(self):
+        signing = SimpleNamespace(key=self.priv.public_key())
+        client = SimpleNamespace(get_signing_key_from_jwt=lambda t: signing)
+        return patch("apps.accounts.jwt_auth._client", return_value=client)
+
+    def test_valid_token_returns_claims(self):
+        with self._patch_key():
+            claims = verify_token(self._token())
+        self.assertEqual(claims["email"], "alice@uni.edu")
+        self.assertEqual(claims["session_id"], "s1")
+
+    def test_expired_token_raises(self):
+        with self._patch_key(), self.assertRaises(jwt.ExpiredSignatureError):
+            verify_token(self._token(exp=int(time.time()) - 30))
+
+    def test_wrong_audience_raises(self):
+        with self._patch_key(), self.assertRaises(jwt.InvalidAudienceError):
+            verify_token(self._token(aud="anon"))
+
+    def test_wrong_issuer_raises(self):
+        with self._patch_key(), self.assertRaises(jwt.InvalidIssuerError):
+            verify_token(self._token(iss="https://evil.example/auth/v1"))
+
+    def test_tampered_signature_raises(self):
+        other_key = ec.generate_private_key(ec.SECP256R1())
+        signing = SimpleNamespace(key=other_key.public_key())
+        client = SimpleNamespace(get_signing_key_from_jwt=lambda t: signing)
+        with patch("apps.accounts.jwt_auth._client", return_value=client):
+            with self.assertRaises(jwt.InvalidSignatureError):
+                verify_token(self._token())
+
+
 class SupabaseAuthMiddlewareTests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
+        _revoked_sessions.clear()
+
+    def tearDown(self):
+        _revoked_sessions.clear()
 
     def _run(self, request):
         middleware = SupabaseAuthMiddleware(lambda r: MagicMock(status_code=200))
@@ -152,10 +260,10 @@ class SupabaseAuthMiddlewareTests(TestCase):
         self.assertIsNone(request.supabase_user)
         self.assertIsNone(request.profile)
 
-    @patch("apps.accounts.middleware.get_cached_user")
-    def test_valid_token_attaches_profile_by_email(self, mock_cached):
+    @patch("apps.accounts.middleware.verify_token")
+    def test_valid_token_attaches_profile_by_email(self, mock_verify):
         profile = Profile.objects.create(email="alice@uni.edu")
-        mock_cached.return_value = fake_user()
+        mock_verify.return_value = fake_claims()
 
         request = self.factory.get("/")
         request.COOKIES["sb-access-token"] = "tok"
@@ -164,9 +272,9 @@ class SupabaseAuthMiddlewareTests(TestCase):
         self.assertEqual(request.supabase_user.email, "alice@uni.edu")
         self.assertEqual(request.profile.pk, profile.pk)
 
-    @patch("apps.accounts.middleware.get_cached_user")
-    def test_valid_token_unknown_email_leaves_profile_none(self, mock_cached):
-        mock_cached.return_value = fake_user()
+    @patch("apps.accounts.middleware.verify_token")
+    def test_valid_token_unknown_email_leaves_profile_none(self, mock_verify):
+        mock_verify.return_value = fake_claims()
 
         request = self.factory.get("/")
         request.COOKIES["sb-access-token"] = "tok"
@@ -175,36 +283,58 @@ class SupabaseAuthMiddlewareTests(TestCase):
         self.assertIsNotNone(request.supabase_user)
         self.assertIsNone(request.profile)
 
+    @patch("apps.accounts.middleware.verify_token")
+    def test_revoked_session_is_anonymous(self, mock_verify):
+        Profile.objects.create(email="alice@uni.edu")
+        mock_verify.return_value = fake_claims(session_id="sess-x")
+        revoke_session("sess-x", time.time() + 100)
 
-class GetCachedUserTests(TestCase):
-    def setUp(self):
-        supabase_client._user_cache.clear()
+        request = self.factory.get("/")
+        request.COOKIES["sb-access-token"] = "tok"
+        self._run(request)
 
-    def tearDown(self):
-        supabase_client._user_cache.clear()
+        self.assertIsNone(request.supabase_user)
+        self.assertIsNone(request.profile)
 
-    @patch("config.supabase_client.get_supabase_client")
-    def test_same_token_validated_once_within_ttl(self, mock_client):
-        user = fake_user()
-        mock_client.return_value.auth.get_user.return_value = SimpleNamespace(user=user)
-
-        first = get_cached_user("tok-abc")
-        second = get_cached_user("tok-abc")
-
-        self.assertIs(first, user)
-        self.assertIs(second, user)
-        self.assertEqual(mock_client.return_value.auth.get_user.call_count, 1)
-
-    @patch("config.supabase_client.get_supabase_client")
-    def test_distinct_tokens_validated_separately(self, mock_client):
-        mock_client.return_value.auth.get_user.return_value = SimpleNamespace(
-            user=fake_user()
+    @patch("apps.accounts.middleware.create_client")
+    @patch("apps.accounts.middleware.verify_token")
+    def test_expired_token_triggers_refresh(self, mock_verify, mock_create):
+        profile = Profile.objects.create(email="alice@uni.edu")
+        mock_verify.side_effect = jwt.ExpiredSignatureError()
+        new_session = SimpleNamespace(access_token="new-a", refresh_token="new-r")
+        mock_create.return_value.auth.refresh_session.return_value = SimpleNamespace(
+            session=new_session, user=fake_user()
         )
 
-        get_cached_user("tok-1")
-        get_cached_user("tok-2")
+        request = self.factory.get("/")
+        request.COOKIES["sb-access-token"] = "old"
+        request.COOKIES["sb-refresh-token"] = "refresh"
+        self._run(request)
 
-        self.assertEqual(mock_client.return_value.auth.get_user.call_count, 2)
+        self.assertEqual(request.profile.pk, profile.pk)
+        self.assertIs(request._refreshed_session, new_session)
+
+
+class LogoutViewTests(TestCase):
+    def setUp(self):
+        _revoked_sessions.clear()
+
+    def tearDown(self):
+        _revoked_sessions.clear()
+
+    @patch("apps.accounts.views.httpx.post")
+    @patch("apps.accounts.views.verify_token")
+    def test_logout_revokes_session_and_clears_cookies(self, mock_verify, mock_post):
+        mock_verify.return_value = {"session_id": "sess-9", "exp": time.time() + 100}
+
+        request = RequestFactory().post("/accounts/logout/")
+        request.COOKIES["sb-access-token"] = "tok"
+        response = logout_view(request)
+
+        self.assertTrue(is_session_revoked("sess-9"))
+        self.assertEqual(response.cookies["sb-access-token"].value, "")
+        self.assertEqual(response.cookies["sb-refresh-token"].value, "")
+        mock_post.assert_called_once()
 
 
 class SetRoleCommandTests(TestCase):

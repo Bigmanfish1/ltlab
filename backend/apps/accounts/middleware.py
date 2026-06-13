@@ -2,18 +2,25 @@ import functools
 import logging
 from urllib.parse import parse_qs, urlencode, urlparse
 
+import jwt
 from django.conf import settings
 from django.shortcuts import redirect
-from gotrue.errors import AuthApiError
 from supabase import create_client
-
-from config.supabase_client import get_cached_user
 
 from .auth_cookies import clear_auth_cookies, set_auth_cookies
 from .constants import LOGIN_URL
+from .jwt_auth import SupabaseUser, is_session_revoked, verify_token
 from .models import Profile
 
 logger = logging.getLogger(__name__)
+
+
+def _attach_profile(request, user):
+    """Attach the authenticated user and its Profile (joined by email)."""
+    request.supabase_user = user
+    request.profile = (
+        Profile.objects.filter(email=user.email).first() if user else None
+    )
 
 
 class SupabaseAuthMiddleware:
@@ -28,34 +35,17 @@ class SupabaseAuthMiddleware:
 
         if token:
             try:
-                # Cached per token for a few seconds; only a cache miss hits the
-                # network (see config.supabase_client.get_cached_user).
-                request.supabase_user = get_cached_user(token)
-                if request.supabase_user:
-                    request.profile = Profile.objects.filter(
-                        email=request.supabase_user.email
-                    ).first()
-            except AuthApiError:
-                # Access token expired — attempt silent refresh
-                refresh_token = request.COOKIES.get("sb-refresh-token")
-                if refresh_token:
-                    try:
-                        client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
-                        result = client.auth.refresh_session(refresh_token)
-                        request.supabase_user = result.user
-                        request._refreshed_session = result.session
-                        if request.supabase_user:
-                            request.profile = Profile.objects.filter(
-                                email=request.supabase_user.email
-                            ).first()
-                    except Exception:
-                        # Refresh failed (revoked/expired refresh token) — stay
-                        # anonymous, but record it so a broken Supabase is visible.
-                        logger.warning("Supabase token refresh failed", exc_info=True)
+                # Verified locally (signature + exp + aud + iss) — no network.
+                claims = verify_token(token)
+                if not is_session_revoked(claims.get("session_id")):
+                    _attach_profile(request, SupabaseUser(claims))
+            except jwt.ExpiredSignatureError:
+                # Access token expired — attempt silent refresh.
+                self._refresh(request)
             except Exception:
-                # Unexpected error validating the token (e.g. Supabase down or
-                # misconfigured). Fail closed to anonymous, but don't go silent.
-                logger.exception("Supabase auth check failed")
+                # Bad signature/aud/iss, or JWKS fetch failure. Fail closed to
+                # anonymous, but don't go silent.
+                logger.warning("Supabase JWT verification failed", exc_info=True)
 
         response = self.get_response(request)
 
@@ -63,6 +53,20 @@ class SupabaseAuthMiddleware:
             set_auth_cookies(response, request._refreshed_session, request.is_secure())
 
         return response
+
+    def _refresh(self, request):
+        refresh_token = request.COOKIES.get("sb-refresh-token")
+        if not refresh_token:
+            return
+        try:
+            client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
+            result = client.auth.refresh_session(refresh_token)
+            request._refreshed_session = result.session
+            _attach_profile(request, result.user)
+        except Exception:
+            # Refresh failed (revoked/expired refresh token, e.g. after a global
+            # logout) — stay anonymous, but record it so a broken Supabase shows.
+            logger.warning("Supabase token refresh failed", exc_info=True)
 
 
 class HtmxAuthRedirectMiddleware:
