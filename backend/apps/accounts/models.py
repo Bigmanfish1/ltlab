@@ -10,7 +10,7 @@ class Profile(models.Model):
     ]
 
     supabase_user_id = models.UUIDField(unique=True)
-    email = models.EmailField()
+    email = models.EmailField(unique=True)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_STUDENT)
     created_at = models.DateTimeField(auto_now_add=True)
 
