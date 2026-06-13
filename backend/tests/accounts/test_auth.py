@@ -13,7 +13,7 @@ from django.test import RequestFactory, TestCase
 from apps.accounts.constants import LOGIN_URL
 from apps.accounts.jwt_auth import (
     SupabaseUser,
-    _revoked_sessions,
+    _denylist,
     is_session_revoked,
     revoke_session,
     verify_token,
@@ -159,10 +159,10 @@ class DecoratorTests(TestCase):
 
 class JwtAuthTests(TestCase):
     def setUp(self):
-        _revoked_sessions.clear()
+        _denylist.clear()
 
     def tearDown(self):
-        _revoked_sessions.clear()
+        _denylist.clear()
 
     def test_supabase_user_reads_claims(self):
         u = SupabaseUser(fake_claims())
@@ -175,10 +175,16 @@ class JwtAuthTests(TestCase):
         revoke_session("sess-1", time.time() + 100)
         self.assertTrue(is_session_revoked("sess-1"))
 
+    def test_revocation_outlives_leeway(self):
+        # Stored exp is exp + LEEWAY, so a token expiring "now" stays denied past
+        # verify_token's accept-leeway window.
+        revoke_session("sess-1", time.time())
+        self.assertTrue(is_session_revoked("sess-1"))
+
     def test_revocation_lapses_and_prunes_at_exp(self):
-        revoke_session("sess-1", time.time() - 1)  # already past exp
+        revoke_session("sess-1", time.time() - 100)  # well past exp + leeway
         self.assertFalse(is_session_revoked("sess-1"))
-        self.assertNotIn("sess-1", _revoked_sessions)
+        self.assertNotIn("sess-1", _denylist._revoked)
 
     def test_unknown_session_not_revoked(self):
         self.assertFalse(is_session_revoked("nope"))
@@ -196,7 +202,7 @@ class VerifyTokenTests(TestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.priv = ec.generate_private_key(ec.SECP256R1())
-        cls.iss = f"{settings.SUPABASE_URL}/auth/v1"
+        cls.iss = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1"
 
     def _token(self, **overrides):
         claims = {
@@ -241,14 +247,22 @@ class VerifyTokenTests(TestCase):
             with self.assertRaises(jwt.InvalidSignatureError):
                 verify_token(self._token())
 
+    def test_expired_token_decodes_when_exp_check_disabled(self):
+        # Used by the refresh path to read session_id off an expired token.
+        with self._patch_key():
+            claims = verify_token(
+                self._token(exp=int(time.time()) - 30), verify_exp=False
+            )
+        self.assertEqual(claims["session_id"], "s1")
+
 
 class SupabaseAuthMiddlewareTests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
-        _revoked_sessions.clear()
+        _denylist.clear()
 
     def tearDown(self):
-        _revoked_sessions.clear()
+        _denylist.clear()
 
     def _run(self, request):
         middleware = SupabaseAuthMiddleware(lambda r: MagicMock(status_code=200))
@@ -314,13 +328,33 @@ class SupabaseAuthMiddlewareTests(TestCase):
         self.assertEqual(request.profile.pk, profile.pk)
         self.assertIs(request._refreshed_session, new_session)
 
+    @patch("apps.accounts.middleware.create_client")
+    @patch("apps.accounts.middleware.verify_token")
+    def test_refresh_skipped_for_revoked_session(self, mock_verify, mock_create):
+        # Expired token whose session was logged out: must NOT refresh back in.
+        def verify_side(token, verify_exp=True):
+            if verify_exp:
+                raise jwt.ExpiredSignatureError()
+            return fake_claims(session_id="sess-rev")
+
+        mock_verify.side_effect = verify_side
+        revoke_session("sess-rev", time.time() + 100)
+
+        request = self.factory.get("/")
+        request.COOKIES["sb-access-token"] = "old"
+        request.COOKIES["sb-refresh-token"] = "refresh"
+        self._run(request)
+
+        self.assertIsNone(request.supabase_user)
+        mock_create.assert_not_called()
+
 
 class LogoutViewTests(TestCase):
     def setUp(self):
-        _revoked_sessions.clear()
+        _denylist.clear()
 
     def tearDown(self):
-        _revoked_sessions.clear()
+        _denylist.clear()
 
     @patch("apps.accounts.views.httpx.post")
     @patch("apps.accounts.views.verify_token")
