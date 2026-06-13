@@ -2,7 +2,6 @@ import json
 import re
 
 from django.shortcuts import render
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required
@@ -61,7 +60,6 @@ def _stub_reason(props: list, ok: bool, violating_subformula: str, formula: str)
 
 
 @supabase_login_required
-@csrf_exempt
 @require_POST
 def verify_ltl(request):
     formula = request.POST.get("formula", "").strip()
@@ -167,7 +165,6 @@ def verify_ltl(request):
 
 
 @supabase_login_required
-@csrf_exempt
 @require_POST
 def counterexample(request):
     formula = request.POST.get("formula", "")

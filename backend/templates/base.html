@@ -38,7 +38,8 @@
     </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body class="bg-bg-primary text-text-primary antialiased">
+<body class="bg-bg-primary text-text-primary antialiased"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
     {% if messages %}
     <div class="max-w-[1280px] mx-auto px-12 pt-4">
         {% for message in messages %}
