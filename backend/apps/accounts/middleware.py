@@ -37,8 +37,6 @@ class SupabaseAuthMiddleware:
             try:
                 # Verified locally (signature + exp + aud + iss) — no network.
                 claims = verify_token(token)
-                if not is_session_revoked(claims.get("session_id")):
-                    _attach_profile(request, SupabaseUser(claims))
             except jwt.ExpiredSignatureError:
                 # Access token expired — attempt silent refresh.
                 self._refresh(request)
@@ -46,6 +44,11 @@ class SupabaseAuthMiddleware:
                 # Bad signature/aud/iss, or JWKS fetch failure. Fail closed to
                 # anonymous, but don't go silent.
                 logger.warning("Supabase JWT verification failed", exc_info=True)
+            else:
+                # Kept out of the try so a bug here (or a DB error in the profile
+                # lookup) surfaces instead of being mislabelled a JWT failure.
+                if not is_session_revoked(claims.get("session_id")):
+                    _attach_profile(request, SupabaseUser(claims))
 
         response = self.get_response(request)
 
@@ -58,6 +61,16 @@ class SupabaseAuthMiddleware:
         refresh_token = request.COOKIES.get("sb-refresh-token")
         if not refresh_token:
             return
+        # Don't silently refresh a session that was explicitly logged out. The
+        # expired access token still carries a verifiable session_id (read it
+        # without the exp check) to consult the denylist.
+        access_token = request.COOKIES.get("sb-access-token")
+        try:
+            claims = verify_token(access_token, verify_exp=False)
+            if is_session_revoked(claims.get("session_id")):
+                return
+        except Exception:
+            pass
         try:
             client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
             result = client.auth.refresh_session(refresh_token)
