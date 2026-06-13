@@ -1,9 +1,17 @@
 from django.shortcuts import redirect, render
 
+from apps.accounts.middleware import supabase_login_required
 
+
+@supabase_login_required
 def home(request):
-    if not request.supabase_user:
-        return redirect("/accounts/login/")
+    if request.profile is None:
+        # Authenticated but no Profile row — clear session cookies to break
+        # the redirect loop (login_view redirects back to "/" for authed users).
+        response = redirect("/accounts/login/")
+        response.delete_cookie("sb-access-token", samesite="Lax")
+        response.delete_cookie("sb-refresh-token", samesite="Lax")
+        return response
 
     modules_data = [
         {
@@ -111,6 +119,6 @@ def home(request):
         ],
     }
 
-    role = request.profile.role if request.profile else "student"
+    role = request.profile.role
     template = "dashboard/teacher_dashboard.html" if role == "teacher" else "dashboard/student_dashboard.html"
     return render(request, template, context)
