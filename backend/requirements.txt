@@ -6,3 +6,6 @@ whitenoise>=6.8
 django-ninja>=1.3
 gunicorn>=22.0
 ruff>=0.4
+supabase>=2.0
+gotrue>=2.0
+httpx>=0.27

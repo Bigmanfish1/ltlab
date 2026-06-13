@@ -24,7 +24,19 @@
               Results
           </a>
       </nav>
-      <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary uppercase">
-          KB
+      <div class="flex items-center gap-3">
+          {% if request.supabase_user %}
+          <span class="font-mono text-[11px] text-text-secondary">{{ request.supabase_user.email }}</span>
+          <form method="post" action="{% url 'accounts:logout' %}" class="flex items-center">
+              {% csrf_token %}
+              <button type="submit" class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-accent-orange transition-colors cursor-pointer">
+                  Logout
+              </button>
+          </form>
+          {% else %}
+          <a href="{% url 'accounts:login' %}" class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-text-primary transition-colors">
+              Login
+          </a>
+          {% endif %}
       </div>
   </header>

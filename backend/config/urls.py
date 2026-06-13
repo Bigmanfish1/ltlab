@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path
 
 from apps.checker.views import counterexample, verify_ltl
 from apps.exercises.views import exercise_canvas, exercises, get_hint, submit_formula
@@ -8,6 +8,7 @@ from config.api import api
 from config.views import sandbox
 
 urlpatterns = [
+    path("accounts/", include("apps.accounts.urls", namespace="accounts")),
     path("", home, name="home"),
     path("exercises/", exercises, name="exercises"),
     path("exercises/<int:exercise_id>/", exercise_canvas, name="exercise_canvas"),

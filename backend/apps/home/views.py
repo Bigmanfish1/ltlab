@@ -1,7 +1,18 @@
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+
+from apps.accounts.middleware import supabase_login_required
 
 
+@supabase_login_required
 def home(request):
+    if request.profile is None:
+        # Authenticated but no Profile row — clear session cookies to break
+        # the redirect loop (login_view redirects back to "/" for authed users).
+        response = redirect("/accounts/login/")
+        response.delete_cookie("sb-access-token", samesite="Lax")
+        response.delete_cookie("sb-refresh-token", samesite="Lax")
+        return response
+
     modules_data = [
         {
             "id": 1,
@@ -108,4 +119,6 @@ def home(request):
         ],
     }
 
-    return render(request, "home.html", context)
+    role = request.profile.role
+    template = "dashboard/teacher_dashboard.html" if role == "teacher" else "dashboard/student_dashboard.html"
+    return render(request, template, context)
