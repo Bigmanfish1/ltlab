@@ -14,6 +14,8 @@ from apps.accounts.middleware import (
 )
 from apps.accounts.models import Profile
 from apps.accounts.views import _get_or_create_profile
+from config import supabase_client
+from config.supabase_client import get_cached_user
 
 
 def fake_user(email="alice@uni.edu", name="Alice Example", uid="uuid-123"):
@@ -78,14 +80,27 @@ class DecoratorTests(TestCase):
     def test_login_required_redirects_anonymous(self):
         request = self.factory.get("/protected/")
         request.supabase_user = None
+        request.profile = None
         response = supabase_login_required(self._view())(request)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, LOGIN_URL)
 
-    def test_login_required_allows_authenticated(self):
+    def test_login_required_allows_authenticated_with_profile(self):
         request = self.factory.get("/protected/")
         request.supabase_user = fake_user()
+        request.profile = Profile.objects.create(email="alice@uni.edu")
         self.assertEqual(supabase_login_required(self._view())(request), "OK")
+
+    def test_login_required_bounces_authenticated_without_profile(self):
+        # Orphaned session (Profile deleted or email changed): re-login + clear.
+        request = self.factory.get("/protected/")
+        request.supabase_user = fake_user()
+        request.profile = None
+        response = supabase_login_required(self._view())(request)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, LOGIN_URL)
+        self.assertEqual(response.cookies["sb-access-token"].value, "")
+        self.assertEqual(response.cookies["sb-refresh-token"].value, "")
 
     def test_teacher_required_redirects_anonymous_to_login(self):
         request = self.factory.get("/teacher/")
@@ -94,6 +109,15 @@ class DecoratorTests(TestCase):
         response = teacher_required(self._view())(request)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, LOGIN_URL)
+
+    def test_teacher_required_bounces_authenticated_without_profile(self):
+        request = self.factory.get("/teacher/")
+        request.supabase_user = fake_user()
+        request.profile = None
+        response = teacher_required(self._view())(request)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, LOGIN_URL)
+        self.assertEqual(response.cookies["sb-access-token"].value, "")
 
     def test_teacher_required_redirects_student_home(self):
         request = self.factory.get("/teacher/")
@@ -128,12 +152,10 @@ class SupabaseAuthMiddlewareTests(TestCase):
         self.assertIsNone(request.supabase_user)
         self.assertIsNone(request.profile)
 
-    @patch("apps.accounts.middleware.get_supabase_client")
-    def test_valid_token_attaches_profile_by_email(self, mock_get_client):
+    @patch("apps.accounts.middleware.get_cached_user")
+    def test_valid_token_attaches_profile_by_email(self, mock_cached):
         profile = Profile.objects.create(email="alice@uni.edu")
-        client = MagicMock()
-        client.auth.get_user.return_value = SimpleNamespace(user=fake_user())
-        mock_get_client.return_value = client
+        mock_cached.return_value = fake_user()
 
         request = self.factory.get("/")
         request.COOKIES["sb-access-token"] = "tok"
@@ -142,11 +164,9 @@ class SupabaseAuthMiddlewareTests(TestCase):
         self.assertEqual(request.supabase_user.email, "alice@uni.edu")
         self.assertEqual(request.profile.pk, profile.pk)
 
-    @patch("apps.accounts.middleware.get_supabase_client")
-    def test_valid_token_unknown_email_leaves_profile_none(self, mock_get_client):
-        client = MagicMock()
-        client.auth.get_user.return_value = SimpleNamespace(user=fake_user())
-        mock_get_client.return_value = client
+    @patch("apps.accounts.middleware.get_cached_user")
+    def test_valid_token_unknown_email_leaves_profile_none(self, mock_cached):
+        mock_cached.return_value = fake_user()
 
         request = self.factory.get("/")
         request.COOKIES["sb-access-token"] = "tok"
@@ -154,6 +174,37 @@ class SupabaseAuthMiddlewareTests(TestCase):
 
         self.assertIsNotNone(request.supabase_user)
         self.assertIsNone(request.profile)
+
+
+class GetCachedUserTests(TestCase):
+    def setUp(self):
+        supabase_client._user_cache.clear()
+
+    def tearDown(self):
+        supabase_client._user_cache.clear()
+
+    @patch("config.supabase_client.get_supabase_client")
+    def test_same_token_validated_once_within_ttl(self, mock_client):
+        user = fake_user()
+        mock_client.return_value.auth.get_user.return_value = SimpleNamespace(user=user)
+
+        first = get_cached_user("tok-abc")
+        second = get_cached_user("tok-abc")
+
+        self.assertIs(first, user)
+        self.assertIs(second, user)
+        self.assertEqual(mock_client.return_value.auth.get_user.call_count, 1)
+
+    @patch("config.supabase_client.get_supabase_client")
+    def test_distinct_tokens_validated_separately(self, mock_client):
+        mock_client.return_value.auth.get_user.return_value = SimpleNamespace(
+            user=fake_user()
+        )
+
+        get_cached_user("tok-1")
+        get_cached_user("tok-2")
+
+        self.assertEqual(mock_client.return_value.auth.get_user.call_count, 2)
 
 
 class SetRoleCommandTests(TestCase):
