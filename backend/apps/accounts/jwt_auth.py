@@ -11,7 +11,9 @@ Trade-off: a JWT stays valid until its `exp`, so a server-side logout is not
 visible to local verification on its own. We close that gap with an in-process
 session denylist: logout adds the token's `session_id` until it would have
 expired anyway. Correct for a single-process deployment (our gunicorn runs one
-worker); a multi-worker / multi-host deploy would need a shared store.
+worker); the denylist is also lost on restart/redeploy. Swap SessionDenylist for
+a shared/persistent implementation (same interface) to survive that or scale to
+multiple workers.
 """
 
 import logging
@@ -23,20 +25,30 @@ from jwt import PyJWKClient
 
 logger = logging.getLogger(__name__)
 
-# PyJWKClient caches the JWK set on the instance (default 5 min), so it must be a
-# singleton — a per-call client would refetch JWKS every request. cache_keys is
-# left at its default False (True can serve a rotated-out key indefinitely).
+# Clock-skew tolerance for exp/nbf, shared between verification and the denylist
+# so a revoked-but-within-leeway token can't slip through after logout.
+LEEWAY = 10  # seconds
+
 _jwks_client: PyJWKClient | None = None
 
-# session_id -> token exp (unix seconds). Only holds sessions revoked before
-# their natural expiry; entries are pruned lazily once past exp.
-_revoked_sessions: dict[str, float] = {}
+
+def auth_base_url() -> str:
+    """The Supabase Auth base URL, e.g. https://<proj>.supabase.co/auth/v1.
+
+    Single source for the JWKS URL, the JWT `iss` claim, and the logout endpoint.
+    `rstrip` guards against a trailing slash on SUPABASE_URL producing a
+    double-slash issuer that would mismatch every token's `iss`.
+    """
+    return f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1"
 
 
 def _client() -> PyJWKClient:
+    # PyJWKClient caches the JWK set on the instance (default 5 min), so it must
+    # be a singleton — a per-call client would refetch JWKS every request.
+    # cache_keys is left at its default False (True can serve a rotated-out key).
     global _jwks_client
     if _jwks_client is None:
-        _jwks_client = PyJWKClient(f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+        _jwks_client = PyJWKClient(f"{auth_base_url()}/.well-known/jwks.json")
     return _jwks_client
 
 
@@ -53,12 +65,13 @@ class SupabaseUser:
         self.session_id = claims.get("session_id")
 
 
-def verify_token(token: str) -> dict:
+def verify_token(token: str, verify_exp: bool = True) -> dict:
     """Return the verified claims for a Supabase access token.
 
     Raises jwt.ExpiredSignatureError when the token is expired (caller should try
     a refresh) and other jwt.InvalidTokenError subclasses on a bad
-    signature/audience/issuer.
+    signature/audience/issuer. Pass verify_exp=False to read claims off an
+    already-expired token while still checking the signature/aud/iss.
     """
     signing_key = _client().get_signing_key_from_jwt(token)
     return jwt.decode(
@@ -66,32 +79,61 @@ def verify_token(token: str) -> dict:
         signing_key.key,
         algorithms=["ES256"],
         audience="authenticated",
-        issuer=f"{settings.SUPABASE_URL}/auth/v1",
-        leeway=10,  # tolerate minor client/server clock skew
+        issuer=auth_base_url(),
+        leeway=LEEWAY,
+        options={"verify_exp": verify_exp},
     )
 
 
+def _is_live(exp: float) -> bool:
+    """True while a stored expiry is still in the future."""
+    return exp > time.time()
+
+
+class SessionDenylist:
+    """Sessions revoked (via logout) before their token's natural expiry.
+
+    In-memory and per-process — correct for the single gunicorn worker, lost on
+    restart. Replace with a shared/persistent backend exposing the same methods
+    to survive restarts or scale to multiple workers.
+    """
+
+    def __init__(self):
+        self._revoked: dict[str, float] = {}
+
+    def revoke(self, session_id: str | None, exp: float) -> None:
+        if not session_id:
+            return
+        self.prune()
+        # Hold past the token's exp + leeway, so verify_token's leeway window
+        # cannot re-admit a just-logged-out token.
+        self._revoked[session_id] = exp + LEEWAY
+
+    def is_revoked(self, session_id: str | None) -> bool:
+        if not session_id:
+            return False
+        exp = self._revoked.get(session_id)
+        if exp is None:
+            return False
+        if not _is_live(exp):
+            self._revoked.pop(session_id, None)
+            return False
+        return True
+
+    def prune(self) -> None:
+        for sid in [s for s, exp in self._revoked.items() if not _is_live(exp)]:
+            self._revoked.pop(sid, None)
+
+    def clear(self) -> None:
+        self._revoked.clear()
+
+
+_denylist = SessionDenylist()
+
+
 def revoke_session(session_id: str | None, exp: float) -> None:
-    """Deny a session (logout) until its access token would expire anyway."""
-    if not session_id:
-        return
-    _prune()
-    _revoked_sessions[session_id] = exp
+    _denylist.revoke(session_id, exp)
 
 
 def is_session_revoked(session_id: str | None) -> bool:
-    if not session_id:
-        return False
-    exp = _revoked_sessions.get(session_id)
-    if exp is None:
-        return False
-    if exp <= time.time():
-        _revoked_sessions.pop(session_id, None)
-        return False
-    return True
-
-
-def _prune() -> None:
-    now = time.time()
-    for sid in [s for s, exp in _revoked_sessions.items() if exp <= now]:
-        _revoked_sessions.pop(sid, None)
+    return _denylist.is_revoked(session_id)

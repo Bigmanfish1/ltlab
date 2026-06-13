@@ -18,7 +18,7 @@ from .constants import (
     PKCE_VERIFIER_COOKIE,
     PKCE_VERIFIER_MAX_AGE,
 )
-from .jwt_auth import revoke_session, verify_token
+from .jwt_auth import auth_base_url, revoke_session, verify_token
 from .models import Profile
 
 logger = logging.getLogger(__name__)
@@ -186,7 +186,7 @@ def logout_view(request):
             # The shared singleton client has no session stored, so
             # supabase.auth.sign_out() would be a no-op against the server.
             httpx.post(
-                f"{settings.SUPABASE_URL}/auth/v1/logout",
+                f"{auth_base_url()}/logout",
                 headers={
                     "Authorization": f"Bearer {token}",
                     "apikey": settings.SUPABASE_ANON_KEY,
