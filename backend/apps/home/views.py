@@ -1,7 +1,10 @@
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 
 
 def home(request):
+    if not request.supabase_user:
+        return redirect("/accounts/login/")
+
     modules_data = [
         {
             "id": 1,
@@ -108,4 +111,6 @@ def home(request):
         ],
     }
 
-    return render(request, "home.html", context)
+    role = request.profile.role if request.profile else "student"
+    template = "dashboard/teacher_dashboard.html" if role == "teacher" else "dashboard/student_dashboard.html"
+    return render(request, template, context)

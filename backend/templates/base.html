@@ -39,45 +39,6 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body class="bg-bg-primary text-text-primary antialiased">
-    {% if request.supabase_user %}
-    <nav class="border-b border-border-primary">
-        <div class="max-w-[1280px] mx-auto px-12 py-4 flex items-center justify-between">
-            <div class="flex items-center gap-8">
-                <a href="/" class="text-sm font-semibold text-text-primary hover:text-white transition-colors">
-                    ModelCheck Edu
-                </a>
-                <div class="flex gap-6">
-                    <a href="/" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
-                        Dashboard
-                    </a>
-                    {% if request.profile.role == 'student' %}
-                    <a href="{% url 'sandbox' %}" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
-                        Sandbox
-                    </a>
-                    {% endif %}
-                    {% if request.profile.role == 'teacher' %}
-                    <a href="#" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
-                        Manage Exercises
-                    </a>
-                    <a href="#" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
-                        Analytics
-                    </a>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="flex items-center gap-4">
-                <span class="text-[13px] text-text-secondary">{{ request.supabase_user.email }}</span>
-                <form method="post" action="{% url 'accounts:logout' %}" class="inline">
-                    {% csrf_token %}
-                    <button type="submit" class="px-3 py-1.5 text-xs bg-bg-secondary border border-border-secondary hover:border-accent-orange transition-colors rounded cursor-pointer">
-                        Logout
-                    </button>
-                </form>
-            </div>
-        </div>
-    </nav>
-    {% endif %}
-
     {% if messages %}
     <div class="max-w-[1280px] mx-auto px-12 pt-4">
         {% for message in messages %}
