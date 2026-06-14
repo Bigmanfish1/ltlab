@@ -16,15 +16,17 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v6.0.3
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5.6.0
+        uses: actions/setup-python@v6.2.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install ruff
-        run: pip install ruff
+        run: pip install -r backend/requirements.txt
 
       - name: Run lint
         run: cd backend && ruff check .
@@ -67,10 +69,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v6.0.3
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5.6.0
+        uses: actions/setup-python@v6.2.0
         with:
           python-version: "3.12"
           cache: pip
@@ -97,13 +99,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v6.0.3
 
       - name: Build Docker image
         run: docker build -t ltlab:${{ github.sha }} ./backend
 
       - name: Run Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@v0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ltlab:${{ github.sha }}
           format: sarif
@@ -124,5 +126,6 @@ jobs:
 
     steps:
       - name: Trigger Render deploy
-        run: |
-          curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: curl --fail -X POST "$RENDER_DEPLOY_HOOK"
