@@ -113,21 +113,21 @@ class HtmxAuthRedirectMiddleware:
             if redirect_url.netloc:
                 return response
 
-            # Only convert auth bounces (redirects to the login page). Other
-            # same-origin 302s — e.g. a post-action redirect — must stay real
-            # redirects HTMX follows, not be rewritten with a spurious ?next=.
-            if redirect_url.path != LOGIN_URL:
-                return response
-
-            ref_header = request.headers.get("Referer", "")
-            next_path = urlparse(ref_header).path if ref_header else request.path
-
+            # Convert any same-origin 302 into a full-page navigation — otherwise
+            # HTMX loads the target into the partial. Only the login bounce carries
+            # a `next` (so re-login returns the user where they were); other
+            # internal bounces (e.g. teacher_required's "/" redirect) must not get
+            # a spurious `next`.
             query_params = parse_qs(redirect_url.query)
-            query_params["next"] = [next_path]
+            if redirect_url.path == LOGIN_URL:
+                ref_header = request.headers.get("Referer", "")
+                next_path = urlparse(ref_header).path if ref_header else request.path
+                query_params["next"] = [next_path]
 
             response.status_code = 204
+            query = urlencode(query_params, doseq=True)
             response.headers["HX-Redirect"] = (
-                f"{redirect_url.path}?{urlencode(query_params, doseq=True)}"
+                f"{redirect_url.path}?{query}" if query else redirect_url.path
             )
 
         return response

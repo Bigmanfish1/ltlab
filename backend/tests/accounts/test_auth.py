@@ -408,12 +408,20 @@ class HtmxAuthRedirectMiddlewareTests(TestCase):
         self.assertEqual(resp.status_code, 204)
         self.assertTrue(resp.headers["HX-Redirect"].startswith(LOGIN_URL))
 
-    def test_non_login_internal_redirect_passes_through(self):
-        # Only auth bounces are rewritten; ordinary same-origin 302s stay 302
-        # without a spurious ?next= injected.
+    def test_non_login_internal_redirect_rewritten_without_next(self):
+        # Internal redirects become full-page navigations, but only the login
+        # bounce gets a ?next= — others (e.g. a post-action redirect) must not.
         resp = self._run(lambda r: redirect("/dashboard/"), HTTP_HX_REQUEST="true")
-        self.assertEqual(resp.status_code, 302)
-        self.assertNotIn("HX-Redirect", resp.headers)
+        self.assertEqual(resp.status_code, 204)
+        self.assertEqual(resp.headers["HX-Redirect"], "/dashboard/")
+        self.assertNotIn("next=", resp.headers["HX-Redirect"])
+
+    def test_teacher_bounce_to_root_rewritten_without_next(self):
+        # teacher_required redirects a non-teacher to "/"; on HTMX that must be a
+        # full-page nav, not a 302 HTMX would swap into the partial.
+        resp = self._run(lambda r: redirect("/"), HTTP_HX_REQUEST="true")
+        self.assertEqual(resp.status_code, 204)
+        self.assertEqual(resp.headers["HX-Redirect"], "/")
 
     def test_external_redirect_passes_through(self):
         resp = self._run(
