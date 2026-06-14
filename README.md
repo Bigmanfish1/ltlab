@@ -131,28 +131,49 @@ ltlab/
 ├── .env.example            # Template for required environment variables
 ├── docker-compose.yml      # All four services (web, worker, db, redis)
 ├── render.yaml             # Render deployment config
-├── ruff.toml               # Ruff linting config
+├── ruff.toml               # Ruff linting config (root)
 └── backend/
     ├── Dockerfile
     ├── entrypoint.sh       # Runs migrations on startup if RUN_MIGRATIONS=true
+    ├── start-web.sh        # Render entrypoint — gunicorn + in-process Celery worker
     ├── manage.py
     ├── requirements.txt
+    ├── ruff.toml
     ├── config/
     │   ├── api.py          # NinjaAPI root — mount app routers here
     │   ├── celery.py       # Celery app definition
     │   ├── urls.py         # URL root (/, /admin/, /api/)
+    │   ├── views.py
+    │   ├── asgi.py
+    │   ├── wsgi.py
     │   └── settings/
     │       ├── base.py     # Shared settings
     │       ├── development.py
     │       └── production.py  # Production settings for Render
     ├── apps/
-    │   ├── accounts/       # User auth & student profiles (stub)
-    │   ├── exercises/      # Guided exercises (stub)
-    │   ├── kripke/         # Kripke structure persistence (stub)
-    │   └── checker/        # LTL checking engine + Celery task (stub)
-    └── templates/
-        ├── base.html
-        └── home.html
+    │   ├── accounts/       # Custom Supabase PKCE OAuth, Profile model, decorators
+    │   │   ├── jwt_auth.py        # Local ES256 JWT verification + session denylist
+    │   │   ├── middleware.py      # SupabaseAuthMiddleware + login/teacher decorators
+    │   │   ├── auth_cookies.py    # sb-access-token / sb-refresh-token cookie helpers
+    │   │   ├── constants.py
+    │   │   ├── models.py          # Profile (maps to Users table)
+    │   │   ├── views.py           # OAuth init + callback + logout
+    │   │   └── management/commands/set_role.py   # Promote/demote teacher role
+    │   ├── home/          # Landing page + dashboards
+    │   ├── exercises/     # Guided exercises (mock data — no DB models yet)
+    │   ├── kripke/        # Kripke structure persistence (models not implemented yet)
+    │   └── checker/       # LTL checking engine + Celery task (engine not implemented yet)
+    ├── static/
+    ├── templates/
+    │   ├── base.html
+    │   ├── header.html
+    │   ├── home.html
+    │   ├── accounts/      # login.html
+    │   ├── dashboard/     # student_dashboard.html, teacher_dashboard.html
+    │   ├── exercises/     # exercises.html, exercise_canvas.html
+    │   └── sandbox/       # sandbox.html, result.html, counterexample.html
+    └── tests/             # Mirrors apps/ tree; kept out of prod packages
+        └── accounts/      # test_auth.py
 ```
 
 ---
