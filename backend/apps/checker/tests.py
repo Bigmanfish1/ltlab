@@ -443,6 +443,8 @@ class TestVerifyLTLView(TestCase):
             "formula": formula,
             "graph_data": graph or self.graph,
         })
+        req.supabase_user = MagicMock()
+        req.profile = MagicMock()
         return verify_ltl(req)
 
     def test_empty_formula_returns_error(self):
@@ -520,6 +522,8 @@ class TestCounterexampleView(TestCase):
     def _post(self, data):
         from .views import counterexample
         req = RequestFactory().post("/sandbox/counterexample/", data)
+        req.supabase_user = MagicMock()
+        req.profile = MagicMock()
         return counterexample(req)
 
     def test_renders_with_valid_trace(self):
