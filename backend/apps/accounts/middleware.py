@@ -2,17 +2,33 @@ import functools
 import logging
 from urllib.parse import parse_qs, urlencode, urlparse
 
+import jwt
 from django.conf import settings
 from django.shortcuts import redirect
-from gotrue.errors import AuthApiError
 from supabase import create_client
 
-from config.supabase_client import get_supabase_client
-
-from .constants import ACCESS_TOKEN_MAX_AGE, LOGIN_URL, REFRESH_TOKEN_MAX_AGE
+from .auth_cookies import clear_auth_cookies, set_auth_cookies
+from .constants import LOGIN_URL
+from .jwt_auth import SupabaseUser, is_session_revoked, verify_token
 from .models import Profile
 
 logger = logging.getLogger(__name__)
+
+
+def _attach_profile(request, user):
+    """Attach the authenticated user and its Profile (joined by email).
+
+    Email is the only join key to a Profile, so a token/user with no email can't
+    be matched to one. Treat that as unauthenticated rather than attaching an
+    emailless user that every protected view would bounce — that would be an
+    authenticated-but-profileless re-login loop.
+    """
+    if user is None or not getattr(user, "email", None):
+        request.supabase_user = None
+        request.profile = None
+        return
+    request.supabase_user = user
+    request.profile = Profile.objects.filter(email=user.email).first()
 
 
 class SupabaseAuthMiddleware:
@@ -27,45 +43,55 @@ class SupabaseAuthMiddleware:
 
         if token:
             try:
-                supabase = get_supabase_client()
-                user_response = supabase.auth.get_user(token)
-                request.supabase_user = user_response.user
-                if request.supabase_user:
-                    request.profile = Profile.objects.filter(
-                        supabase_user_id=request.supabase_user.id
-                    ).first()
-            except AuthApiError:
-                # Access token expired — attempt silent refresh
-                refresh_token = request.COOKIES.get("sb-refresh-token")
-                if refresh_token:
-                    try:
-                        client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
-                        result = client.auth.refresh_session(refresh_token)
-                        request.supabase_user = result.user
-                        request._refreshed_session = result.session
-                        if request.supabase_user:
-                            request.profile = Profile.objects.filter(
-                                supabase_user_id=request.supabase_user.id
-                            ).first()
-                    except Exception:
-                        # Refresh failed (revoked/expired refresh token) — stay
-                        # anonymous, but record it so a broken Supabase is visible.
-                        logger.warning("Supabase token refresh failed", exc_info=True)
+                # Verified locally (signature + exp + aud + iss) — no network.
+                claims = verify_token(token)
+            except jwt.ExpiredSignatureError:
+                # Access token expired — attempt silent refresh.
+                self._refresh(request)
             except Exception:
-                # Unexpected error validating the token (e.g. Supabase down or
-                # misconfigured). Fail closed to anonymous, but don't go silent.
-                logger.exception("Supabase auth check failed")
+                # Bad signature/aud/iss, or JWKS fetch failure. Fail closed to
+                # anonymous, but don't go silent.
+                logger.warning("Supabase JWT verification failed", exc_info=True)
+            else:
+                # Kept out of the try so a bug here (or a DB error in the profile
+                # lookup) surfaces instead of being mislabelled a JWT failure.
+                if not is_session_revoked(claims.get("session_id")):
+                    _attach_profile(request, SupabaseUser(claims))
 
         response = self.get_response(request)
 
         if request._refreshed_session:
-            is_secure = request.is_secure()
-            common = {"httponly": True, "secure": is_secure, "samesite": "Lax"}
-            sess = request._refreshed_session
-            response.set_cookie("sb-access-token", sess.access_token, max_age=ACCESS_TOKEN_MAX_AGE, **common)
-            response.set_cookie("sb-refresh-token", sess.refresh_token, max_age=REFRESH_TOKEN_MAX_AGE, **common)
+            set_auth_cookies(response, request._refreshed_session, request.is_secure())
 
         return response
+
+    def _refresh(self, request):
+        refresh_token = request.COOKIES.get("sb-refresh-token")
+        if not refresh_token:
+            return
+        # Don't silently refresh a session that was explicitly logged out. The
+        # expired access token still carries a verifiable session_id (read it
+        # without the exp check) to consult the denylist.
+        access_token = request.COOKIES.get("sb-access-token")
+        try:
+            claims = verify_token(access_token, verify_exp=False)
+            if is_session_revoked(claims.get("session_id")):
+                return
+        except Exception:
+            pass
+        try:
+            client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
+            result = client.auth.refresh_session(refresh_token)
+            _attach_profile(request, result.user)
+            # Only write the refreshed cookies if the session is usable. An
+            # emailless user is treated as anonymous by _attach_profile, so
+            # persisting its tokens would leave a valid-but-unusable session.
+            if request.supabase_user is not None:
+                request._refreshed_session = result.session
+        except Exception:
+            # Refresh failed (revoked/expired refresh token, e.g. after a global
+            # logout) — stay anonymous, but record it so a broken Supabase shows.
+            logger.warning("Supabase token refresh failed", exc_info=True)
 
 
 class HtmxAuthRedirectMiddleware:
@@ -91,25 +117,60 @@ class HtmxAuthRedirectMiddleware:
             if redirect_url.netloc:
                 return response
 
-            ref_header = request.headers.get("Referer", "")
-            next_path = urlparse(ref_header).path if ref_header else request.path
-
+            # Convert any same-origin 302 into a full-page navigation — otherwise
+            # HTMX loads the target into the partial. Only the login bounce carries
+            # a `next` (so re-login returns the user where they were); other
+            # internal bounces (e.g. teacher_required's "/" redirect) must not get
+            # a spurious `next`.
             query_params = parse_qs(redirect_url.query)
-            query_params["next"] = [next_path]
+            if redirect_url.path == LOGIN_URL:
+                ref_header = request.headers.get("Referer", "")
+                next_path = urlparse(ref_header).path if ref_header else request.path
+                query_params["next"] = [next_path]
 
             response.status_code = 204
+            query = urlencode(query_params, doseq=True)
             response.headers["HX-Redirect"] = (
-                f"{redirect_url.path}?{urlencode(query_params, doseq=True)}"
+                f"{redirect_url.path}?{query}" if query else redirect_url.path
             )
 
         return response
 
 
+def _redirect_if_no_profile(request):
+    """Shared gate for protected views.
+
+    Returns a redirect response when the request must be bounced, else None.
+    An authenticated Supabase user with no Profile row is a broken state (row
+    deleted, or the user's email changed in Supabase so the email join key no
+    longer matches — see Profile / _get_or_create_profile). Clear the session so
+    a clean re-login recreates the Profile, rather than letting each view invent
+    its own recovery.
+    """
+    if request.supabase_user is None:
+        return redirect(LOGIN_URL)
+    if request.profile is None:
+        logger.warning(
+            "Authenticated Supabase user %s has no Profile (deleted or email "
+            "changed); forcing re-login.",
+            getattr(request.supabase_user, "email", "?"),
+        )
+        response = redirect(LOGIN_URL)
+        clear_auth_cookies(response)
+        # Disarm any pending silent-refresh cookie write: SupabaseAuthMiddleware
+        # re-sets auth cookies after the view returns, which would otherwise
+        # overwrite this clear when a refresh and a missing Profile coincide.
+        request._refreshed_session = None
+        return response
+    return None
+
+
 def supabase_login_required(view_func):
     @functools.wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        if request.supabase_user is None:
-            return redirect(LOGIN_URL)
+        bounce = _redirect_if_no_profile(request)
+        if bounce is not None:
+            return bounce
         return view_func(request, *args, **kwargs)
     return wrapper
 
@@ -117,9 +178,10 @@ def supabase_login_required(view_func):
 def teacher_required(view_func):
     @functools.wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        if request.supabase_user is None:
-            return redirect(LOGIN_URL)
-        if request.profile is None or request.profile.role != Profile.ROLE_TEACHER:
+        bounce = _redirect_if_no_profile(request)
+        if bounce is not None:
+            return bounce
+        if request.profile.role != Profile.ROLE_TEACHER:
             return redirect("/")
         return view_func(request, *args, **kwargs)
     return wrapper
