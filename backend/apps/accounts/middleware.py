@@ -82,8 +82,12 @@ class SupabaseAuthMiddleware:
         try:
             client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
             result = client.auth.refresh_session(refresh_token)
-            request._refreshed_session = result.session
             _attach_profile(request, result.user)
+            # Only write the refreshed cookies if the session is usable. An
+            # emailless user is treated as anonymous by _attach_profile, so
+            # persisting its tokens would leave a valid-but-unusable session.
+            if request.supabase_user is not None:
+                request._refreshed_session = result.session
         except Exception:
             # Refresh failed (revoked/expired refresh token, e.g. after a global
             # logout) — stay anonymous, but record it so a broken Supabase shows.

@@ -393,6 +393,30 @@ class SupabaseAuthMiddlewareTests(TestCase):
         self.assertEqual(response.cookies["sb-access-token"].value, "")
         self.assertEqual(response.cookies["sb-refresh-token"].value, "")
 
+    @patch("apps.accounts.middleware.create_client")
+    @patch("apps.accounts.middleware.verify_token")
+    def test_emailless_refresh_does_not_persist_cookies(self, mock_verify, mock_create):
+        # A refresh that returns an emailless (anonymous-treated) session must not
+        # arm the cookie write, or it would leave a valid-but-unusable session.
+        def verify_side(token, verify_exp=True):
+            if verify_exp:
+                raise jwt.ExpiredSignatureError()
+            return fake_claims(session_id="sess-live")
+
+        mock_verify.side_effect = verify_side
+        mock_create.return_value.auth.refresh_session.return_value = SimpleNamespace(
+            session=SimpleNamespace(access_token="new-a", refresh_token="new-r"),
+            user=fake_user(email=None),
+        )
+
+        request = self.factory.get("/")
+        request.COOKIES["sb-access-token"] = "old"
+        request.COOKIES["sb-refresh-token"] = "refresh"
+        self._run(request)
+
+        self.assertIsNone(request.supabase_user)
+        self.assertIsNone(request._refreshed_session)
+
 
 class HtmxAuthRedirectMiddlewareTests(TestCase):
     def setUp(self):
