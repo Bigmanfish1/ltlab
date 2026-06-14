@@ -1,10 +1,25 @@
 import json
 
 from django.shortcuts import render
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from .engine import check_ltl, cytoscape_to_kripke, lasso_to_trace_steps
+from apps.accounts.middleware import supabase_login_required
+
+
+def _stub_highlight(ok: bool, props: list, violating_subformula: str, formula: str) -> str:
+    """Return the formula token to highlight at this trace step.
+
+    ok steps  → the first prop from this state that appears in the formula
+                 (shows which antecedent is currently active/satisfied).
+    bad steps → the failing subformula (e.g. "F grant").
+    """
+    if not ok:
+        return violating_subformula
+    for p in props:
+        if p in formula:
+            return p
+    return ""
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -34,6 +49,7 @@ def _parse_graph(graph_json: str) -> tuple:
 # ── Views ─────────────────────────────────────────────────────────────────────
 
 @csrf_exempt
+@supabase_login_required
 @require_POST
 def verify_ltl(request):
     formula = request.POST.get("formula", "").strip()
@@ -121,7 +137,7 @@ def verify_ltl(request):
     return render(request, "sandbox/result.html", context)
 
 
-@csrf_exempt
+@supabase_login_required
 @require_POST
 def counterexample(request):
     formula = request.POST.get("formula", "")

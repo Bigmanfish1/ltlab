@@ -96,6 +96,29 @@ All variables are read from `.env` (see `.env.example`). Never commit `.env`.
 
 ---
 
+## Authentication
+
+Sign-in is **Google OAuth via Supabase** (PKCE flow) — not Django's built-in auth.
+A user clicks "Continue with Google", Supabase handles the OAuth handshake, and on
+return the app creates/updates a `Profile` row (the `Users` table) and stores the
+Supabase session in `sb-access-token` / `sb-refresh-token` cookies.
+
+**How a request is authenticated (every page load):**
+
+- The access token is a Supabase **JWT**, signed with an ES256 key. `SupabaseAuthMiddleware`
+  verifies it **locally** — checks the signature against Supabase's public key (fetched
+  once from the JWKS endpoint and cached), plus expiry/audience/issuer. No network call to
+  Supabase on the hot path. If the token is expired, it silently refreshes using the refresh
+  token.
+- The user is linked to their `Profile` by **email** (the join key).
+
+**Logout** revokes the session at Supabase (`scope=global` — signs the user out of *every*
+device) **and** adds the session to a small in-process denylist so the still-unexpired access
+token stops working immediately. The denylist is per-process, which is correct for the single
+gunicorn worker in production; scaling to multiple workers would need a shared store.
+
+---
+
 ## Project Structure
 
 ```
@@ -108,46 +131,67 @@ ltlab/
 ├── .env.example            # Template for required environment variables
 ├── docker-compose.yml      # All four services (web, worker, db, redis)
 ├── render.yaml             # Render deployment config
-├── ruff.toml               # Ruff linting config
+├── ruff.toml               # Ruff linting config (root)
 └── backend/
     ├── Dockerfile
     ├── entrypoint.sh       # Runs migrations on startup if RUN_MIGRATIONS=true
+    ├── start-web.sh        # Render entrypoint — gunicorn + in-process Celery worker
     ├── manage.py
     ├── requirements.txt
+    ├── ruff.toml
     ├── config/
     │   ├── api.py          # NinjaAPI root — mount app routers here
     │   ├── celery.py       # Celery app definition
     │   ├── urls.py         # URL root (/, /admin/, /api/)
+    │   ├── views.py
+    │   ├── asgi.py
+    │   ├── wsgi.py
     │   └── settings/
     │       ├── base.py     # Shared settings
     │       ├── development.py
     │       └── production.py  # Production settings for Render
     ├── apps/
-    │   ├── accounts/       # User auth & student profiles (stub)
-    │   ├── exercises/      # Guided exercises (stub)
-    │   ├── kripke/         # Kripke structure persistence (stub)
-    │   └── checker/        # LTL checking engine + Celery task (stub)
-    └── templates/
-        ├── base.html
-        └── home.html
+    │   ├── accounts/       # Custom Supabase PKCE OAuth, Profile model, decorators
+    │   │   ├── jwt_auth.py        # Local ES256 JWT verification + session denylist
+    │   │   ├── middleware.py      # SupabaseAuthMiddleware + login/teacher decorators
+    │   │   ├── auth_cookies.py    # sb-access-token / sb-refresh-token cookie helpers
+    │   │   ├── constants.py
+    │   │   ├── models.py          # Profile (maps to Users table)
+    │   │   ├── views.py           # OAuth init + callback + logout
+    │   │   └── management/commands/set_role.py   # Promote/demote teacher role
+    │   ├── home/          # Landing page + dashboards
+    │   ├── exercises/     # Guided exercises (mock data — no DB models yet)
+    │   ├── kripke/        # Kripke structure persistence (models not implemented yet)
+    │   └── checker/       # LTL checking engine + Celery task (engine not implemented yet)
+    ├── static/
+    ├── templates/
+    │   ├── base.html
+    │   ├── header.html
+    │   ├── home.html
+    │   ├── accounts/      # login.html
+    │   ├── dashboard/     # student_dashboard.html, teacher_dashboard.html
+    │   ├── exercises/     # exercises.html, exercise_canvas.html
+    │   └── sandbox/       # sandbox.html, result.html, counterexample.html
+    └── tests/             # Mirrors apps/ tree; kept out of prod packages
+        └── accounts/      # test_auth.py
 ```
 
 ---
 
 ## CI/CD Pipeline
 
-The pipeline runs automatically on every push to main via GitHub Actions and consists of four sequential jobs:
+The pipeline runs automatically via GitHub Actions and consists of four sequential jobs:
 
 ```
-lint → test → scan → deploy
+lint → test → vulnerability-scan → deploy
 ```
 
 | Job | What it does | Triggers |
 |-----|-------------|---------|
-| `lint` | Runs Ruff to catch syntax and undefined variable errors | Push to main, PRs to main |
-| `test` | Runs Django migrations and test suite against Postgres + Redis | Push to main, PRs to main |
-| `valnurability scan` | Builds Docker image and runs Trivy vulnerability scan | Push to main, PRs to main |
-| `deploy` | Triggers a Render deployment | Manual only (main branch) |
+| `lint` | Runs Ruff to catch syntax and undefined variable errors | Push/PR to `main` or `develop` |
+| `test` | Runs Django migrations and test suite against Postgres + Redis | Push/PR to `main` or `develop` |
+| `vulnerability-scan` | Builds Docker image and runs Trivy (CRITICAL/HIGH CVEs only) | Push/PR to `main`, `workflow_dispatch` |
+| `deploy` | Triggers a Render deployment | Manual only (`main` branch) |
 
 ### Running Lint Locally
  
@@ -173,6 +217,27 @@ The pipeline runs lint, test, and scan — if all three pass, the deploy job run
 
 ---
 
+## Production Deployment
+
+Live at **https://ltlab.onrender.com** — a single Render web service (`ltlab`) running gunicorn *and* an in-process Celery worker together via `backend/start-web.sh`. (Render's free tier has no free Background Worker tier, so Celery runs as a backgrounded process inside the same container instead of as a separate service — see `render.yaml` comments / git history if you need the full reasoning.)
+
+**To deploy:** push to `main`, then manually trigger the workflow — Actions tab → **CI/CD** → **Run workflow** → `main`. If lint/test/scan pass, the `deploy` job POSTs to the `RENDER_DEPLOY_HOOK` secret and Render rebuilds + redeploys.
+
+**To check it's working:**
+- `curl https://ltlab.onrender.com/api/health` → expect `200 {"status": "ok", "service": "ltlab"}`
+- Render dashboard → `ltlab` → **Logs** → look for `celery@<hostname> ready.` with **no traceback after it** (confirms the in-process worker connected to Redis)
+
+**Resuming after a pause / spin-down:**
+- Free Render web services spin down after ~15 min idle — this also stops the backgrounded Celery worker, since it's the same container. Just hit the URL again; it cold-starts in ~30–60s and both come back up together.
+- Manually suspended via Render dashboard (`ltlab` → Settings → Suspend Web Service)? Resume from the same place.
+
+**⚠️ Upstash Redis auto-archive risk:** the production `REDIS_URL` points at a free Upstash Redis instance. Upstash auto-archives free databases after a stretch of real inactivity (no `SET`/`GET`/etc — pings don't count; their docs/ToS disagree on whether it's ~7 or ~14 days). If that happens:
+- Data is backed up, not lost — but restoring generates a **new `REDIS_URL` + token**, which then has to be re-pasted into Render's env vars (raw URL, no quotes, with `?ssl_cert_reqs=CERT_REQUIRED` appended)
+- Whoever holds the Upstash account login handles the restore
+- Cheap mitigation: running a real LTL exercise through the app every week or so during quiet stretches counts as activity and keeps the database alive
+
+---
+
 ## Common Commands
 
 All `manage.py` commands must run **inside the `ltlab-web` container**:
@@ -194,6 +259,26 @@ docker exec -it ltlab-web python manage.py shell
 # Open a bash shell inside the container
 docker exec -it ltlab-web bash
 ```
+
+### Setting a User's Role (teacher / student)
+
+Every user is a `student` by default on their first Google sign-in. To promote
+someone to `teacher`, flip the role on their `Profile`.
+
+> **The user must sign in once first** so their `Profile` row exists, otherwise
+> the command errors with "No profile for `<email>`".
+
+```bash
+# Local (Docker)
+docker exec -it ltlab-web python manage.py set_role <email> teacher
+
+# Demote back to student
+docker exec -it ltlab-web python manage.py set_role <email> student
+```
+
+> **Note:** logging out uses `scope=global` — it revokes *every* session for that
+> user, not just the current browser. Expected in production; during local
+> testing it means hitting logout signs you out everywhere.
 
 ### Checking Logs
 
@@ -235,17 +320,14 @@ New routers should be created in `apps/<app>/api.py` and mounted in `config/api.
 Browser
   │  HTTP
   ▼
-Render  (Django + WhiteNoise + Gunicorn)
-  │  Database queries
-  ▼
-Supabase Postgres
-  │  Celery task dispatch
-  ▼
-Redis  (broker + result backend)
-  │
-  ▼
-Celery Worker  (LTL checker)
+Render — single web service `ltlab`
+  ├─ Gunicorn   (Django + WhiteNoise)
+  └─ Celery worker (backgrounded in same container, via start-web.sh)
+       │                                  │
+       │ DB queries                       │ task dispatch / results
+       ▼                                  ▼
+Supabase Postgres                  Upstash Redis  (rediss://, broker + result backend)
 ```
 
-Local development replaces Supabase Postgres with a local Docker Postgres container.
+Local development replaces Supabase Postgres with a local Docker Postgres container, and runs Celery as its own `ltlab-worker` container (see `docker-compose.yml`) — production collapses both into one process for free-tier hosting reasons (see Production Deployment section above).
 Migrations run automatically on local startup when `RUN_MIGRATIONS=true` is hardcoded in `docker-compose.yml`.

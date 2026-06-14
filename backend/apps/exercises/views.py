@@ -1,1 +1,214 @@
-from django.shortcuts import render  # noqa: F401
+import json
+
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+
+from apps.accounts.middleware import supabase_login_required
+
+
+# Mock data for testing
+MOCK_KRIPKE_MODEL = {
+    'id': 1,
+    'description': 'A basic traffic light system',
+    'states': [
+        {'id': 's0', 'label': 'Green', 'props': ['green']},
+        {'id': 's1', 'label': 'Yellow', 'props': ['yellow']},
+        {'id': 's2', 'label': 'Red', 'props': ['red']}
+    ],
+    'transitions': [
+        {'source': 's0', 'target': 's1'},
+        {'source': 's1', 'target': 's2'},
+        {'source': 's2', 'target': 's0'}
+    ],
+    'initial_state': 's0'
+}
+
+MOCK_EXERCISES = [
+    {
+        'id': 1,
+        'title': 'Exercise 01 · Always Eventually Green',
+        'description': 'Write a formula that states the traffic light will always eventually turn green.',
+        'correct_formula': 'G F green',
+        'hints': [
+            'Think about the "always" operator (G)',
+            'Combine it with the "eventually" operator (F)',
+            'The complete formula is: G F green'
+        ],
+        'kripke_model': MOCK_KRIPKE_MODEL
+    },
+    {
+        'id': 2,
+        'title': 'Exercise 02 · Never Red and Green',
+        'description': 'Write a formula stating that red and green can never be true at the same time.',
+        'correct_formula': 'G !(red & green)',
+        'hints': [
+            'Use the negation operator (!)',
+            'Use the "always" operator (G)',
+            'Think about when both propositions are true together'
+        ],
+        'kripke_model': MOCK_KRIPKE_MODEL
+    },
+    {
+        'id': 3,
+        'title': 'Exercise 03 · Yellow Leads to Red',
+        'description': 'Write a formula stating that whenever yellow is true, red must eventually follow.',
+        'correct_formula': 'G (yellow -> F red)',
+        'hints': [
+            'Use the implication operator (->)',
+            'Combine with the eventually operator (F)',
+            'Wrap everything in always (G)'
+        ],
+        'kripke_model': MOCK_KRIPKE_MODEL
+    },
+    {
+        'id': 4,
+        'title': 'Exercise 04 · Next State Property',
+        'description': 'Write a formula using the next operator.',
+        'correct_formula': 'X green',
+        'hints': ['Use the X (next) operator'],
+        'kripke_model': MOCK_KRIPKE_MODEL
+    }
+]
+
+MOCK_ATTEMPTS = [
+    {
+        'id': 1,
+        'submitted_formula': 'F G green',
+        'is_correct': False,
+        'submitted_at': '2 hours ago',
+    },
+    {
+        'id': 2,
+        'submitted_formula': 'G green',
+        'is_correct': False,
+        'submitted_at': '1 hour ago',
+    },
+    {
+        'id': 3,
+        'submitted_formula': 'G F green',
+        'is_correct': True,
+        'submitted_at': '30 minutes ago',
+    }
+]
+
+
+def get_mock_exercise(exercise_id):
+    """Get mock exercise by ID"""
+    for exercise in MOCK_EXERCISES:
+        if exercise['id'] == exercise_id:
+            return exercise
+    return None
+
+@supabase_login_required
+def exercises(request):
+    exercises_data = []
+    for exercise in MOCK_EXERCISES:
+        exercises_data.append({
+            'exercise': exercise,
+            'is_completed': exercise['id'] == 1,  # Mock: only exercise with ID 1 is completed
+            'attempt_count': exercise['id'],  # Mock: attempt count = exercise ID
+            'best_attempt': None,
+        })
+
+    context = {
+        'exercises_data': exercises_data,
+    }
+    return render(request, 'exercises/exercises.html', context)
+
+
+@supabase_login_required
+def exercise_canvas(request, exercise_id):
+    """Exercise canvas with Kripke model, formula input, and submission"""
+    exercise = get_mock_exercise(exercise_id)
+
+    if not exercise:
+        return render(request, '404.html', status=404)
+
+    # Get mock attempts for this exercise
+    attempts = MOCK_ATTEMPTS if exercise_id == 1 else []
+
+    # Mock completion status
+    is_completed = any(a['is_correct'] for a in attempts)
+
+    # Find previous and next exercises
+    all_exercises = MOCK_EXERCISES
+
+    current_index = next((i for i, ex in enumerate(all_exercises) if ex['id'] == exercise_id), 0)
+    prev_exercise = all_exercises[current_index - 1] if current_index > 0 else None
+    next_exercise = all_exercises[current_index + 1] if current_index < len(all_exercises) - 1 else None
+
+    context = {
+        'exercise': exercise,
+        'kripke_model': exercise['kripke_model'],
+        'attempts': attempts,
+        'is_completed': is_completed,
+        'prev_exercise': prev_exercise,
+        'next_exercise': next_exercise
+    }
+    return render(request, 'exercises/exercise_canvas.html', context)
+
+
+@supabase_login_required
+@require_POST
+def submit_formula(request, exercise_id):
+    """Handle formula submission and check correctness"""
+    exercise = get_mock_exercise(exercise_id)
+
+    if not exercise:
+        return JsonResponse({'error': 'Exercise not found'}, status=404)
+
+    try:
+        data = json.loads(request.body)
+        submitted_formula = data.get('formula', '').strip()
+        time_spent = data.get('time_spent', 0)
+        hints_used = data.get('hints_used', 0)
+
+        if not submitted_formula:
+            return JsonResponse({'error': 'Formula cannot be empty'}, status=400)
+
+        # Check if formula is correct (submitted_formula already stripped above)
+        is_correct = submitted_formula == exercise['correct_formula'].strip()
+
+        # Generate counterexample if incorrect
+        counterexample = None
+        if not is_correct:
+            counterexample = {
+                'path': ['s0', 's1', 's2', 's0'],
+                'reason': f'The formula "{submitted_formula}" does not hold on this path. Expected: {exercise["correct_formula"]}',
+                'violated_at': 's1'
+            }
+
+        return JsonResponse({
+            'success': True,
+            'is_correct': is_correct,
+            'counterexample': counterexample,
+            'message': 'Correct! Well done. 🎉' if is_correct else 'Incorrect. Check the counterexample and try again.',
+            'attempt_id': 999  # Mock ID
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@supabase_login_required
+def get_hint(request, exercise_id):
+    """Get next hint for exercise"""
+    exercise = get_mock_exercise(exercise_id)
+
+    if not exercise:
+        return JsonResponse({'error': 'Exercise not found'}, status=404)
+
+    hint_index = int(request.GET.get('index', 0))
+
+    if hint_index < len(exercise['hints']):
+        return JsonResponse({
+            'hint': exercise['hints'][hint_index],
+            'hint_index': hint_index,
+            'total_hints': len(exercise['hints'])
+        })
+    else:
+        return JsonResponse({'error': 'No more hints available'}, status=404)

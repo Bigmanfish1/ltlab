@@ -38,43 +38,8 @@
     </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body class="bg-bg-primary text-text-primary antialiased">
-    {% if user.is_authenticated %}
-    <nav class="border-b border-border-primary">
-        <div class="max-w-[1280px] mx-auto px-12 py-4 flex items-center justify-between">
-            <div class="flex items-center gap-8">
-                <a href="{% url 'dashboard:dashboard_redirect' %}" class="text-sm font-semibold text-text-primary hover:text-white transition-colors">
-                    ModelCheck Edu
-                </a>
-                <div class="flex gap-6">
-                    <a href="{% url 'dashboard:dashboard_redirect' %}" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
-                        Dashboard
-                    </a>
-                    {% if user.is_student %}
-                    <a href="#" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
-                        Sandbox
-                    </a>
-                    {% endif %}
-                    {% if user.is_teacher %}
-                    <a href="#" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
-                        Manage Exercises
-                    </a>
-                    <a href="#" class="text-[13px] text-text-secondary hover:text-text-primary transition-colors">
-                        Analytics
-                    </a>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="flex items-center gap-4">
-                <span class="text-[13px] text-text-secondary">{{ user.username }}</span>
-                <a href="{% url 'accounts:logout' %}" class="px-3 py-1.5 text-xs bg-bg-secondary border border-border-secondary hover:border-accent-orange transition-colors rounded">
-                    Logout
-                </a>
-            </div>
-        </div>
-    </nav>
-    {% endif %}
-
+<body class="bg-bg-primary text-text-primary antialiased"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
     {% if messages %}
     <div class="max-w-[1280px] mx-auto px-12 pt-4">
         {% for message in messages %}
