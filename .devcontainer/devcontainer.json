@@ -4,6 +4,16 @@
   "service": "web",
   "runServices": ["web", "db", "redis", "worker"],
   "workspaceFolder": "/workspace",
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "username": "vscode",
+      "userUid": "1000",
+      "userGid": "1000",
+      "upgradePackages": false
+    }
+  },
   "forwardPorts": [8000],
   "customizations": {
     "vscode": {
