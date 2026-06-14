@@ -1,52 +1,67 @@
 from django.shortcuts import render
 
-from apps.accounts.middleware import supabase_login_required
+from apps.accounts.middleware import supabase_login_required, teacher_required
+from apps.accounts.models import Profile
 
 
 @supabase_login_required
 def home(request):
-    # supabase_login_required guarantees request.profile is set (it bounces the
-    # authenticated-but-no-Profile state to re-login).
-    modules_data = [
-        {
-            "id": 1,
-            "name": "Kripke Structures",
-            "difficulty": "beginner",
-            "completion": 100,
-            "status": "complete",
-        },
-        {
-            "id": 2,
-            "name": "LTL Operators",
-            "difficulty": "intermediate",
-            "completion": 64,
-            "status": "in-progress",
-        },
-        {
-            "id": 3,
-            "name": "CTL Semantics",
-            "difficulty": "advanced",
-            "completion": 22,
-            "status": "in-progress",
-        },
-        {
-            "id": 4,
-            "name": "Fairness & Liveness",
-            "difficulty": "advanced",
-            "completion": 0,
-            "status": "locked",
-        },
-    ]
+    """Dashboard landing page — dispatch to the role-specific view.
 
+    Each dashboard carries its own access decorator (teacher_required for the
+    teacher view, supabase_login_required for the student one), so teacher-only
+    content is gated by the same mechanism every future page/endpoint uses
+    rather than an ad-hoc role check here.
+    """
+    if request.profile.role == Profile.ROLE_TEACHER:
+        return teacher_dashboard(request)
+    return student_dashboard(request)
+
+
+@supabase_login_required
+def student_dashboard(request):
     context = {
-        # Student dashboard
-        "modules": modules_data,
+        "modules": [
+            {
+                "id": 1,
+                "name": "Kripke Structures",
+                "difficulty": "beginner",
+                "completion": 100,
+                "status": "complete",
+            },
+            {
+                "id": 2,
+                "name": "LTL Operators",
+                "difficulty": "intermediate",
+                "completion": 64,
+                "status": "in-progress",
+            },
+            {
+                "id": 3,
+                "name": "CTL Semantics",
+                "difficulty": "advanced",
+                "completion": 22,
+                "status": "in-progress",
+            },
+            {
+                "id": 4,
+                "name": "Fairness & Liveness",
+                "difficulty": "advanced",
+                "completion": 0,
+                "status": "locked",
+            },
+        ],
         "overall_progress": 47,
         "exercises_done": 24,
         "accuracy": 91,
         "day_streak": 6,
+    }
+    return render(request, "dashboard/student_dashboard.html", context)
 
-        # Teacher dashboard
+
+@teacher_required
+def teacher_dashboard(request):
+    context = {
         "teacher_name": "Dr Timm",
         "stats": [
             {
@@ -112,7 +127,4 @@ def home(request):
             {"label": "View Full Analytics",  "url": "#"},
         ],
     }
-
-    role = request.profile.role
-    template = "dashboard/teacher_dashboard.html" if role == "teacher" else "dashboard/student_dashboard.html"
-    return render(request, template, context)
+    return render(request, "dashboard/teacher_dashboard.html", context)
