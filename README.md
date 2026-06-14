@@ -276,13 +276,6 @@ docker exec -it ltlab-web python manage.py set_role <email> teacher
 docker exec -it ltlab-web python manage.py set_role <email> student
 ```
 
-In **production**, run the same command without the `docker exec` prefix from the
-Render service **Shell** tab (it runs against the Supabase database):
-
-```bash
-python manage.py set_role <email> teacher
-```
-
 > **Note:** logging out uses `scope=global` — it revokes *every* session for that
 > user, not just the current browser. Expected in production; during local
 > testing it means hitting logout signs you out everywhere.
