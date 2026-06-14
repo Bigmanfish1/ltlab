@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError
+from django.shortcuts import redirect
 from django.test import RequestFactory, TestCase
 
 from apps.accounts.constants import LOGIN_URL
@@ -19,6 +20,7 @@ from apps.accounts.jwt_auth import (
     verify_token,
 )
 from apps.accounts.middleware import (
+    HtmxAuthRedirectMiddleware,
     SupabaseAuthMiddleware,
     supabase_login_required,
     teacher_required,
@@ -390,6 +392,40 @@ class SupabaseAuthMiddlewareTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.cookies["sb-access-token"].value, "")
         self.assertEqual(response.cookies["sb-refresh-token"].value, "")
+
+
+class HtmxAuthRedirectMiddlewareTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _run(self, response_factory, **req_kwargs):
+        mw = HtmxAuthRedirectMiddleware(response_factory)
+        request = self.factory.get("/page/", **req_kwargs)
+        return mw(request)
+
+    def test_login_bounce_converted_to_hx_redirect(self):
+        resp = self._run(lambda r: redirect(LOGIN_URL), HTTP_HX_REQUEST="true")
+        self.assertEqual(resp.status_code, 204)
+        self.assertTrue(resp.headers["HX-Redirect"].startswith(LOGIN_URL))
+
+    def test_non_login_internal_redirect_passes_through(self):
+        # Only auth bounces are rewritten; ordinary same-origin 302s stay 302
+        # without a spurious ?next= injected.
+        resp = self._run(lambda r: redirect("/dashboard/"), HTTP_HX_REQUEST="true")
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn("HX-Redirect", resp.headers)
+
+    def test_external_redirect_passes_through(self):
+        resp = self._run(
+            lambda r: redirect("https://accounts.google.com/o"), HTTP_HX_REQUEST="true"
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn("HX-Redirect", resp.headers)
+
+    def test_non_htmx_request_untouched(self):
+        resp = self._run(lambda r: redirect(LOGIN_URL))
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn("HX-Redirect", resp.headers)
 
 
 class LogoutViewTests(TestCase):

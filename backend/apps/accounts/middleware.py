@@ -113,6 +113,12 @@ class HtmxAuthRedirectMiddleware:
             if redirect_url.netloc:
                 return response
 
+            # Only convert auth bounces (redirects to the login page). Other
+            # same-origin 302s — e.g. a post-action redirect — must stay real
+            # redirects HTMX follows, not be rewritten with a spurious ?next=.
+            if redirect_url.path != LOGIN_URL:
+                return response
+
             ref_header = request.headers.get("Referer", "")
             next_path = urlparse(ref_header).path if ref_header else request.path
 
