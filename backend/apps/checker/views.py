@@ -2,6 +2,7 @@ import json
 
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 
 from .engine import check_ltl, cytoscape_to_kripke, lasso_to_trace_steps
 from apps.accounts.middleware import supabase_login_required
