@@ -361,6 +361,36 @@ class SupabaseAuthMiddlewareTests(TestCase):
         self.assertIsNone(request.supabase_user)
         self.assertIsNone(request.profile)
 
+    @patch("apps.accounts.middleware.create_client")
+    @patch("apps.accounts.middleware.verify_token")
+    def test_refresh_does_not_overwrite_no_profile_cookie_clear(
+        self, mock_verify, mock_create
+    ):
+        # Silent refresh + orphaned (no-Profile) session: the decorator clears the
+        # cookies; the refresh cookie write must NOT resurrect them on the response.
+        def verify_side(token, verify_exp=True):
+            if verify_exp:
+                raise jwt.ExpiredSignatureError()
+            return fake_claims(session_id="sess-live")
+
+        mock_verify.side_effect = verify_side
+        new_session = SimpleNamespace(access_token="new-a", refresh_token="new-r")
+        mock_create.return_value.auth.refresh_session.return_value = SimpleNamespace(
+            session=new_session, user=fake_user(email="ghost@uni.edu")
+        )
+
+        guarded = supabase_login_required(lambda r: "unreachable")
+        middleware = SupabaseAuthMiddleware(guarded)
+
+        request = self.factory.get("/protected/")
+        request.COOKIES["sb-access-token"] = "old"
+        request.COOKIES["sb-refresh-token"] = "refresh"
+        response = middleware(request)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.cookies["sb-access-token"].value, "")
+        self.assertEqual(response.cookies["sb-refresh-token"].value, "")
+
 
 class LogoutViewTests(TestCase):
     def setUp(self):

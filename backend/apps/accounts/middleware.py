@@ -147,6 +147,10 @@ def _redirect_if_no_profile(request):
         )
         response = redirect(LOGIN_URL)
         clear_auth_cookies(response)
+        # Disarm any pending silent-refresh cookie write: SupabaseAuthMiddleware
+        # re-sets auth cookies after the view returns, which would otherwise
+        # overwrite this clear when a refresh and a missing Profile coincide.
+        request._refreshed_session = None
         return response
     return None
 
