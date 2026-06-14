@@ -12,7 +12,7 @@ from django.views.decorators.http import require_http_methods
 from gotrue.errors import AuthApiError
 from supabase import create_client
 
-from .auth_cookies import clear_auth_cookies, set_auth_cookies
+from .auth_cookies import COOKIE_SAMESITE, clear_auth_cookies, set_auth_cookies
 from .constants import (
     LOGIN_URL,
     PKCE_VERIFIER_COOKIE,
@@ -116,7 +116,7 @@ def google_oauth_view(request):
                 max_age=PKCE_VERIFIER_MAX_AGE,
                 httponly=True,
                 secure=request.is_secure(),
-                samesite="Lax",
+                samesite=COOKIE_SAMESITE,
             )
         return response
     except Exception:
@@ -165,7 +165,8 @@ def oauth_callback_view(request):
 
     response = redirect(next_url)
     set_auth_cookies(response, result.session, request.is_secure())
-    response.delete_cookie(PKCE_VERIFIER_COOKIE)
+    # samesite must match the set call or some browsers refuse to delete it.
+    response.delete_cookie(PKCE_VERIFIER_COOKIE, samesite=COOKIE_SAMESITE)
     return response
 
 
