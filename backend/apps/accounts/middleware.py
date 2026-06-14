@@ -16,11 +16,19 @@ logger = logging.getLogger(__name__)
 
 
 def _attach_profile(request, user):
-    """Attach the authenticated user and its Profile (joined by email)."""
+    """Attach the authenticated user and its Profile (joined by email).
+
+    Email is the only join key to a Profile, so a token/user with no email can't
+    be matched to one. Treat that as unauthenticated rather than attaching an
+    emailless user that every protected view would bounce — that would be an
+    authenticated-but-profileless re-login loop.
+    """
+    if user is None or not getattr(user, "email", None):
+        request.supabase_user = None
+        request.profile = None
+        return
     request.supabase_user = user
-    request.profile = (
-        Profile.objects.filter(email=user.email).first() if user else None
-    )
+    request.profile = Profile.objects.filter(email=user.email).first()
 
 
 class SupabaseAuthMiddleware:

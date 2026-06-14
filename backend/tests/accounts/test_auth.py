@@ -348,6 +348,19 @@ class SupabaseAuthMiddlewareTests(TestCase):
         self.assertIsNone(request.supabase_user)
         mock_create.assert_not_called()
 
+    @patch("apps.accounts.middleware.verify_token")
+    def test_emailless_token_is_anonymous(self, mock_verify):
+        # A token with no email claim can't be joined to a Profile; treat it as
+        # unauthenticated instead of an authenticated-but-profileless re-login loop.
+        mock_verify.return_value = fake_claims(email=None)
+
+        request = self.factory.get("/")
+        request.COOKIES["sb-access-token"] = "tok"
+        self._run(request)
+
+        self.assertIsNone(request.supabase_user)
+        self.assertIsNone(request.profile)
+
 
 class LogoutViewTests(TestCase):
     def setUp(self):
