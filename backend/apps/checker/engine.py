@@ -4,19 +4,38 @@ Three public functions cover the full pipeline:
 
   cytoscape_to_kripke  — Cytoscape.js JSON  → SPOT kripke_graph + BDD dict
   check_ltl            — kripke_graph + formula → satisfied / violated + lasso
-  lasso_to_trace_steps — raw lasso → per-step dicts for the counterexample page
+  analyze_lasso        — raw lasso → per-step analysis for the counterexample page
 
 The lasso returned by SPOT has two parts:
   prefix — finite path from the initial state to the cycle entry
   cycle  — the repeating loop that witnesses the violation
 
+Together they describe an *ultimately periodic* infinite word
+``w = prefix · cycle^ω``.  Because that word is fully determined, we can
+evaluate any LTL subformula at any position of it.  ``analyze_lasso`` does
+exactly this so each state can be classified individually instead of bluntly
+marking the whole cycle as wrong.
+
+analyze_lasso returns a dict:
+  steps                : list[dict]   per-state analysis (see below)
+  violation_kind       : str          "safety" (a concrete bad state exists)
+                                       or "liveness" (the loop never fulfils
+                                       an obligation — no single bad state)
+  violating_subformula : str          subformula to highlight in the overview
+
 Each trace step consumed by the counterexample page template has:
-  state      : str            node ID (e.g. "s0")
-  props      : list[str]      atomic propositions holding at this state
-  ok         : bool           True = prefix (formula held), False = cycle (violation)
-  highlight  : str            formula token to underline in the formula display
-  reason     : str            plain-English educational explanation
-  cycle_back : bool           True on the last cycle step (the loop-closing transition)
+  state      : str   node ID (e.g. "s0")
+  props      : list[str]   atomic propositions holding at this state
+  status     : str   one of
+                 "satisfied"  the local obligation actively holds here
+                 "vacuous"    the obligation does not apply here (e.g. the
+                              antecedent of an implication is false)
+                 "pending"    an obligation is still open / waiting here
+                 "violating"  this is a state where the formula concretely breaks
+  highlight  : str   subformula token to underline in the formula display
+  reason     : str   plain-English educational explanation
+  in_cycle   : bool  True when this position belongs to the repeating cycle
+  cycle_back : bool  True on the last cycle step (the loop-closing transition)
 """
 
 from __future__ import annotations
@@ -216,9 +235,9 @@ def check_ltl(kripke, bdd_dict, formula_str: str) -> dict:
      "prefix": [{"spot_id": int}, ...],
      "cycle":  [{"spot_id": int}, ...]}
 
-    Each step's spot_id is an integer SPOT state number; call lasso_to_trace_steps
+    Each step's spot_id is an integer SPOT state number; call analyze_lasso
     (which uses the spot_id_to_node map from cytoscape_to_kripke) to convert to
-    human-readable trace dicts.
+    human-readable, per-state trace dicts.
 
     Raises
     ------
@@ -274,20 +293,370 @@ def check_ltl(kripke, bdd_dict, formula_str: str) -> dict:
     }
 
 
-# ── 3. Lasso → educational trace steps ──────────────────────────────────────
+# ── 3. Lasso → per-state analysis ───────────────────────────────────────────
 
-def lasso_to_trace_steps(
+# Status values used to classify each state of the counterexample.
+STATUS_SATISFIED = "satisfied"  # local obligation actively holds here
+STATUS_VACUOUS = "vacuous"      # obligation does not apply here
+STATUS_PENDING = "pending"      # an obligation is still open / waiting
+STATUS_VIOLATING = "violating"  # this state concretely breaks the formula
+
+KIND_SAFETY = "safety"          # a concrete bad state exists
+KIND_LIVENESS = "liveness"      # the loop never fulfils an obligation
+
+
+def _unicode_inner(inner: str) -> str:
+    """Convert SPOT ASCII operators back to the Unicode used in the UI."""
+    return (
+        inner
+        .replace("<->", "↔")
+        .replace("->", "→")
+        .replace("!", "¬")
+        .replace("&", "∧")
+        .replace("|", "∨")
+    )
+
+
+def _op_constants() -> dict:
+    """Resolve SPOT op_* constants once (some are absent in older builds)."""
+    names = (
+        "tt", "ff", "ap", "Not", "And", "Or", "Implies", "Equiv", "Xor",
+        "X", "F", "G", "U", "R", "W", "M",
+    )
+    if not _SPOT_AVAILABLE:
+        return {}
+    return {name: getattr(spot, "op_" + name, None) for name in names}
+
+
+def _op_tag(node, ops: dict) -> str:
+    """Return the canonical operator tag (e.g. "G", "Until", "ap") for a node."""
+    if node is None:
+        return "unknown"
+    for tag, const in ops.items():
+        if const is None:
+            continue
+        try:
+            if node._is(const):
+                return tag
+        except Exception:
+            continue
+    return "unknown"
+
+
+class _LassoWord:
+    """Evaluate LTL subformulas over an ultimately periodic word (a lasso).
+
+    The word is ``prefix · cycle^ω``.  Positions ``0 .. prefix_len-1`` are the
+    prefix; ``prefix_len .. N-1`` are one iteration of the cycle, which then
+    repeats forever.  Because the suffix from any position depends only on its
+    *canonical* position within ``[0, N)``, results are memoised on that.
+    """
+
+    def __init__(self, props_by_pos: list, prefix_len: int, ops: dict):
+        self.props = props_by_pos
+        self.N = len(props_by_pos)
+        self.P = prefix_len
+        self.C = self.N - prefix_len            # cycle length (>= 1 for a lasso)
+        self.ops = ops
+        # One full pass over the prefix tail plus one full cycle is always
+        # enough to decide F / G / U / R / W / M on an ultimately periodic word.
+        self.horizon = self.N + max(self.C, 1) + 1
+        self._memo: dict = {}
+
+    def canon(self, pos: int) -> int:
+        """Map any (possibly out-of-range) position to its canonical index."""
+        if pos < self.N:
+            return pos
+        if self.C <= 0:
+            return self.N - 1
+        return self.P + ((pos - self.P) % self.C)
+
+    def holds(self, node, pos: int) -> bool:
+        cpos = self.canon(pos)
+        key = (str(node), cpos)
+        if key in self._memo:
+            return self._memo[key]
+        result = self._eval(node, cpos)
+        self._memo[key] = result
+        return result
+
+    def _eval(self, node, cpos: int) -> bool:
+        tag = _op_tag(node, self.ops)
+
+        if tag == "tt":
+            return True
+        if tag == "ff":
+            return False
+        if tag == "ap":
+            return node.ap_name() in self.props[cpos]
+        if tag == "Not":
+            return not self.holds(node[0], cpos)
+        if tag == "And":
+            return all(self.holds(node[i], cpos) for i in range(node.size()))
+        if tag == "Or":
+            return any(self.holds(node[i], cpos) for i in range(node.size()))
+        if tag == "Implies":
+            return (not self.holds(node[0], cpos)) or self.holds(node[1], cpos)
+        if tag == "Equiv":
+            return self.holds(node[0], cpos) == self.holds(node[1], cpos)
+        if tag == "Xor":
+            return self.holds(node[0], cpos) != self.holds(node[1], cpos)
+        if tag == "X":
+            return self.holds(node[0], cpos + 1)
+        if tag == "F":
+            return any(self.holds(node[0], cpos + k) for k in range(self.horizon))
+        if tag == "G":
+            return all(self.holds(node[0], cpos + k) for k in range(self.horizon))
+        if tag == "U":
+            for k in range(self.horizon):
+                if self.holds(node[1], cpos + k):
+                    return True
+                if not self.holds(node[0], cpos + k):
+                    return False
+            return False
+        if tag == "W":  # weak until: (a U b) | G a
+            for k in range(self.horizon):
+                if self.holds(node[1], cpos + k):
+                    return True
+                if not self.holds(node[0], cpos + k):
+                    return False
+            return True   # left held throughout the loop → G left
+        if tag == "R":  # release: b holds up to & including when a does; or G b
+            for k in range(self.horizon):
+                if not self.holds(node[1], cpos + k):
+                    return False
+                if self.holds(node[0], cpos + k):
+                    return True
+            return True   # right held throughout the loop → G right
+        if tag == "M":  # strong release: b U (a & b)
+            for k in range(self.horizon):
+                if not self.holds(node[1], cpos + k):
+                    return False
+                if self.holds(node[0], cpos + k):
+                    return True
+            return False
+
+        return False  # unknown operator → conservative
+
+
+def _focus(node, formula_str: str) -> str:
+    """Return a substring of the original (Unicode) formula matching ``node``.
+
+    Used to underline the relevant subformula.  Returns "" when no clean match
+    exists, in which case the UI simply underlines nothing.
+    """
+    if node is None:
+        return ""
+    cand = _unicode_inner(str(node))
+    if cand and cand in formula_str:
+        return cand
+    stripped = cand.strip("()")
+    if stripped and stripped in formula_str:
+        return stripped
+    return ""
+
+
+def _props_str(props) -> str:
+    return "{" + ", ".join(props) + "}" if props else "∅"
+
+
+def _responsible_child(node, word: "_LassoWord", ops: dict):
+    """For a Boolean top operator, return the child that causes the failure."""
+    tag = _op_tag(node, ops)
+    try:
+        if tag == "And":
+            for i in range(node.size()):
+                if not word.holds(node[i], 0):
+                    return node[i]
+        elif tag == "Or":
+            # Every child is false on a counterexample; prefer a temporal one.
+            for i in range(node.size()):
+                if _op_tag(node[i], ops) in ("G", "F", "X", "U", "R", "W", "M"):
+                    return node[i]
+            return node[0]
+        elif tag == "Implies":
+            if word.holds(node[0], 0) and not word.holds(node[1], 0):
+                return node[1]
+            if not word.holds(node[0], 0):
+                return node[0]
+    except Exception:
+        return None
+    return None
+
+
+def _classify(f, word: "_LassoWord", formula_str: str, ops: dict) -> tuple:
+    """Classify every position of the lasso for formula ``f``.
+
+    Returns (statuses, highlights, reasons, kind, violating_subformula).
+    """
+    N = word.N
+    tag = _op_tag(f, ops)
+    statuses = [STATUS_SATISFIED] * N
+    highlights = [""] * N
+    reasons = [""] * N
+
+    def u(node) -> str:
+        return _unicode_inner(str(node))
+
+    def ps(i: int) -> str:
+        return _props_str(word.props[i])
+
+    def setp(i, status, highlight, reason):
+        statuses[i] = status
+        highlights[i] = highlight
+        reasons[i] = reason
+
+    # ── G ψ ───────────────────────────────────────────────────────────────────
+    if tag == "G":
+        body = f[0]
+        btag = _op_tag(body, ops)
+        is_impl = btag == "Implies"
+        live_body = btag in ("F", "U", "W", "M")
+        body_focus = _focus(body, formula_str)
+        for i in range(N):
+            if word.holds(body, i):
+                if is_impl and not word.holds(body[0], i):
+                    setp(i, STATUS_VACUOUS,
+                         _focus(body[0], formula_str) or body_focus,
+                         f"{ps(i)} — the antecedent of '{u(body)}' is false here, "
+                         "so the implication is vacuously true. G places no "
+                         "constraint on this state.")
+                else:
+                    setp(i, STATUS_SATISFIED, body_focus,
+                         f"{ps(i)} — '{u(body)}' holds here, as G (always) requires.")
+            else:
+                if live_body:
+                    setp(i, STATUS_PENDING, body_focus,
+                         f"{ps(i)} — the eventuality '{u(body)}' is still unmet; "
+                         "the loop repeats forever without ever fulfilling it.")
+                else:
+                    hl = _focus(body[1], formula_str) if is_impl else body_focus
+                    setp(i, STATUS_VIOLATING, hl or body_focus,
+                         f"{ps(i)} — G requires '{u(body)}' at every state, but it "
+                         "fails here. This is the state that breaks the formula.")
+        kind = KIND_LIVENESS if STATUS_VIOLATING not in statuses else KIND_SAFETY
+        return statuses, highlights, reasons, kind, body_focus
+
+    # ── F ψ ───────────────────────────────────────────────────────────────────
+    if tag == "F":
+        body = f[0]
+        bf = _focus(body, formula_str)
+        for i in range(N):
+            if word.holds(body, i):
+                setp(i, STATUS_SATISFIED, bf,
+                     f"{ps(i)} — '{u(body)}' holds here, fulfilling the eventually.")
+            else:
+                setp(i, STATUS_PENDING, bf,
+                     f"{ps(i)} — still waiting for '{u(body)}'; it never occurs "
+                     "anywhere in this run, so F can never be satisfied.")
+        return statuses, highlights, reasons, KIND_LIVENESS, bf
+
+    # ── ψ1 U ψ2 / ψ1 W ψ2 ─────────────────────────────────────────────────────
+    if tag in ("U", "W"):
+        a, b = f[0], f[1]
+        af, bf = _focus(a, formula_str), _focus(b, formula_str)
+        for i in range(N):
+            if word.holds(b, i):
+                setp(i, STATUS_SATISFIED, bf,
+                     f"{ps(i)} — the target '{u(b)}' is reached here.")
+            elif word.holds(a, i):
+                setp(i, STATUS_PENDING, af,
+                     f"{ps(i)} — '{u(a)}' holds while waiting for '{u(b)}'.")
+            else:
+                setp(i, STATUS_VIOLATING, bf,
+                     f"{ps(i)} — neither the target '{u(b)}' nor the guard '{u(a)}' "
+                     "holds here, so the until obligation breaks.")
+        kind = KIND_SAFETY if STATUS_VIOLATING in statuses else KIND_LIVENESS
+        return statuses, highlights, reasons, kind, bf
+
+    # ── ψ1 R ψ2 / ψ1 M ψ2 ─────────────────────────────────────────────────────
+    if tag in ("R", "M"):
+        a, b = f[0], f[1]
+        af, bf = _focus(a, formula_str), _focus(b, formula_str)
+        for i in range(N):
+            if not word.holds(b, i):
+                setp(i, STATUS_VIOLATING, bf,
+                     f"{ps(i)} — '{u(b)}' must stay true until release, but it "
+                     "fails here.")
+            elif word.holds(a, i):
+                setp(i, STATUS_SATISFIED, af,
+                     f"{ps(i)} — the release condition '{u(a)}' holds here.")
+            else:
+                setp(i, STATUS_PENDING, bf,
+                     f"{ps(i)} — '{u(b)}' holds while awaiting release by '{u(a)}'.")
+        kind = KIND_SAFETY if STATUS_VIOLATING in statuses else KIND_LIVENESS
+        return statuses, highlights, reasons, kind, bf
+
+    # ── X ψ ───────────────────────────────────────────────────────────────────
+    if tag == "X":
+        body = f[0]
+        bf = _focus(body, formula_str)
+        for i in range(N):
+            if i == 0:
+                setp(i, STATUS_PENDING, bf,
+                     f"{ps(i)} — X checks the NEXT state for '{u(body)}'.")
+            elif i == 1:
+                if word.holds(body, 1):
+                    setp(i, STATUS_SATISFIED, bf,
+                         f"{ps(i)} — '{u(body)}' holds at the next state, as X requires.")
+                else:
+                    setp(i, STATUS_VIOLATING, bf,
+                         f"{ps(i)} — X requires '{u(body)}' at this (the next) state, "
+                         "but it fails here.")
+            else:
+                setp(i, STATUS_VACUOUS, "",
+                     f"{ps(i)} — X only constrains the state right after the start; "
+                     "this state is unconstrained.")
+        return statuses, highlights, reasons, KIND_SAFETY, bf
+
+    # ── ¬ ψ ───────────────────────────────────────────────────────────────────
+    if tag == "Not":
+        body = f[0]
+        bf = _focus(body, formula_str)
+        for i in range(N):
+            if i == 0:
+                if word.holds(body, 0):
+                    setp(i, STATUS_VIOLATING, bf,
+                         f"{ps(i)} — '{u(body)}' holds here, but ¬ requires it to be false.")
+                else:
+                    setp(i, STATUS_SATISFIED, bf,
+                         f"{ps(i)} — '{u(body)}' is false here, as ¬ requires.")
+            else:
+                setp(i, STATUS_VACUOUS, "",
+                     f"{ps(i)} — only the initial state matters for this formula.")
+        return statuses, highlights, reasons, KIND_SAFETY, bf
+
+    # ── Boolean top operator: blame the responsible (often temporal) child ─────
+    if tag in ("And", "Or", "Implies", "Equiv", "Xor"):
+        child = _responsible_child(f, word, ops)
+        if child is not None and _op_tag(child, ops) != "ap" and _op_tag(child, ops) != "unknown":
+            return _classify(child, word, formula_str, ops)
+
+    # ── Fallback: only the initial state is constrained ───────────────────────
+    ff = _focus(f, formula_str)
+    for i in range(N):
+        if i == 0:
+            setp(i, STATUS_VIOLATING, ff,
+                 f"{ps(i)} — '{u(f)}' is false at the initial state.")
+        else:
+            setp(i, STATUS_VACUOUS, "",
+                 f"{ps(i)} — only the initial state matters for this formula.")
+    return statuses, highlights, reasons, KIND_SAFETY, ff
+
+
+def analyze_lasso(
     prefix: list[dict],
     cycle: list[dict],
     formula_str: str,
     graph: dict,
     spot_id_to_node: dict[int, str],
-) -> list[dict]:
-    """Convert a SPOT lasso into per-step dicts for the counterexample page.
+) -> dict:
+    """Convert a SPOT lasso into a per-state analysis for the counterexample page.
 
-    Prefix steps get ok=True  ("system was running fine up to here").
-    Cycle steps get  ok=False ("this infinite loop witnesses the violation").
-    The last cycle step also gets cycle_back=True (marks the loop-closing edge).
+    Returns a dict with ``steps`` (one dict per state), ``violation_kind`` and
+    ``violating_subformula``.  Each state is classified individually by
+    evaluating the formula over the ultimately periodic counterexample word, so
+    only the states that genuinely break the formula are flagged as violating.
     """
     elements = graph.get("elements", {})
     raw_nodes = [
@@ -299,221 +668,68 @@ def lasso_to_trace_steps(
         for n in raw_nodes
     }
 
-    normalised = _normalize_formula(formula_str)
+    order = [
+        spot_id_to_node.get(step["spot_id"], str(step["spot_id"]))
+        for step in prefix
+    ]
+    cycle_start = len(order)
+    order += [
+        spot_id_to_node.get(step["spot_id"], str(step["spot_id"]))
+        for step in cycle
+    ]
+    N = len(order)
+    props_by_pos = [list(props_by_node.get(nid, [])) for nid in order]
+
+    ops = _op_constants()
     try:
-        f = spot.formula(normalised)
+        f = spot.formula(_normalize_formula(formula_str)) if _SPOT_AVAILABLE else None
     except Exception:
         f = None
-    top_op, inner_str = _top_op(f)
 
-    steps: list[dict] = []
+    if f is None or N == 0:
+        # Degraded mode (no SPOT / unparseable): fall back to the old structural
+        # split so the page still renders something sensible.
+        steps = []
+        for i, nid in enumerate(order):
+            in_cycle = i >= cycle_start
+            steps.append({
+                "state": nid,
+                "props": props_by_pos[i],
+                "status": STATUS_VIOLATING if in_cycle else STATUS_SATISFIED,
+                "highlight": "",
+                "reason": "",
+                "in_cycle": in_cycle,
+                "cycle_back": False,
+            })
+        if steps:
+            steps[-1]["cycle_back"] = True
+        return {
+            "steps": steps,
+            "violation_kind": KIND_SAFETY,
+            "violating_subformula": "",
+        }
 
-    for step in prefix:
-        node_id = spot_id_to_node.get(step["spot_id"], str(step["spot_id"]))
-        props = props_by_node.get(node_id, [])
-        steps.append({
-            "state":      node_id,
-            "props":      props,
-            "ok":         True,
-            "highlight":  _highlight(True,  props, formula_str, top_op, inner_str),
-            "reason":     _reason(True,  props, formula_str, top_op, inner_str, False),
-            "cycle_back": False,
-        })
-
-    for i, step in enumerate(cycle):
-        node_id = spot_id_to_node.get(step["spot_id"], str(step["spot_id"]))
-        props = props_by_node.get(node_id, [])
-        is_last = (i == len(cycle) - 1)
-        steps.append({
-            "state":      node_id,
-            "props":      props,
-            "ok":         False,
-            "highlight":  _highlight(False, props, formula_str, top_op, inner_str),
-            "reason":     _reason(False, props, formula_str, top_op, inner_str, is_last),
-            "cycle_back": is_last,
-        })
-
-    return steps
-
-
-# ── Internal helpers ──────────────────────────────────────────────────────────
-
-def _top_op(f) -> tuple[str, str]:
-    """Return (operator_name, inner_formula_string) for the top-level LTL operator.
-
-    SPOT exposes operator constants at module level as spot.op_G, spot.op_F, etc.
-    (not as spot.op.G — that namespace does not exist in the Python bindings).
-    Use f._is(spot.op_X) as the idiomatic check since 'is' is a Python keyword.
-    """
-    if f is None:
-        return ("unknown", "")
-    try:
-        if f._is(spot.op_G):
-            return ("G", str(f[0]))
-        if f._is(spot.op_F):
-            return ("F", str(f[0]))
-        if f._is(spot.op_X):
-            return ("X", str(f[0]))
-        if f._is(spot.op_U):
-            return ("U", f"{f[0]} U {f[1]}")
-        if f._is(spot.op_Not):
-            return ("Not", str(f[0]))
-        if f._is(spot.op_And):
-            return ("And", "")
-        if f._is(spot.op_Or):
-            return ("Or", "")
-        if f._is(spot.op_Implies):
-            return ("Implies", f"{f[0]} -> {f[1]}")
-    except Exception:
-        pass
-    return ("unknown", "")
-
-
-def _highlight(ok: bool, props: list[str], formula_str: str, top_op: str, inner: str) -> str:
-    """Return the formula token to underline at this step in the formula display."""
-
-    def _first_prop_in_formula() -> str:
-        for p in props:
-            if p in formula_str:
-                return p
-        return ""
-
-    if top_op == "G":
-        if not ok:
-            candidate = inner.replace("!", "¬").replace("&", "∧").replace("|", "∨").replace("->", "→")
-            return candidate if candidate in formula_str else inner if inner in formula_str else ""
-        return _first_prop_in_formula()
-
-    if top_op == "F":
-        if not ok:
-            # Highlight "F <inner>" if that substring exists in the original formula
-            candidate = "F " + inner.replace("!", "¬").replace("&", "∧").replace("|", "∨").replace("->", "→")
-            if candidate in formula_str:
-                return candidate
-            return inner if inner in formula_str else ""
-        return _first_prop_in_formula()
-
-    if top_op == "U":
-        if not ok:
-            # Highlight the right-hand side (ψ) — the goal that was never reached
-            parts = inner.split(" U ")
-            rhs = parts[1].strip() if len(parts) == 2 else inner
-            return rhs if rhs in formula_str else ""
-        return _first_prop_in_formula()
-
-    if top_op in ("Not", "X"):
-        if not ok:
-            return inner if inner in formula_str else ""
-        return _first_prop_in_formula()
-
-    return _first_prop_in_formula()
-
-
-def _unicode_inner(inner: str) -> str:
-    """Convert SPOT ASCII operators in inner formula back to Unicode for display."""
-    return (
-        inner
-        .replace("!", "¬")
-        .replace("&", "∧")
-        .replace("|", "∨")
-        .replace("->", "→")
+    word = _LassoWord(props_by_pos, cycle_start, ops)
+    statuses, highlights, reasons, kind, viol_sub = _classify(
+        f, word, formula_str, ops
     )
 
+    steps = []
+    for i, nid in enumerate(order):
+        steps.append({
+            "state": nid,
+            "props": props_by_pos[i],
+            "status": statuses[i],
+            "highlight": highlights[i],
+            "reason": reasons[i],
+            "in_cycle": i >= cycle_start,
+            "cycle_back": False,
+        })
+    if steps:
+        steps[-1]["cycle_back"] = True
 
-def _reason(
-    ok: bool,
-    props: list[str],
-    formula_str: str,
-    top_op: str,
-    inner: str,
-    is_cycle_back: bool,
-) -> str:
-    """Generate a plain-English educational explanation for this trace step."""
-    prop_str = "{" + ", ".join(props) + "}" if props else "∅"
-    inner_u = _unicode_inner(inner)
-
-    if is_cycle_back:
-        return (
-            "This transition closes the infinite loop — the execution cycles back "
-            "from here, repeating forever and making it impossible to satisfy the formula."
-        )
-
-    # ── G φ ──────────────────────────────────────────────────────────────────
-    if top_op == "G":
-        if ok:
-            return (
-                f"{prop_str} — the condition holds here as required by G (always). "
-                "The formula is satisfied at this state."
-            )
-        return (
-            f"G requires the condition to hold at EVERY state, but it fails here "
-            f"(props: {prop_str}). Because this state is in an infinite loop, "
-            "the formula is permanently violated."
-        )
-
-    # ── F φ ──────────────────────────────────────────────────────────────────
-    if top_op == "F":
-        if ok:
-            return (
-                f"{prop_str} — '{inner_u}' has not yet been reached. "
-                "The system keeps running, still carrying the 'eventually' obligation."
-            )
-        return (
-            f"F requires '{inner_u}' to eventually hold, but this cycle repeats "
-            "forever without it ever becoming true. "
-            "The liveness obligation can never be fulfilled."
-        )
-
-    # ── φ U ψ ─────────────────────────────────────────────────────────────────
-    if top_op == "U":
-        parts = inner.split(" U ")
-        lhs_u = _unicode_inner(parts[0].strip()) if len(parts) == 2 else "φ"
-        rhs_u = _unicode_inner(parts[1].strip()) if len(parts) == 2 else "ψ"
-        if ok:
-            return (
-                f"{prop_str} — '{lhs_u}' holds here as required while waiting for '{rhs_u}'. "
-                "The Until obligation is still active."
-            )
-        return (
-            f"The Until operator requires '{rhs_u}' to eventually hold, "
-            f"but this cycle shows '{rhs_u}' is never reached. "
-            "The 'until' obligation is permanently violated."
-        )
-
-    # ── X φ ───────────────────────────────────────────────────────────────────
-    if top_op == "X":
-        if ok:
-            return f"{prop_str} — checking the next-step condition (X {inner_u})."
-        return (
-            f"X requires '{inner_u}' to hold at the next state, "
-            f"but this state (props: {prop_str}) is the next state and it fails."
-        )
-
-    # ── ¬ φ ───────────────────────────────────────────────────────────────────
-    if top_op == "Not":
-        if ok:
-            return f"{prop_str} — the negated condition '{inner_u}' does not hold here (as expected)."
-        return (
-            f"The condition '{inner_u}' unexpectedly holds at this state (props: {prop_str}), "
-            f"causing ¬({inner_u}) to be violated."
-        )
-
-    # ── Implies φ → ψ ─────────────────────────────────────────────────────────
-    if top_op == "Implies":
-        parts = inner.split(" -> ")
-        ant_u = _unicode_inner(parts[0].strip()) if len(parts) == 2 else "φ"
-        con_u = _unicode_inner(parts[1].strip()) if len(parts) == 2 else "ψ"
-        if ok:
-            return (
-                f"{prop_str} — checking implication '{ant_u} → {con_u}'. "
-                "The antecedent status is being evaluated."
-            )
-        return (
-            f"The antecedent '{ant_u}' holds here but '{con_u}' does not (props: {prop_str}). "
-            "This makes the implication false at this state."
-        )
-
-    # ── Fallback ──────────────────────────────────────────────────────────────
-    if ok:
-        return f"{prop_str} — formula conditions are satisfied at this state."
-    return f"The formula condition fails at this state. Propositions holding: {prop_str}."
+    return {
+        "steps": steps,
+        "violation_kind": kind,
+        "violating_subformula": viol_sub,
+    }

@@ -1,8 +1,8 @@
 """Tests for the LTL checker engine and views.
 
-Engine tests (cytoscape_to_kripke, check_ltl, lasso_to_trace_steps) are
-decorated with @skipUnless(SPOT_AVAILABLE, ...) so the test suite passes
-cleanly in CI environments where SPOT is not yet installed.
+Engine tests that need SPOT (cytoscape_to_kripke, check_ltl, the lasso
+evaluator and analyze_lasso) are decorated with @skipUnless(SPOT_AVAILABLE, …)
+so the suite still passes in CI environments where SPOT is not installed.
 
 View tests use unittest.mock to patch the engine so they run without SPOT.
 """
@@ -13,7 +13,16 @@ from unittest.mock import MagicMock, patch
 
 from django.test import RequestFactory, TestCase
 
-from .engine import _normalize_formula, _top_op, _highlight, _reason
+from .engine import (
+    KIND_LIVENESS,
+    KIND_SAFETY,
+    STATUS_PENDING,
+    STATUS_SATISFIED,
+    STATUS_VACUOUS,
+    STATUS_VIOLATING,
+    _normalize_formula,
+    analyze_lasso,
+)
 
 try:
     import spot as _spot  # noqa: F401
@@ -66,95 +75,120 @@ class TestNormalizeFormula(TestCase):
         self.assertEqual(_normalize_formula(""), "")
 
 
-# ── 2. Top-op extraction (formula-type detection) ────────────────────────────
+# ── 2. analyze_lasso fallback (no SPOT formula needed) ───────────────────────
+
+class TestAnalyzeLassoFallback(TestCase):
+    """When the formula cannot be parsed, analyze_lasso degrades gracefully to a
+    structural prefix/cycle split. An unparseable formula forces this path
+    regardless of whether SPOT is installed."""
+
+    def _run(self):
+        graph = _graph(
+            [{"id": "s0", "props": ["p"], "initial": True},
+             {"id": "s1", "props": []}],
+            [("s0", "s1"), ("s1", "s0")],
+        )
+        return analyze_lasso(
+            prefix=[{"spot_id": 0}],
+            cycle=[{"spot_id": 1}, {"spot_id": 0}],
+            formula_str="@@@ not a formula @@@",
+            graph=graph,
+            spot_id_to_node={0: "s0", 1: "s1"},
+        )
+
+    def test_returns_expected_keys(self):
+        out = self._run()
+        self.assertIn("steps", out)
+        self.assertIn("violation_kind", out)
+        self.assertIn("violating_subformula", out)
+
+    def test_steps_have_new_schema(self):
+        out = self._run()
+        for step in out["steps"]:
+            for key in ("state", "props", "status", "highlight",
+                        "reason", "in_cycle", "cycle_back"):
+                self.assertIn(key, step)
+            self.assertNotIn("ok", step)
+
+    def test_prefix_satisfied_cycle_violating(self):
+        steps = self._run()["steps"]
+        self.assertEqual(steps[0]["status"], STATUS_SATISFIED)   # prefix
+        self.assertEqual(steps[0]["in_cycle"], False)
+        self.assertEqual(steps[1]["status"], STATUS_VIOLATING)   # cycle
+        self.assertTrue(steps[1]["in_cycle"])
+
+    def test_last_step_is_cycle_back(self):
+        steps = self._run()["steps"]
+        self.assertTrue(steps[-1]["cycle_back"])
+        self.assertEqual(sum(1 for s in steps if s["cycle_back"]), 1)
+
+
+# ── 3. Lasso word evaluator (LTL semantics over an ultimately periodic word) ─
 
 @unittest.skipUnless(SPOT_AVAILABLE, "SPOT not installed")
-class TestTopOp(TestCase):
+class TestLassoWord(TestCase):
+
+    def _word(self, props_by_pos, prefix_len):
+        from .engine import _LassoWord, _op_constants
+        return _LassoWord(props_by_pos, prefix_len, _op_constants())
 
     def _f(self, s):
         import spot
-        return spot.formula(s)
+        return spot.formula(_normalize_formula(s))
 
-    def test_g(self):
-        op, inner = _top_op(self._f("G p"))
-        self.assertEqual(op, "G")
-        self.assertEqual(inner, "p")
+    def test_atomic_proposition(self):
+        w = self._word([["p"], []], 0)
+        self.assertTrue(w.holds(self._f("p"), 0))
+        self.assertFalse(w.holds(self._f("p"), 1))
 
-    def test_f(self):
-        op, inner = _top_op(self._f("F q"))
-        self.assertEqual(op, "F")
-        self.assertEqual(inner, "q")
+    def test_position_wraps_into_cycle(self):
+        # Pure cycle of length 2: p, (nothing), p, (nothing), …
+        w = self._word([["p"], []], 0)
+        self.assertTrue(w.holds(self._f("p"), 2))    # wraps to pos 0
+        self.assertFalse(w.holds(self._f("p"), 3))   # wraps to pos 1
 
-    def test_x(self):
-        op, inner = _top_op(self._f("X p"))
-        self.assertEqual(op, "X")
-        self.assertEqual(inner, "p")
+    def test_next(self):
+        w = self._word([["p"], ["q"]], 0)
+        self.assertTrue(w.holds(self._f("X q"), 0))
+        self.assertTrue(w.holds(self._f("X p"), 1))  # wraps back to p
 
-    def test_u(self):
-        op, inner = _top_op(self._f("p U q"))
-        self.assertEqual(op, "U")
-        self.assertIn("p", inner)
-        self.assertIn("q", inner)
+    def test_globally(self):
+        self.assertTrue(self._word([["p"], ["p"]], 0).holds(self._f("G p"), 0))
+        self.assertFalse(self._word([["p"], []], 0).holds(self._f("G p"), 0))
 
-    def test_not(self):
-        op, inner = _top_op(self._f("!p"))
-        self.assertEqual(op, "Not")
-        self.assertEqual(inner, "p")
+    def test_finally(self):
+        self.assertTrue(self._word([[], ["q"]], 0).holds(self._f("F q"), 0))
+        self.assertFalse(self._word([[], []], 0).holds(self._f("F q"), 0))
 
-    def test_none(self):
-        op, inner = _top_op(None)
-        self.assertEqual(op, "unknown")
-        self.assertEqual(inner, "")
+    def test_until(self):
+        # p holds at 0,1 then q at 2 — but only a 2-state cycle here:
+        w = self._word([["p"], ["q"]], 0)
+        self.assertTrue(w.holds(self._f("p U q"), 0))
+        # q never holds → until fails
+        w2 = self._word([["p"], ["p"]], 0)
+        self.assertFalse(w2.holds(self._f("p U q"), 0))
 
+    def test_weak_until_holds_forever(self):
+        # p forever, q never: p W q is true (weak until), p U q is false
+        w = self._word([["p"], ["p"]], 0)
+        self.assertTrue(w.holds(self._f("p W q"), 0))
+        self.assertFalse(w.holds(self._f("p U q"), 0))
 
-# ── 3. Highlight and reason helpers ─────────────────────────────────────────
+    def test_release(self):
+        # q holds forever, p never: q is "released" by nothing but stays true
+        w = self._word([["q"], ["q"]], 0)
+        self.assertTrue(w.holds(self._f("p R q"), 0))
+        # q drops without p ever holding → release violated
+        w2 = self._word([["q"], []], 0)
+        self.assertFalse(w2.holds(self._f("p R q"), 0))
 
-class TestHighlightAndReason(TestCase):
-    """These helpers use string matching only — no SPOT required."""
-
-    def test_highlight_G_cycle_returns_inner(self):
-        h = _highlight(False, ["p"], "G p", "G", "p")
-        self.assertEqual(h, "p")
-
-    def test_highlight_G_prefix_returns_prop(self):
-        h = _highlight(True, ["p"], "G p", "G", "p")
-        self.assertEqual(h, "p")
-
-    def test_highlight_F_cycle_returns_F_inner(self):
-        h = _highlight(False, [], "G (p → F q)", "F", "q")
-        self.assertIn("q", h)
-
-    def test_highlight_U_cycle_returns_rhs(self):
-        h = _highlight(False, [], "p U q", "U", "p U q")
-        self.assertEqual(h, "q")
-
-    def test_reason_cycle_back_always_explains_loop(self):
-        r = _reason(False, [], "G p", "G", "p", True)
-        self.assertIn("loop", r.lower())
-
-    def test_reason_G_ok_step(self):
-        r = _reason(True, ["p"], "G p", "G", "p", False)
-        self.assertIn("holds", r.lower())
-
-    def test_reason_G_violation(self):
-        r = _reason(False, [], "G p", "G", "p", False)
-        self.assertIn("every", r.lower())
-
-    def test_reason_F_violation(self):
-        r = _reason(False, [], "F q", "F", "q", False)
-        self.assertIn("eventually", r.lower())
-
-    def test_reason_U_ok(self):
-        r = _reason(True, ["p"], "p U q", "U", "p U q", False)
-        self.assertIn("until", r.lower())
-
-    def test_reason_fallback_ok(self):
-        r = _reason(True, ["p"], "p", "unknown", "", False)
-        self.assertIn("satisfied", r.lower())
-
-    def test_reason_fallback_violation(self):
-        r = _reason(False, [], "p", "unknown", "", False)
-        self.assertIn("fails", r.lower())
+    def test_nested_response(self):
+        # G (p -> F q): with q never present and p present, this is false
+        w = self._word([["p"], []], 0)
+        self.assertFalse(w.holds(self._f("G (p -> F q)"), 0))
+        # with q reachable it is true
+        w2 = self._word([["p"], ["q"]], 0)
+        self.assertTrue(w2.holds(self._f("G (p -> F q)"), 0))
 
 
 # ── 4. cytoscape_to_kripke ───────────────────────────────────────────────────
@@ -176,13 +210,12 @@ class TestCytoscapeToKripke(TestCase):
         self.assertEqual(len(id_map), 2)
 
     def test_deadlock_state_raises(self):
-        """A state with no outgoing transition breaks Kripke totality."""
         from .engine import cytoscape_to_kripke
         with self.assertRaises(ValueError) as ctx:
             cytoscape_to_kripke(_graph(
                 [{"id": "s0", "props": ["p"], "initial": True},
                  {"id": "s1", "props": ["q"]}],
-                [("s0", "s1")],   # s1 has no successor → deadlock
+                [("s0", "s1")],
             ))
         msg = str(ctx.exception).lower()
         self.assertIn("outgoing", msg)
@@ -222,11 +255,9 @@ class TestCytoscapeToKripke(TestCase):
             }
         }
         kripke, bdd_dict, id_map = cytoscape_to_kripke(graph)
-        # Only real nodes should appear in the map
         self.assertNotIn("phantom_s0", id_map.values())
 
     def test_self_loop_is_allowed(self):
-        """Kripke graphs may have self-loops (required for some formulas)."""
         kripke, bdd_dict, id_map = self._convert(
             [{"id": "s0", "props": ["p"], "initial": True}],
             [("s0", "s0")],
@@ -246,7 +277,6 @@ class TestCheckLTL(TestCase):
         return result, id_map
 
     def test_G_p_holds_on_all_p_graph(self):
-        """G p should hold when every state has p."""
         result, _ = self._run(
             [{"id": "s0", "props": ["p"], "initial": True},
              {"id": "s1", "props": ["p"]}],
@@ -256,7 +286,6 @@ class TestCheckLTL(TestCase):
         self.assertEqual(result["result"], "satisfied")
 
     def test_G_p_violated_when_state_lacks_p(self):
-        """G p should be violated when a reachable state lacks p."""
         result, _ = self._run(
             [{"id": "s0", "props": ["p"], "initial": True},
              {"id": "s1", "props": []}],
@@ -268,7 +297,6 @@ class TestCheckLTL(TestCase):
         self.assertIn("cycle", result)
 
     def test_F_q_holds_when_q_reachable(self):
-        """F q should hold when q is reachable from the initial state."""
         result, _ = self._run(
             [{"id": "s0", "props": [], "initial": True},
              {"id": "s1", "props": ["q"]}],
@@ -278,7 +306,6 @@ class TestCheckLTL(TestCase):
         self.assertEqual(result["result"], "satisfied")
 
     def test_F_q_violated_when_q_unreachable(self):
-        """F q should be violated when no state ever has q."""
         result, _ = self._run(
             [{"id": "s0", "props": ["p"], "initial": True}],
             [("s0", "s0")],
@@ -287,13 +314,11 @@ class TestCheckLTL(TestCase):
         self.assertEqual(result["result"], "violated")
 
     def test_unicode_formula_works(self):
-        """Unicode operators (¬, ∧, →) must be normalised before SPOT parsing."""
         result, _ = self._run(
             [{"id": "s0", "props": ["p", "q"], "initial": True}],
             [("s0", "s0")],
-            "G (p → F q)",   # uses Unicode →
+            "G (p → F q)",
         )
-        # With p & q both always true, G(p → F q) holds
         self.assertEqual(result["result"], "satisfied")
 
     def test_invalid_formula_raises_value_error(self):
@@ -305,18 +330,15 @@ class TestCheckLTL(TestCase):
             check_ltl(kripke, bdd_dict, "NOT VALID ### FORMULA")
 
     def test_counterexample_has_lasso_structure(self):
-        """Violated check must return non-empty prefix and/or cycle."""
         result, _ = self._run(
             [{"id": "s0", "props": [], "initial": True}],
             [("s0", "s0")],
             "F p",
         )
         self.assertEqual(result["result"], "violated")
-        # At least one of prefix or cycle must be non-empty
         self.assertTrue(len(result["prefix"]) + len(result["cycle"]) > 0)
 
     def test_mutual_exclusion_holds(self):
-        """Classic mutual exclusion: G ¬(c1 ∧ c2) should hold on a correct graph."""
         result, _ = self._run(
             [{"id": "n",  "props": [],         "initial": True},
              {"id": "c1", "props": ["c1"]},
@@ -327,7 +349,6 @@ class TestCheckLTL(TestCase):
         self.assertEqual(result["result"], "satisfied")
 
     def test_request_grant_holds(self):
-        """G (req → F grant) should hold on the request-grant graph."""
         result, _ = self._run(
             [{"id": "idle",  "props": [],          "initial": True},
              {"id": "req",   "props": ["req"]},
@@ -338,88 +359,145 @@ class TestCheckLTL(TestCase):
         self.assertEqual(result["result"], "satisfied")
 
 
-# ── 6. lasso_to_trace_steps ──────────────────────────────────────────────────
+# ── 6. analyze_lasso end-to-end (per-state classification) ───────────────────
 
 @unittest.skipUnless(SPOT_AVAILABLE, "SPOT not installed")
-class TestLassoToTraceSteps(TestCase):
+class TestAnalyzeLasso(TestCase):
 
-    def _full_check(self, nodes, edges, formula):
-        from .engine import check_ltl, cytoscape_to_kripke, lasso_to_trace_steps
+    def _analyze(self, nodes, edges, formula):
+        from .engine import check_ltl, cytoscape_to_kripke
         graph = _graph(nodes, edges)
         kripke, bdd_dict, id_map = cytoscape_to_kripke(graph)
         result = check_ltl(kripke, bdd_dict, formula)
-        self.assertEqual(result["result"], "violated")
-        return lasso_to_trace_steps(
+        self.assertEqual(result["result"], "violated", "expected a violation")
+        return analyze_lasso(
             result["prefix"], result["cycle"], formula, graph, id_map
         )
 
-    def test_steps_have_required_keys(self):
-        steps = self._full_check(
-            [{"id": "s0", "props": [], "initial": True}],
-            [("s0", "s0")],
-            "F p",
-        )
-        for step in steps:
-            for key in ("state", "props", "ok", "highlight", "reason", "cycle_back"):
-                self.assertIn(key, step)
+    def _status_by_state(self, out):
+        """Map each state id to the set of statuses it appears with."""
+        by_state = {}
+        for s in out["steps"]:
+            by_state.setdefault(s["state"], set()).add(s["status"])
+        return by_state
 
-    def test_prefix_steps_are_ok(self):
-        steps = self._full_check(
-            [{"id": "s0", "props": ["p"], "initial": True},
-             {"id": "s1", "props": []}],
-            [("s0", "s1"), ("s1", "s1")],
-            "G p",
-        )
-        prefix_steps = [s for s in steps if s["ok"]]
-        cycle_steps  = [s for s in steps if not s["ok"]]
-        # There must be at least one cycle step for a violation
-        self.assertTrue(len(cycle_steps) > 0)
-        # Prefix steps all have ok=True
-        self.assertTrue(all(s["ok"] for s in prefix_steps))
-
-    def test_exactly_one_cycle_back(self):
-        """The last cycle step must be marked cycle_back=True."""
-        steps = self._full_check(
-            [{"id": "s0", "props": [], "initial": True}],
-            [("s0", "s0")],
-            "F p",
-        )
-        cycle_back_steps = [s for s in steps if s["cycle_back"]]
-        self.assertEqual(len(cycle_back_steps), 1)
-        # Must be the last step
-        self.assertTrue(steps[-1]["cycle_back"])
-
-    def test_state_names_match_graph_node_ids(self):
-        steps = self._full_check(
-            [{"id": "idle",  "props": [], "initial": True},
-             {"id": "active","props": ["a"]}],
-            [("idle", "active"), ("active", "idle")],
-            "G ¬a",
-        )
-        valid_ids = {"idle", "active"}
-        for step in steps:
-            self.assertIn(step["state"], valid_ids)
-
-    def test_props_match_node_props(self):
-        steps = self._full_check(
+    # ── G p : only the state missing p is the culprit ──────────────────────────
+    def test_G_p_marks_only_offending_state(self):
+        out = self._analyze(
             [{"id": "s0", "props": ["p"], "initial": True},
              {"id": "s1", "props": []}],
             [("s0", "s1"), ("s1", "s0")],
             "G p",
         )
-        for step in steps:
-            if step["state"] == "s0":
-                self.assertIn("p", step["props"])
-            elif step["state"] == "s1":
-                self.assertEqual(step["props"], [])
+        by_state = self._status_by_state(out)
+        self.assertEqual(out["violation_kind"], KIND_SAFETY)
+        self.assertIn(STATUS_VIOLATING, by_state.get("s1", set()))
+        self.assertNotIn(STATUS_VIOLATING, by_state.get("s0", set()))
 
-    def test_reason_is_nonempty_string(self):
-        steps = self._full_check(
+    # ── G (p -> F q) : vacuous where p is false; not every state is wrong ──────
+    def test_response_property_does_not_mark_every_state(self):
+        # q is never reachable, so the p-state breaks the formula while the
+        # p-free states carry no obligation (vacuous) — not all states are wrong.
+        out = self._analyze(
+            [{"id": "s0", "props": ["p"], "initial": True},
+             {"id": "s1", "props": []},
+             {"id": "s2", "props": []}],
+            [("s0", "s1"), ("s1", "s2"), ("s2", "s0")],
+            "G (p → F q)",
+        )
+        statuses = [s["status"] for s in out["steps"]]
+        # The whole cycle must NOT be uniformly violating.
+        self.assertFalse(all(s == STATUS_VIOLATING for s in statuses))
+        by_state = self._status_by_state(out)
+        # States without p are vacuous (the implication does not apply there).
+        self.assertNotIn(STATUS_VIOLATING, by_state.get("s1", set()))
+        self.assertNotIn(STATUS_VIOLATING, by_state.get("s2", set()))
+        # The p-state is the genuine culprit.
+        self.assertIn(STATUS_VIOLATING, by_state.get("s0", set()))
+
+    def test_response_property_marks_p_state_violating(self):
+        # q is never reachable → the p-state is where the formula breaks.
+        out = self._analyze(
+            [{"id": "s0", "props": ["p"], "initial": True},
+             {"id": "s1", "props": []}],
+            [("s0", "s1"), ("s1", "s0")],
+            "G (p → F q)",
+        )
+        by_state = self._status_by_state(out)
+        self.assertIn(STATUS_VIOLATING, by_state.get("s0", set()))
+        self.assertNotIn(STATUS_VIOLATING, by_state.get("s1", set()))
+
+    # ── F q : liveness — no single state is wrong ──────────────────────────────
+    def test_F_q_is_liveness_with_no_violating_state(self):
+        out = self._analyze(
+            [{"id": "s0", "props": [], "initial": True}],
+            [("s0", "s0")],
+            "F q",
+        )
+        self.assertEqual(out["violation_kind"], KIND_LIVENESS)
+        statuses = {s["status"] for s in out["steps"]}
+        self.assertNotIn(STATUS_VIOLATING, statuses)
+        self.assertIn(STATUS_PENDING, statuses)
+
+    # ── p U q : safety when p breaks before q ──────────────────────────────────
+    def test_until_marks_state_where_guard_breaks(self):
+        out = self._analyze(
+            [{"id": "s0", "props": ["p"], "initial": True},
+             {"id": "s1", "props": []}],
+            [("s0", "s1"), ("s1", "s0")],
+            "p U q",
+        )
+        by_state = self._status_by_state(out)
+        self.assertIn(STATUS_PENDING, by_state.get("s0", set()))
+        self.assertIn(STATUS_VIOLATING, by_state.get("s1", set()))
+
+    # ── X q : only the next state is constrained ───────────────────────────────
+    def test_next_marks_only_second_state(self):
+        out = self._analyze(
+            [{"id": "s0", "props": [], "initial": True},
+             {"id": "s1", "props": []}],
+            [("s0", "s1"), ("s1", "s0")],
+            "X q",
+        )
+        steps = out["steps"]
+        self.assertEqual(steps[0]["status"], STATUS_PENDING)
+        self.assertEqual(steps[1]["status"], STATUS_VIOLATING)
+        # Any state beyond the next one is unconstrained (vacuous).
+        for s in steps[2:]:
+            self.assertEqual(s["status"], STATUS_VACUOUS)
+
+    # ── Schema guarantees ──────────────────────────────────────────────────────
+    def test_steps_have_required_keys(self):
+        out = self._analyze(
             [{"id": "s0", "props": [], "initial": True}],
             [("s0", "s0")],
             "F p",
         )
-        for step in steps:
+        for step in out["steps"]:
+            for key in ("state", "props", "status", "highlight",
+                        "reason", "in_cycle", "cycle_back"):
+                self.assertIn(key, step)
+            self.assertIn(step["status"],
+                          {STATUS_SATISFIED, STATUS_VACUOUS,
+                           STATUS_PENDING, STATUS_VIOLATING})
+
+    def test_exactly_one_cycle_back(self):
+        out = self._analyze(
+            [{"id": "s0", "props": [], "initial": True}],
+            [("s0", "s0")],
+            "F p",
+        )
+        cycle_back = [s for s in out["steps"] if s["cycle_back"]]
+        self.assertEqual(len(cycle_back), 1)
+        self.assertTrue(out["steps"][-1]["cycle_back"])
+
+    def test_reason_is_nonempty(self):
+        out = self._analyze(
+            [{"id": "s0", "props": [], "initial": True}],
+            [("s0", "s0")],
+            "F p",
+        )
+        for step in out["steps"]:
             self.assertIsInstance(step["reason"], str)
             self.assertTrue(len(step["reason"]) > 0)
 
@@ -469,53 +547,146 @@ class TestVerifyLTLView(TestCase):
         resp = self._post("G p", graph=graph)
         self.assertIn(b"Multiple initial", resp.content)
 
-    @patch("apps.checker.views.cytoscape_to_kripke")
-    @patch("apps.checker.views.check_ltl")
-    def test_satisfied_result_renders_holds(self, mock_check, mock_convert):
-        mock_convert.return_value = (MagicMock(), MagicMock(), {})
-        mock_check.return_value = {"result": "satisfied"}
+    @patch("apps.checker.views.run_ltl_check")
+    def test_valid_request_enqueues_task_and_returns_pending(self, mock_task):
+        mock_async = MagicMock()
+        mock_async.id = "test-task-id-123"
+        mock_task.delay.return_value = mock_async
         resp = self._post("G p")
+        self.assertEqual(resp.status_code, 200)
+        mock_task.delay.assert_called_once()
+        self.assertIn(b"Running verification", resp.content)
+
+
+# ── 8. View: verify_ltl_status ───────────────────────────────────────────────
+
+class TestVerifyLTLStatusView(TestCase):
+    """Tests for the async polling status endpoint."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.graph = _graph(
+            [{"id": "s0", "props": ["p"], "initial": True},
+             {"id": "s1", "props": []}],
+            [("s0", "s1"), ("s1", "s0")],
+        )
+
+    def _get(self, task_id):
+        from .views import verify_ltl_status
+        req = self.factory.get(f"/sandbox/verify/status/{task_id}/")
+        req.supabase_user = MagicMock()
+        req.profile = MagicMock()
+        return verify_ltl_status(req, task_id)
+
+    @patch("apps.checker.views.AsyncResult")
+    def test_pending_state_returns_pending_fragment(self, mock_ar):
+        mock_ar.return_value.state = "PENDING"
+        resp = self._get("some-task-id")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Running verification", resp.content)
+
+    @patch("apps.checker.views.AsyncResult")
+    def test_started_state_returns_pending_fragment(self, mock_ar):
+        mock_ar.return_value.state = "STARTED"
+        resp = self._get("some-task-id")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Running verification", resp.content)
+
+    @patch("apps.checker.views.AsyncResult")
+    def test_success_satisfied_renders_holds(self, mock_ar):
+        mock_ar.return_value.state = "SUCCESS"
+        mock_ar.return_value.result = {
+            "result": "satisfied",
+            "formula": "G p",
+            "kripke_graph": self.graph,
+        }
+        resp = self._get("some-task-id")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"holds", resp.content)
 
-    @patch("apps.checker.views.lasso_to_trace_steps")
-    @patch("apps.checker.views.cytoscape_to_kripke")
-    @patch("apps.checker.views.check_ltl")
-    def test_violated_result_renders_violated(self, mock_check, mock_convert, mock_lasso):
-        mock_convert.return_value = (MagicMock(), MagicMock(), {0: "s0", 1: "s1"})
-        mock_check.return_value = {
+    @patch("apps.checker.views.AsyncResult")
+    def test_success_violated_renders_violated(self, mock_ar):
+        mock_ar.return_value.state = "SUCCESS"
+        mock_ar.return_value.result = {
             "result": "violated",
-            "prefix": [{"spot_id": 0}],
-            "cycle":  [{"spot_id": 1}],
+            "formula": "G p",
+            "kripke_graph": self.graph,
+            "violation_kind": "safety",
+            "violating_subformula": "p",
+            "trace": [
+                {"state": "s0", "props": ["p"], "status": "satisfied",
+                 "highlight": "p", "reason": "ok here",
+                 "in_cycle": False, "cycle_back": False},
+                {"state": "s1", "props": [], "status": "violating",
+                 "highlight": "p", "reason": "fails here",
+                 "in_cycle": True, "cycle_back": True},
+            ],
         }
-        mock_lasso.return_value = [
-            {"state": "s0", "props": ["p"], "ok": True,
-             "highlight": "p", "reason": "ok here", "cycle_back": False},
-            {"state": "s1", "props": [], "ok": False,
-             "highlight": "G p", "reason": "fails here", "cycle_back": True},
-        ]
-        resp = self._post("G p")
+        resp = self._get("some-task-id")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"violated", resp.content)
+        # The violating state must be threaded into the View Counterexample form.
+        self.assertIn(b"s1", resp.content)
 
-    @patch("apps.checker.views.cytoscape_to_kripke")
-    @patch("apps.checker.views.check_ltl")
-    def test_invalid_formula_returns_error(self, mock_check, mock_convert):
-        mock_convert.return_value = (MagicMock(), MagicMock(), {})
-        mock_check.side_effect = ValueError("Invalid LTL formula: unexpected token")
-        resp = self._post("INVALID @@@ FORMULA")
-        self.assertIn(b"Invalid LTL formula", resp.content)
-
-    @patch("apps.checker.views.cytoscape_to_kripke")
-    @patch("apps.checker.views.check_ltl")
-    def test_spot_runtime_error_returns_error(self, mock_check, mock_convert):
-        mock_convert.return_value = (MagicMock(), MagicMock(), {})
-        mock_check.side_effect = RuntimeError("SPOT not installed")
-        resp = self._post("G p")
+    @patch("apps.checker.views.AsyncResult")
+    def test_failure_renders_error(self, mock_ar):
+        mock_ar.return_value.state = "FAILURE"
+        mock_ar.return_value.result = ValueError("Invalid formula")
+        resp = self._get("some-task-id")
+        self.assertEqual(resp.status_code, 200)
         self.assertIn(b"error", resp.content)
 
 
-# ── 8. View: counterexample ──────────────────────────────────────────────────
+# ── 9. View: _build_result_context (status-driven derivations) ───────────────
+
+class TestBuildResultContext(TestCase):
+
+    def _ctx(self, engine_result, graph):
+        from .views import _build_result_context
+        return _build_result_context(engine_result, json.dumps(graph))
+
+    def test_violating_states_taken_from_status(self):
+        graph = _graph(
+            [{"id": "s0", "props": ["p"], "initial": True},
+             {"id": "s1", "props": []}],
+            [("s0", "s1"), ("s1", "s0")],
+        )
+        engine_result = {
+            "result": "violated",
+            "formula": "G p",
+            "violation_kind": "safety",
+            "violating_subformula": "p",
+            "trace": [
+                {"state": "s0", "props": ["p"], "status": "satisfied",
+                 "highlight": "p", "reason": "", "in_cycle": False, "cycle_back": False},
+                {"state": "s1", "props": [], "status": "violating",
+                 "highlight": "p", "reason": "", "in_cycle": True, "cycle_back": True},
+            ],
+        }
+        ctx = self._ctx(engine_result, graph)
+        self.assertEqual(ctx["status"], "violated")
+        self.assertEqual(json.loads(ctx["violating_states_json"]), ["s1"])
+        self.assertEqual(ctx["violation_kind"], "safety")
+        self.assertEqual(ctx["violating_subformula"], "p")
+
+    def test_liveness_has_no_violating_states(self):
+        graph = _graph([{"id": "s0", "props": [], "initial": True}], [("s0", "s0")])
+        engine_result = {
+            "result": "violated",
+            "formula": "F q",
+            "violation_kind": "liveness",
+            "violating_subformula": "q",
+            "trace": [
+                {"state": "s0", "props": [], "status": "pending",
+                 "highlight": "q", "reason": "", "in_cycle": True, "cycle_back": True},
+            ],
+        }
+        ctx = self._ctx(engine_result, graph)
+        self.assertEqual(json.loads(ctx["violating_states_json"]), [])
+        self.assertEqual(ctx["violation_kind"], "liveness")
+
+
+# ── 10. View: counterexample ─────────────────────────────────────────────────
 
 class TestCounterexampleView(TestCase):
 
@@ -528,18 +699,19 @@ class TestCounterexampleView(TestCase):
 
     def test_renders_with_valid_trace(self):
         trace = json.dumps([
-            {"state": "s0", "props": ["p"], "ok": True,
-             "highlight": "p", "reason": "ok", "cycle_back": False},
-            {"state": "s1", "props": [], "ok": False,
-             "highlight": "G p", "reason": "fail", "cycle_back": True},
+            {"state": "s0", "props": ["p"], "status": "satisfied",
+             "highlight": "p", "reason": "ok", "in_cycle": False, "cycle_back": False},
+            {"state": "s1", "props": [], "status": "violating",
+             "highlight": "p", "reason": "fail", "in_cycle": True, "cycle_back": True},
         ])
         resp = self._post({
             "formula": "G p",
             "graph_data": json.dumps({"elements": {"nodes": [], "edges": []}}),
             "trace_json": trace,
             "violating_states_json": '["s1"]',
-            "violating_edges_json": '[["s0","s1"]]',
+            "violating_edges_json": "[]",
             "violating_subformula": "p",
+            "violation_kind": "safety",
         })
         self.assertEqual(resp.status_code, 200)
 
@@ -551,6 +723,7 @@ class TestCounterexampleView(TestCase):
             "violating_states_json": "[]",
             "violating_edges_json": "[]",
             "violating_subformula": "",
+            "violation_kind": "safety",
         })
         self.assertEqual(resp.status_code, 200)
 
@@ -562,5 +735,6 @@ class TestCounterexampleView(TestCase):
             "violating_states_json": "[]",
             "violating_edges_json": "[]",
             "violating_subformula": "",
+            "violation_kind": "safety",
         })
         self.assertEqual(resp.status_code, 200)

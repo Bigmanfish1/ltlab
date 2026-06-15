@@ -135,6 +135,18 @@
       <div class="p-5 border-b border-[#1F1F1F]">
         <div class="font-mono text-[11px] text-[#6B6B6B] tracking-[0.12em] mb-3">FORMULA</div>
         <div id="sidebar-formula" class="font-mono text-[13px] text-[#FAFAFA] leading-relaxed">{{ formula }}</div>
+
+        <!-- Violation type explainer (filled by JS) -->
+        <div id="violation-kind-note"
+          class="mt-3 font-mono text-[11px] leading-relaxed border-l-2 pl-2.5 hidden"></div>
+
+        <!-- Status legend -->
+        <div class="mt-4 grid grid-cols-2 gap-x-3 gap-y-1.5 font-mono text-[10px]">
+          <div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full" style="background:#AEFC00"></span><span class="text-[#6B6B6B]">satisfied</span></div>
+          <div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full" style="background:#FF4D00"></span><span class="text-[#6B6B6B]">violating</span></div>
+          <div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full" style="background:#E0A030"></span><span class="text-[#6B6B6B]">pending</span></div>
+          <div class="flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full" style="background:#6B6B6B"></span><span class="text-[#6B6B6B]">vacuous</span></div>
+        </div>
       </div>
 
       <!-- Trace section -->
@@ -167,20 +179,32 @@
               </div>
             </div>
 
-            <!-- OK / violation icon -->
+            <!-- Per-state status icon -->
             <div class="mt-0.5 shrink-0">
-              {% if step.ok %}
-              <!-- check -->
+              {% if step.status == "satisfied" %}
+              <!-- check (green) -->
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                 stroke="#AEFC00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
-              {% else %}
-              <!-- x -->
+              {% elif step.status == "violating" %}
+              <!-- x (red) -->
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                 stroke="#FF4D00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"/>
                 <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+              {% elif step.status == "pending" %}
+              <!-- clock (amber) — obligation still open -->
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="#E0A030" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/>
+              </svg>
+              {% else %}
+              <!-- dash (grey) — obligation does not apply / vacuous -->
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="#6B6B6B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
               {% endif %}
             </div>
@@ -249,6 +273,16 @@ const GRAPH_DATA          = {{ graph_json|safe }};
 const VIOLATING_EDGES     = {{ violating_edges_json|safe }};
 const FORMULA             = {{ formula_json|safe }};
 const VIOLATING_SUBFORMULA = {{ violating_subformula_json|safe }};
+const VIOLATION_KIND      = {{ violation_kind_json|safe }};
+
+// Per-status presentation (colours + labels) shared across the page.
+const STATUS_INFO = {
+  satisfied: { color: '#AEFC00', bg: '#0D1F0D', border: '#2A4A2A', label: 'SATISFIED' },
+  violating: { color: '#FF4D00', bg: '#1F0D0D', border: '#4A2020', label: 'VIOLATED'  },
+  pending:   { color: '#E0A030', bg: '#1F1808', border: '#4A3A1A', label: 'PENDING'   },
+  vacuous:   { color: '#6B6B6B', bg: '#141414', border: '#2A2A2A', label: 'VACUOUS'   },
+};
+function statusInfo(s) { return STATUS_INFO[s] || STATUS_INFO.vacuous; }
 
 // ── Cytoscape style ────────────────────────────────────────────────────────────
 // All elements start at very low opacity (dim non-trace).
@@ -330,17 +364,42 @@ const CY_STYLE = [
       'target-arrow-color':  '#6B6B6B',
     }
   },
-  // Active step: the current trace position
+  // Persistent culprit marker — the state(s) that actually break the formula,
+  // shown even in OVERVIEW so the eye lands on them immediately.
+  {
+    selector: 'node.culprit',
+    style: {
+      'opacity':      0.9,
+      'border-color': '#FF4D00',
+      'border-width': 3,
+      'color':        '#FFC9B0',
+    }
+  },
+  // For liveness violations the whole loop is the culprit (no single bad state).
+  {
+    selector: 'edge.loop-culprit',
+    style: {
+      'opacity':            0.7,
+      'line-color':         '#E0A030',
+      'target-arrow-color': '#E0A030',
+      'line-style':         'dashed',
+    }
+  },
+  // Active step: the current trace position. Border colour is set per status
+  // in JS (st-* classes below) so the user sees *why* the state is coloured.
   {
     selector: 'node.active-step',
     style: {
       'opacity':          1,
-      'border-color':     '#FF4D00',
       'border-width':     4,
-      'background-color': '#2A0800',
+      'background-color': '#1A1A1A',
       'color':            '#FAFAFA',
     }
   },
+  { selector: 'node.active-step.st-satisfied', style: { 'border-color': '#AEFC00', 'background-color': '#0D1F0D' } },
+  { selector: 'node.active-step.st-violating', style: { 'border-color': '#FF4D00', 'background-color': '#2A0800' } },
+  { selector: 'node.active-step.st-pending',   style: { 'border-color': '#E0A030', 'background-color': '#241B06' } },
+  { selector: 'node.active-step.st-vacuous',   style: { 'border-color': '#6B6B6B', 'background-color': '#161616' } },
   {
     selector: 'edge.active-step',
     style: {
@@ -394,9 +453,26 @@ for (let i = 1; i < TRACE.length; i++) {
   traceEdgePairs.push([TRACE[i - 1].state, TRACE[i].state]);
 }
 
+// States that genuinely break the formula (safety-style culprits)
+const culpritNodeIds = [...new Set(
+  TRACE.filter(t => t.status === 'violating').map(t => t.state)
+)];
+
+// The loop edges — used to mark the whole cycle as the culprit for liveness
+// violations, where no single state is individually "wrong".
+const cycleSteps = TRACE.filter(t => t.in_cycle);
+const loopEdgePairs = [];
+for (let i = 1; i < cycleSteps.length; i++) {
+  loopEdgePairs.push([cycleSteps[i - 1].state, cycleSteps[i].state]);
+}
+// Closing edge: last cycle step back to the first cycle step
+if (cycleSteps.length) {
+  loopEdgePairs.push([cycleSteps[cycleSteps.length - 1].state, cycleSteps[0].state]);
+}
+
 // ── Apply the "overview" class state (all trace elements dimly visible) ─────────
 function applyOverview() {
-  cy.elements().removeClass('active-step visited on-trace');
+  cy.elements().removeClass('active-step visited on-trace st-satisfied st-violating st-pending st-vacuous');
   traceNodeIds.forEach(id => {
     const n = cy.$('#' + id);
     if (n.length) n.addClass('on-trace');
@@ -405,6 +481,23 @@ function applyOverview() {
     const e = getEdge(s, t);
     if (e) e.addClass('on-trace');
   });
+  applyCulpritMarkers();
+}
+
+// Persistent markers shown in every view so the problem area is always visible.
+function applyCulpritMarkers() {
+  cy.elements().removeClass('culprit loop-culprit');
+  if (VIOLATION_KIND === 'liveness') {
+    loopEdgePairs.forEach(([s, t]) => {
+      const e = getEdge(s, t);
+      if (e) e.addClass('loop-culprit');
+    });
+  } else {
+    culpritNodeIds.forEach(id => {
+      const n = cy.$('#' + id);
+      if (n.length) n.addClass('culprit');
+    });
+  }
 }
 
 // ── Step state ─────────────────────────────────────────────────────────────────
@@ -414,7 +507,7 @@ function goTo(n) {
   currentStep = Math.max(-1, Math.min(TRACE.length - 1, n));
 
   // Reset all classes then re-apply from scratch
-  cy.elements().removeClass('active-step visited on-trace');
+  cy.elements().removeClass('active-step visited on-trace st-satisfied st-violating st-pending st-vacuous');
 
   // All trace elements start at on-trace opacity
   traceNodeIds.forEach(id => {
@@ -425,6 +518,7 @@ function goTo(n) {
     const e = getEdge(s, t);
     if (e) e.addClass('on-trace');
   });
+  applyCulpritMarkers();
 
   if (currentStep === -1) {
     document.getElementById('step-indicator').textContent = 'OVERVIEW';
@@ -439,10 +533,11 @@ function goTo(n) {
       }
     }
 
-    // Mark currentStep as active
+    // Mark currentStep as active, coloured by its status
     const activeNode = cy.$('#' + TRACE[currentStep].state);
     if (activeNode.length) {
-      activeNode.removeClass('on-trace visited').addClass('active-step');
+      activeNode.removeClass('on-trace visited')
+                .addClass('active-step st-' + (TRACE[currentStep].status || 'vacuous'));
     }
     if (currentStep > 0) {
       const activeEdge = getEdge(TRACE[currentStep - 1].state, TRACE[currentStep].state);
@@ -495,31 +590,23 @@ function updateStatePanel() {
   }
 
   const step = TRACE[currentStep];
-  const ok   = step.ok;
+  const info = statusInfo(step.status);
 
   // Title
   document.getElementById('state-panel-name').textContent = step.state;
 
-  // Badge
+  // Badge reflects the precise per-state status
   const badge = document.getElementById('state-panel-badge');
-  if (ok) {
-    badge.textContent        = 'SATISFIED';
-    badge.style.color        = '#AEFC00';
-    badge.style.background   = '#0D1F0D';
-    badge.style.border       = '1px solid #2A4A2A';
-    document.getElementById('state-panel-title').style.borderLeftColor = '';
-  } else {
-    badge.textContent        = 'VIOLATED';
-    badge.style.color        = '#FF4D00';
-    badge.style.background   = '#1F0D0D';
-    badge.style.border       = '1px solid #4A2020';
-  }
+  badge.textContent      = info.label;
+  badge.style.color      = info.color;
+  badge.style.background = info.bg;
+  badge.style.border     = '1px solid ' + info.border;
 
   // Left accent border on title bar reflects status
   const titleBar = document.getElementById('state-panel-title');
   titleBar.style.borderLeftWidth = '3px';
   titleBar.style.borderLeftStyle = 'solid';
-  titleBar.style.borderLeftColor = ok ? '#AEFC00' : '#FF4D00';
+  titleBar.style.borderLeftColor = info.color;
 
   // Props
   const propsEl = document.getElementById('state-panel-props');
@@ -538,10 +625,10 @@ function updateStatePanel() {
     propsEl.appendChild(span);
   }
 
-  // Checking — highlight the per-step active token (green if ok, red if violated)
+  // Checking — highlight the per-step active token, coloured by status
   const checkEl   = document.getElementById('state-panel-checking');
   const highlight = step.highlight || '';
-  const hlColor   = ok ? '#AEFC00' : '#FF4D00';
+  const hlColor   = info.color;
   if (highlight && FORMULA.includes(highlight)) {
     const idx    = FORMULA.indexOf(highlight);
     const before = escHtml(FORMULA.slice(0, idx));
@@ -557,7 +644,9 @@ function updateStatePanel() {
 
   // Reason / explanation
   document.getElementById('state-panel-reason').textContent =
-    step.reason || (ok ? 'Condition satisfied at this state.' : 'Condition violated at this state.');
+    step.reason || (step.status === 'violating'
+      ? 'Condition violated at this state.'
+      : 'Condition does not break at this state.');
 
   // Show with animation
   panel.style.opacity   = '1';
@@ -591,7 +680,7 @@ function syncFormulaDisplay() {
     renderFormulaHighlighted('sidebar-formula', VIOLATING_SUBFORMULA, '#6B3A2A');
   } else {
     const step  = TRACE[currentStep];
-    const color = step.ok ? '#AEFC00' : '#FF4D00';
+    const color = statusInfo(step.status).color;
     renderFormulaHighlighted('header-formula',  step.highlight || '', color);
     renderFormulaHighlighted('sidebar-formula', step.highlight || '', color);
   }
@@ -609,7 +698,28 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
+// ── Violation-type explainer ────────────────────────────────────────────────────
+function renderViolationKindNote() {
+  const note = document.getElementById('violation-kind-note');
+  if (!note) return;
+  if (VIOLATION_KIND === 'liveness') {
+    note.style.borderLeftColor = '#E0A030';
+    note.style.color = '#C9A86A';
+    note.innerHTML =
+      '<span class="text-[#E0A030]">Liveness violation.</span> No single state is ' +
+      'wrong — the loop repeats forever without ever fulfilling the obligation.';
+  } else {
+    note.style.borderLeftColor = '#FF4D00';
+    note.style.color = '#C98F7A';
+    note.innerHTML =
+      '<span class="text-[#FF4D00]">Safety violation.</span> The highlighted ' +
+      'state(s) are where the formula concretely breaks.';
+  }
+  note.classList.remove('hidden');
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────────
+renderViolationKindNote();
 applyOverview();
 updateButtons();
 updateStatePanel();

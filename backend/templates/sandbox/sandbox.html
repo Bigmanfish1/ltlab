@@ -36,6 +36,8 @@
   }
 </script>
 <style>
+  html, body, main { height: 100%; overflow: hidden; }
+  main { display: flex; flex-direction: column; }
   body { background: #0A0A0A; }
   #cy { width: 100%; height: 100%; }
   ::-webkit-scrollbar { width: 4px; }
@@ -46,7 +48,7 @@
 
 {% block content %}
 {% include "header.html" %}
-<div class="flex flex-col" style="height: 100vh;">
+<div class="flex flex-col flex-1 min-h-0">
 
   <!-- ── Top bar ───────────────────────────────────────────────────── -->
   <header class="h-14 bg-[#111111] border-b border-[#1F1F1F] flex items-center px-4 gap-3 shrink-0 z-10">
@@ -181,6 +183,20 @@
         No initial state — select a node and press&nbsp;<span class="text-[#FAFAFA]">I</span>
       </div>
 
+      <!-- Node hover tooltip -->
+      <div id="node-tooltip"
+        class="absolute pointer-events-none select-none hidden z-50"
+        style="max-width: 200px;">
+        <div class="bg-[#111111] border border-[#2A2A2A] rounded-md overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.6)]">
+          <div id="node-tooltip-name"
+            class="px-3 py-1.5 font-mono text-[12px] font-semibold text-[#FAFAFA] border-b border-[#1F1F1F] bg-[#1A1A1A]">
+          </div>
+          <div id="node-tooltip-props"
+            class="px-3 py-1.5 font-mono text-[11px] text-[#6B6B6B] leading-relaxed break-all">
+          </div>
+        </div>
+      </div>
+
       <!-- Result drawer (HTMX target) -->
       <div id="result-drawer"
         class="absolute bottom-0 left-0 right-0 bg-[#111111] border-t border-[#1F1F1F] transition-all"
@@ -196,7 +212,7 @@
         <div class="space-y-3">
 
           <!-- Mutual Exclusion -->
-          <div class="border border-[#1F1F1F] hover:border-[#2A2A2A] p-3 rounded transition-colors">
+          <div onclick="loadExample('mutex')" class="border border-[#1F1F1F] hover:border-[#2A2A2A] p-3 rounded transition-colors cursor-pointer">
             <svg viewBox="0 0 100 60" class="w-full h-12">
               <defs>
                 <marker id="arr1" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
@@ -213,17 +229,14 @@
               <text x="55" y="23" text-anchor="middle" fill="#6B6B6B" font-size="5" font-family="monospace">s1</text>
               <text x="80" y="43" text-anchor="middle" fill="#6B6B6B" font-size="5" font-family="monospace">s2</text>
             </svg>
-            <div class="flex items-center justify-between mt-2">
-              <div>
-                <div class="text-[13px] text-[#FAFAFA]">Mutual Exclusion</div>
-                <div class="text-[11px] text-[#6B6B6B] font-mono mt-0.5">G ¬(c1 ∧ c2)</div>
-              </div>
-              <button onclick="loadExample('mutex')" class="text-[12px] text-[#FF4D00] hover:underline whitespace-nowrap ml-2">Load →</button>
+            <div class="mt-2">
+              <div class="text-[13px] text-[#FAFAFA]">Mutual Exclusion</div>
+              <div class="text-[11px] text-[#6B6B6B] font-mono mt-0.5">G ¬(c1 ∧ c2)</div>
             </div>
           </div>
 
           <!-- Request–Grant -->
-          <div class="border border-[#1F1F1F] hover:border-[#2A2A2A] p-3 rounded transition-colors">
+          <div onclick="loadExample('reqgrant')" class="border border-[#1F1F1F] hover:border-[#2A2A2A] p-3 rounded transition-colors cursor-pointer">
             <svg viewBox="0 0 100 60" class="w-full h-12">
               <defs>
                 <marker id="arr2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
@@ -240,17 +253,14 @@
               <text x="53" y="10" text-anchor="middle" fill="#6B6B6B" font-size="5" font-family="monospace">req</text>
               <text x="80" y="47" text-anchor="middle" fill="#6B6B6B" font-size="5" font-family="monospace">grant</text>
             </svg>
-            <div class="flex items-center justify-between mt-2">
-              <div>
-                <div class="text-[13px] text-[#FAFAFA]">Request–Grant</div>
-                <div class="text-[11px] text-[#6B6B6B] font-mono mt-0.5">G (req → F grant)</div>
-              </div>
-              <button onclick="loadExample('reqgrant')" class="text-[12px] text-[#FF4D00] hover:underline whitespace-nowrap ml-2">Load →</button>
+            <div class="mt-2">
+              <div class="text-[13px] text-[#FAFAFA]">Request–Grant</div>
+              <div class="text-[11px] text-[#6B6B6B] font-mono mt-0.5">G (req → F grant)</div>
             </div>
           </div>
 
           <!-- Traffic Light -->
-          <div class="border border-[#1F1F1F] hover:border-[#2A2A2A] p-3 rounded transition-colors">
+          <div onclick="loadExample('traffic')" class="border border-[#1F1F1F] hover:border-[#2A2A2A] p-3 rounded transition-colors cursor-pointer">
             <svg viewBox="0 0 100 60" class="w-full h-12">
               <defs>
                 <marker id="arr3" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
@@ -269,12 +279,9 @@
               <text x="54" y="10" text-anchor="middle" fill="#6B6B6B" font-size="4.5" font-family="monospace">green</text>
               <text x="80" y="52" text-anchor="middle" fill="#6B6B6B" font-size="4.5" font-family="monospace">amber</text>
             </svg>
-            <div class="flex items-center justify-between mt-2">
-              <div>
-                <div class="text-[13px] text-[#FAFAFA]">Traffic Light</div>
-                <div class="text-[11px] text-[#6B6B6B] font-mono mt-0.5">G F green</div>
-              </div>
-              <button onclick="loadExample('traffic')" class="text-[12px] text-[#FF4D00] hover:underline whitespace-nowrap ml-2">Load →</button>
+            <div class="mt-2">
+              <div class="text-[13px] text-[#FAFAFA]">Traffic Light</div>
+              <div class="text-[11px] text-[#6B6B6B] font-mono mt-0.5">G F green</div>
             </div>
           </div>
 
@@ -310,15 +317,15 @@ const CY_STYLE = [
       'background-color': '#0A0A0A',
       'border-color': '#FAFAFA',
       'border-width': 2,
-      'label': 'data(label)',
+      'label': 'data(name)',
       'color': '#FAFAFA',
       'font-family': 'monospace',
       'font-size': 11,
       'text-valign': 'center',
       'text-halign': 'center',
-      'text-wrap': 'wrap',
-      'width': 44,
-      'height': 44,
+      'text-wrap': 'none',
+      'width': 36,
+      'height': 36,
     }
   },
   {
@@ -705,6 +712,7 @@ function loadExample(name) {
   refreshAllInitialArrows();
   updateInitialHint();
   syncGraphData();
+  cy.fit(cy.elements('[!phantom]'), 80);
 }
 
 // ── LTL operator insertion ────────────────────────────────────────────────────
@@ -867,6 +875,8 @@ const cy = cytoscape({
   boxSelectionEnabled: true,
 });
 
+cy.ready(() => cy.fit(cy.elements('[!phantom]'), 80));
+
 // ── Node tap handler ──────────────────────────────────────────────────────────
 cy.on('tap', 'node', function(evt) {
   const node = evt.target;
@@ -981,6 +991,51 @@ cy.on('dragfree', 'node', function(evt) {
     refreshInitialArrow(node);
   }
   syncGraphData();
+});
+
+// ── Node hover tooltip ────────────────────────────────────────────────────────
+const nodeTooltip     = document.getElementById('node-tooltip');
+const tooltipName     = document.getElementById('node-tooltip-name');
+const tooltipProps    = document.getElementById('node-tooltip-props');
+
+cy.on('mouseover', 'node', function(evt) {
+  const node = evt.target;
+  if (node.data('phantom')) return;
+
+  const name  = node.data('name') || node.id();
+  const props = node.data('props') || [];
+  const initial = node.data('initial') ? ' · initial' : '';
+
+  tooltipName.textContent  = name + initial;
+  tooltipProps.textContent = props.length ? `{ ${props.join(', ')} }` : '∅  (no propositions)';
+
+  // Position above the node, centred on it — calculated once and fixed
+  nodeTooltip.classList.remove('hidden');
+
+  const rp      = node.renderedPosition();
+  const nodeR   = (node.renderedWidth() / 2) + 4;
+  const tipW    = nodeTooltip.offsetWidth;
+  const tipH    = nodeTooltip.offsetHeight;
+  const canvasW = document.getElementById('cy').offsetWidth;
+
+  let left = rp.x - tipW / 2;
+  let top  = rp.y - nodeR - tipH;
+
+  // Clamp horizontally
+  left = Math.max(8, Math.min(left, canvasW - tipW - 8));
+  // Flip below the node if not enough space above
+  if (top < 8) top = rp.y + nodeR + 4;
+
+  nodeTooltip.style.left = left + 'px';
+  nodeTooltip.style.top  = top  + 'px';
+});
+
+cy.on('mouseout', 'node', function() {
+  nodeTooltip.classList.add('hidden');
+});
+
+cy.on('tap', 'node', function() {
+  nodeTooltip.classList.add('hidden');
 });
 
 // ── Clean up phantom node when its host node is deleted ──────────────────────
