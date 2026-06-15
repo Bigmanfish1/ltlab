@@ -1,26 +1,13 @@
 import json
 
+from celery.result import AsyncResult
 from django.shortcuts import render
-from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET, require_POST
 
-from .engine import check_ltl, cytoscape_to_kripke, lasso_to_trace_steps
 from apps.accounts.middleware import supabase_login_required
 
-
-def _stub_highlight(ok: bool, props: list, violating_subformula: str, formula: str) -> str:
-    """Return the formula token to highlight at this trace step.
-
-    ok steps  → the first prop from this state that appears in the formula
-                 (shows which antecedent is currently active/satisfied).
-    bad steps → the failing subformula (e.g. "F grant").
-    """
-    if not ok:
-        return violating_subformula
-    for p in props:
-        if p in formula:
-            return p
-    return ""
+from .tasks import run_ltl_check
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -47,6 +34,73 @@ def _parse_graph(graph_json: str) -> tuple:
     return graph, nodes, len(nodes)
 
 
+def _validate_graph(nodes: list) -> str | None:
+    """Return an error message if the graph fails basic validation, else None."""
+    if not nodes:
+        return "Graph is empty — add at least one state."
+    initial = [n for n in nodes if n["data"].get("initial")]
+    if not initial:
+        return "No initial state defined — select a state and press I to mark it."
+    if len(initial) > 1:
+        return "Multiple initial states found — exactly one is required."
+    return None
+
+
+def _build_result_context(engine_result: dict, graph_json: str) -> dict:
+    """Translate a run_ltl_check result dict into a template context dict."""
+    formula = engine_result["formula"]
+    graph, nodes, node_count = _parse_graph(graph_json)
+
+    holds = engine_result["result"] == "satisfied"
+
+    trace_json = "[]"
+    violating_states_json = "[]"
+    violating_edges_json = "[]"
+    violating_subformula = ""
+    violation_kind = ""
+    trace_str = ""
+
+    if holds:
+        trace_str = " → ".join(
+            n["data"]["id"] for n in nodes[:3]
+        ) + (" → …" if node_count > 3 else "")
+    else:
+        steps = engine_result["trace"]
+        trace_str = " → ".join(s["state"] for s in steps)
+        trace_json = json.dumps(steps)
+
+        # Only the states that genuinely break the formula are "violating".
+        violating_states = []
+        for s in steps:
+            if s.get("status") == "violating" and s["state"] not in violating_states:
+                violating_states.append(s["state"])
+        violating_states_json = json.dumps(violating_states)
+
+        edge_pairs = [
+            [steps[i]["state"], steps[i + 1]["state"]]
+            for i in range(len(steps) - 1)
+            if steps[i].get("status") == "violating"
+            and steps[i + 1].get("status") == "violating"
+        ]
+        violating_edges_json = json.dumps(edge_pairs)
+
+        violating_subformula = engine_result.get("violating_subformula", "")
+        violation_kind = engine_result.get("violation_kind", "safety")
+
+    return {
+        "status": "holds" if holds else "violated",
+        "formula": formula,
+        "trace": trace_str,
+        "node_count": node_count,
+        "graph_data": graph_json,
+        "trace_json": trace_json,
+        "violating_states_json": violating_states_json,
+        "violating_edges_json": violating_edges_json,
+        "violating_subformula": violating_subformula,
+        "violation_kind": violation_kind,
+    }
+
+
 # ── Views ─────────────────────────────────────────────────────────────────────
 
 @csrf_exempt
@@ -58,83 +112,33 @@ def verify_ltl(request):
 
     graph, nodes, node_count = _parse_graph(graph_json)
 
-    # ── Server-side validation (mirrors JS pre-submit checks) ─────────────────
     if not formula:
         return _error_response(request, "No formula provided.")
 
-    if node_count == 0:
-        return _error_response(request, "Graph is empty — add at least one state.")
+    error = _validate_graph(nodes)
+    if error:
+        return _error_response(request, error)
 
-    initial_nodes = [n for n in nodes if n["data"].get("initial")]
-    if len(initial_nodes) == 0:
-        return _error_response(
-            request,
-            "No initial state defined — select a state and press I to mark it.",
-        )
-    if len(initial_nodes) > 1:
-        return _error_response(
-            request,
-            "Multiple initial states found — exactly one is required.",
-        )
+    task = run_ltl_check.delay(graph, formula)
+    return render(request, "sandbox/pending.html", {"task_id": task.id})
 
-    # ── Run SPOT ──────────────────────────────────────────────────────────────
-    try:
-        kripke, bdd_dict, spot_id_to_node = cytoscape_to_kripke(graph)
-        engine_result = check_ltl(kripke, bdd_dict, formula)
-    except ValueError as exc:
-        return _error_response(request, str(exc))
-    except RuntimeError as exc:
+
+@supabase_login_required
+@require_GET
+def verify_ltl_status(request, task_id):
+    result = AsyncResult(task_id)
+
+    if result.state in ("PENDING", "STARTED", "RETRY"):
+        return render(request, "sandbox/pending.html", {"task_id": task_id})
+
+    if result.state == "FAILURE":
+        exc = result.result
         return _error_response(request, f"Engine error: {exc}")
 
-    holds = engine_result["result"] == "satisfied"
-
-    trace_json = "[]"
-    violating_states_json = "[]"
-    violating_edges_json = "[]"
-    violating_subformula = ""
-    trace_str = ""
-
-    if holds:
-        trace_str = " → ".join(
-            n["data"]["id"] for n in nodes[:3]
-        ) + (" → …" if node_count > 3 else "")
-    else:
-        steps = lasso_to_trace_steps(
-            engine_result["prefix"],
-            engine_result["cycle"],
-            formula,
-            graph,
-            spot_id_to_node,
-        )
-
-        trace_str = " → ".join(s["state"] for s in steps)
-        trace_json = json.dumps(steps)
-
-        # Derive violating state/edge sets for the counterexample graph overlay.
-        cycle_states = {s["state"] for s in steps if not s["ok"]}
-        violating_states_json = json.dumps(list(cycle_states))
-
-        edge_pairs = [
-            [steps[i]["state"], steps[i + 1]["state"]]
-            for i in range(len(steps) - 1)
-            if not steps[i]["ok"] and not steps[i + 1]["ok"]
-        ]
-        violating_edges_json = json.dumps(edge_pairs)
-
-        cycle_steps = [s for s in steps if not s["ok"]]
-        violating_subformula = cycle_steps[0]["highlight"] if cycle_steps else ""
-
-    context = {
-        "status": "holds" if holds else "violated",
-        "formula": formula,
-        "trace": trace_str,
-        "node_count": node_count,
-        "graph_data": graph_json,
-        "trace_json": trace_json,
-        "violating_states_json": violating_states_json,
-        "violating_edges_json": violating_edges_json,
-        "violating_subformula": violating_subformula,
-    }
+    # SUCCESS — the task echoes formula + kripke_graph back in its return dict
+    engine_result = result.result
+    graph_json = json.dumps(engine_result["kripke_graph"])
+    context = _build_result_context(engine_result, graph_json)
     return render(request, "sandbox/result.html", context)
 
 
@@ -147,6 +151,7 @@ def counterexample(request):
     violating_states_json = request.POST.get("violating_states_json", "[]")
     violating_edges_json = request.POST.get("violating_edges_json", "[]")
     violating_subformula = request.POST.get("violating_subformula", "")
+    violation_kind = request.POST.get("violation_kind", "safety")
 
     try:
         trace = json.loads(trace_json)
@@ -164,6 +169,7 @@ def counterexample(request):
         {
             "formula": formula,
             "violating_subformula": violating_subformula,
+            "violation_kind": violation_kind,
             "trace": trace,
             # Pre-serialised for safe embedding into JS variable declarations.
             "graph_json": graph_data,
@@ -172,5 +178,6 @@ def counterexample(request):
             "violating_edges_json": violating_edges_json,
             "formula_json": json.dumps(formula),
             "violating_subformula_json": json.dumps(violating_subformula),
+            "violation_kind_json": json.dumps(violation_kind),
         },
     )

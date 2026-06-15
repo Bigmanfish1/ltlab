@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
 
-from apps.checker.views import counterexample, verify_ltl
+from apps.checker.views import counterexample, verify_ltl, verify_ltl_status
 from apps.exercises.views import exercise_canvas, exercises, get_hint, submit_formula
 from apps.home.views import home
 from config.api import api
@@ -16,6 +16,7 @@ urlpatterns = [
     path('exercises/<int:exercise_id>/hint/', get_hint, name='get_hint'),
     path("sandbox/", sandbox, name="sandbox"),
     path("sandbox/verify/", verify_ltl, name="sandbox_verify"),
+    path("sandbox/verify/status/<str:task_id>/", verify_ltl_status, name="sandbox_verify_status"),
     path("sandbox/counterexample/", counterexample, name="sandbox_counterexample"),
     path("admin/", admin.site.urls),
     path("api/", api.urls),
