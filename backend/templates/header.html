@@ -18,7 +18,7 @@
                     {% if request.resolver_match.url_name == 'sandbox' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
               Sandbox
           </a>
-          <a href="{% url 'results' %}"
+          <a href="{% if request.profile and request.profile.role == 'teacher' %}{% url 'results' %}{% else %}#{% endif %}"
             class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors
                     {% if request.resolver_match.url_name == 'results' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
               Results
