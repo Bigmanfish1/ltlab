@@ -171,4 +171,4 @@ _MOCK_RESULTS_DATA = {
 
 @teacher_required
 def teacher_results(request):
-    return render(request, "exercises/admin_results.html", _MOCK_RESULTS_DATA)
+    return render(request, "results/teacher_results.html", _MOCK_RESULTS_DATA)

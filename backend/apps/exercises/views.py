@@ -239,6 +239,6 @@ MOCK_TEACHER_EXERCISES = [
 
 @teacher_required
 def teacher_exercises(request):
-    return render(request, 'exercises/admin_exercises.html', {
+    return render(request, 'exercises/teacher_exercises.html', {
         'exercises': MOCK_TEACHER_EXERCISES,
     })
