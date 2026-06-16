@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-bg-primary">
+    {% include "header.html" %}
+    <div class="max-w-[1280px] mx-auto px-12 py-10">
+
+        <!-- Page heading -->
+        <div class="mb-8">
+            <h1 class="text-[32px] text-text-primary font-semibold" style="letter-spacing: -0.02em;">Analytics</h1>
+            <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mt-1">CLASS OVERVIEW</div>
+        </div>
+
+        <!-- Metric cards -->
+        <div class="grid grid-cols-4 gap-4 mb-12">
+            {% for metric in metrics %}
+            <div class="bg-bg-secondary border border-border-primary rounded p-6">
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-3">{{ metric.label }}</div>
+                <div class="{% if metric.compact %}text-xl{% else %}text-3xl{% endif %} text-text-primary font-bold leading-none" style="letter-spacing: -0.02em;">{{ metric.value }}</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Left column (module completion + misconceptions) · Right column (struggled) -->
+        <div class="grid grid-cols-[62%_38%] gap-8 mb-12">
+
+            <!-- LEFT -->
+            <div class="space-y-12">
+
+                <!-- Module completion rates -->
+                <div>
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">MODULE COMPLETION RATES</div>
+                    <div class="space-y-4">
+                        {% for module in module_completion %}
+                        <div class="flex items-center gap-4">
+                            <span class="text-[13px] text-text-primary w-40 shrink-0">{{ module.name }}</span>
+                            <div class="flex-1 h-2 bg-bg-tertiary rounded-sm overflow-hidden">
+                                <div class="h-full bg-accent-lime rounded-sm" style="width: {{ module.completion }}%"></div>
+                            </div>
+                            <span class="font-mono text-[12px] text-text-secondary w-9 text-right shrink-0">{{ module.completion }}%</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Common LTL misconceptions -->
+                <div>
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">COMMON LTL MISCONCEPTIONS</div>
+                    <div>
+                        {% for item in misconceptions %}
+                        <div class="flex items-center gap-4 py-4 border-b border-border-primary last:border-b-0">
+                            <span class="font-mono text-[13px] text-text-primary w-44 shrink-0">{{ item.label }}</span>
+                            <span class="flex-1 text-[13px] text-text-secondary">{{ item.description }}</span>
+                            <span class="font-mono text-[15px] text-accent-orange font-bold shrink-0">{{ item.percentage }}%</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT: Most struggled exercises -->
+            <div>
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">MOST STRUGGLED EXERCISES</div>
+                <div class="space-y-3">
+                    {% for ex in struggled_exercises %}
+                    <div class="relative bg-bg-secondary border border-border-primary rounded p-5 overflow-hidden">
+                        <div class="absolute top-3 right-4 font-mono text-3xl font-bold text-border-secondary opacity-60 select-none">{{ ex.rank }}</div>
+                        <div class="text-[14px] text-text-primary font-medium mb-1">{{ ex.name }}</div>
+                        <div class="text-[12px] text-text-secondary">{{ ex.module }}</div>
+                        <div class="absolute bottom-4 right-4 font-mono text-[14px] text-accent-orange font-bold">{{ ex.score }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Students table (open layout, no outer box) -->
+        <div>
+            <div class="flex items-center justify-between mb-5">
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">STUDENTS</div>
+                <input
+                    id="student-search"
+                    type="text"
+                    placeholder="Search students..."
+                    class="bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-4 py-2 rounded w-64 focus:border-border-secondary focus:outline-none transition-colors"
+                />
+            </div>
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b border-border-primary">
+                        <th class="text-left px-2 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Student Name</th>
+                        <th class="text-left px-2 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Exercises Done</th>
+                        <th class="text-left px-2 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Accuracy</th>
+                        <th class="text-left px-2 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Last Active</th>
+                        <th class="text-left px-2 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="student-rows">
+                    {% for student in students %}
+                    <tr class="student-row border-b border-border-primary hover:bg-bg-tertiary transition-colors" data-name="{{ student.name|lower }}">
+                        <td class="px-2 py-4 text-[13px] text-text-primary">{{ student.name }}</td>
+                        <td class="px-2 py-4 text-[13px] text-text-secondary">{{ student.exercises_done }}</td>
+                        <td class="px-2 py-4 font-mono text-[13px] text-text-primary">{{ student.accuracy }}%</td>
+                        <td class="px-2 py-4 font-mono text-[11px] text-text-secondary">{{ student.last_active }}</td>
+                        <td class="px-2 py-4">
+                            <a href="#" class="font-mono text-[11px] text-accent-orange hover:opacity-80 transition-opacity">View →</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div id="student-empty" class="hidden text-center py-8 text-[13px] text-text-secondary">No students match your search.</div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Client-side student search. Fine at this scale (small roster); for a full
+    // institution-sized roster this filtering should move to a backend query.
+    (function () {
+        const input = document.getElementById('student-search');
+        const rows = Array.from(document.querySelectorAll('.student-row'));
+        const empty = document.getElementById('student-empty');
+
+        input.addEventListener('input', function () {
+            const q = input.value.trim().toLowerCase();
+            let visible = 0;
+            rows.forEach(function (row) {
+                const match = row.dataset.name.includes(q);
+                row.classList.toggle('hidden', !match);
+                if (match) visible++;
+            });
+            empty.classList.toggle('hidden', visible !== 0);
+        });
+    })();
+</script>
+{% endblock %}
