@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Exercises - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-bg-primary">
+    {% include "header.html" %}
+    <div class="max-w-[1280px] mx-auto px-12 py-10">
+
+        <div class="flex items-center justify-between mb-8">
+            <h1 class="text-[32px] text-text-primary font-semibold" style="letter-spacing: -0.02em;">Exercises</h1>
+            <a href="#" class="flex items-center gap-2 px-4 py-2 bg-accent-orange text-bg-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:opacity-90 transition-opacity">
+                New Exercise →
+            </a>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex gap-2" id="difficulty-filters">
+                <button data-difficulty="all" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">All</button>
+                <button data-difficulty="beginner" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Beginner</button>
+                <button data-difficulty="intermediate" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Intermediate</button>
+                <button data-difficulty="advanced" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Advanced</button>
+            </div>
+            <input
+                id="exercise-search"
+                type="text"
+                placeholder="Search exercises..."
+                class="bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-4 py-2 rounded w-64 focus:border-border-secondary focus:outline-none transition-colors"
+            />
+        </div>
+
+        <!-- Table -->
+        <div class="bg-bg-secondary border border-border-primary rounded overflow-hidden">
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b border-border-primary">
+                        <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Exercise Name</th>
+                        <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Module</th>
+                        <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Attempts</th>
+                        <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Completion</th>
+                        <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Avg Tries</th>
+                        <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="exercise-rows">
+                    {% for ex in exercises %}
+                    <tr class="exercise-row border-b border-border-primary hover:bg-bg-tertiary transition-colors"
+                        data-difficulty="{{ ex.difficulty }}"
+                        data-name="{{ ex.name|lower }}"
+                        data-module="{{ ex.module|lower }}">
+                        <td class="px-5 py-4 text-[13px] text-text-primary">{{ ex.name }}</td>
+                        <td class="px-5 py-4 text-[13px] text-text-secondary font-mono">{{ ex.module }}</td>
+                        <td class="px-5 py-4 text-[13px] text-text-secondary">{{ ex.attempts }}</td>
+                        <td class="px-5 py-4">
+                            <div class="flex items-center gap-3">
+                                <div class="flex-1 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                                    <div class="h-full bg-accent-lime rounded-full" style="width: {{ ex.completion }}%"></div>
+                                </div>
+                                <span class="font-mono text-[11px] text-text-secondary w-8 text-right">{{ ex.completion }}%</span>
+                            </div>
+                        </td>
+                        <td class="px-5 py-4 font-mono text-[13px] text-accent-orange">{{ ex.avg_tries }}</td>
+                        <td class="px-5 py-4">
+                            <div class="flex items-center gap-3">
+                                <button type="button" class="text-text-secondary hover:text-text-primary transition-colors" title="Edit">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                    </svg>
+                                </button>
+                                <button type="button" class="js-delete text-text-secondary hover:text-accent-orange transition-colors" title="Delete">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="3 6 5 6 21 6"/>
+                                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                                        <path d="M10 11v6M14 11v6"/>
+                                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div id="exercise-empty" class="hidden text-center py-10 text-[13px] text-text-secondary">No exercises match your filters.</div>
+        </div>
+
+        <!-- Pagination -->
+        <div class="flex items-center justify-center gap-4 mt-6 font-mono text-[11px] tracking-[0.12em] text-text-secondary">
+            <button id="prev-page" type="button" class="hover:text-text-primary transition-colors disabled:opacity-30 disabled:hover:text-text-secondary">← Previous</button>
+            <span id="page-indicator" class="text-text-primary">Page 1 of 1</span>
+            <button id="next-page" type="button" class="hover:text-text-primary transition-colors disabled:opacity-30 disabled:hover:text-text-secondary">Next →</button>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Client-side filter / search / pagination over the rendered rows. 
+    (function () {
+        const PAGE_SIZE = 6;
+        const tbody = document.getElementById('exercise-rows');
+        const empty = document.getElementById('exercise-empty');
+        const searchInput = document.getElementById('exercise-search');
+        const tabs = Array.from(document.querySelectorAll('.filter-tab'));
+        const prevBtn = document.getElementById('prev-page');
+        const nextBtn = document.getElementById('next-page');
+        const indicator = document.getElementById('page-indicator');
+
+        let difficulty = 'all';
+        let page = 1;
+
+        function matches(row) {
+            const q = searchInput.value.trim().toLowerCase();
+            const diffOk = difficulty === 'all' || row.dataset.difficulty === difficulty;
+            const textOk = !q || row.dataset.name.includes(q) || row.dataset.module.includes(q);
+            return diffOk && textOk;
+        }
+
+        function render() {
+            const rows = Array.from(tbody.querySelectorAll('.exercise-row'));
+            const visible = rows.filter(matches);
+            const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+            if (page > pages) page = pages;
+
+            const start = (page - 1) * PAGE_SIZE;
+            const end = start + PAGE_SIZE;
+
+            rows.forEach(function (row) { row.classList.add('hidden'); });
+            visible.slice(start, end).forEach(function (row) { row.classList.remove('hidden'); });
+
+            empty.classList.toggle('hidden', visible.length !== 0);
+            indicator.textContent = 'Page ' + page + ' of ' + pages;
+            prevBtn.disabled = page <= 1;
+            nextBtn.disabled = page >= pages;
+        }
+
+        function setActive(activeTab) {
+            tabs.forEach(function (t) {
+                const active = t === activeTab;
+                t.classList.toggle('border-accent-orange', active);
+                t.classList.toggle('text-text-primary', active);
+                t.classList.toggle('border-border-primary', !active);
+                t.classList.toggle('text-text-secondary', !active);
+            });
+        }
+
+        tabs.forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                difficulty = tab.dataset.difficulty;
+                page = 1;
+                setActive(tab);
+                render();
+            });
+        });
+
+        searchInput.addEventListener('input', function () { page = 1; render(); });
+        prevBtn.addEventListener('click', function () { if (page > 1) { page--; render(); } });
+        nextBtn.addEventListener('click', function () { page++; render(); });
+
+        tbody.addEventListener('click', function (e) {
+            const btn = e.target.closest('.js-delete');
+            if (!btn) return;
+            // Ephemeral remove — visual only, resets on reload (no backend wired).
+            btn.closest('.exercise-row').remove();
+            render();
+        });
+
+        // JS owns active state — set initial tab before first render.
+        setActive(tabs.find(function (t) { return t.dataset.difficulty === difficulty; }));
+        render();
+    })();
+</script>
+{% endblock %}
