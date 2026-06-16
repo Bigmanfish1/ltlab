@@ -2,8 +2,8 @@ from django.contrib import admin
 from django.urls import include, path
 
 from apps.checker.views import counterexample, verify_ltl, verify_ltl_status
-from apps.exercises.views import exercise_canvas, exercises, get_hint, submit_formula, teacher_exercises, teacher_results
-from apps.home.views import home
+from apps.exercises.views import exercise_canvas, exercises, get_hint, submit_formula, teacher_exercises
+from apps.home.views import home, teacher_results
 from config.api import api
 from config.views import sandbox
 

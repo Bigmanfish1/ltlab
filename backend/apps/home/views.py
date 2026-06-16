@@ -128,3 +128,47 @@ def teacher_dashboard(request):
         ],
     }
     return render(request, "dashboard/teacher_dashboard.html", context)
+
+
+_MOCK_RESULTS_DATA = {
+    "metrics": [
+        {"label": "TOTAL STUDENTS", "value": "42"},
+        {"label": "AVG ACCURACY", "value": "84%"},
+        {"label": "MOST FAILED EXERCISE", "value": "Mutual Exclusion", "compact": True},
+        {"label": "AVG ATTEMPTS / EX", "value": "2.4"},
+    ],
+    "module_completion": [
+        {"name": "Kripke Structures", "completion": 92},
+        {"name": "LTL Operators", "completion": 71},
+        {"name": "CTL Semantics", "completion": 48},
+        {"name": "Fairness & Liveness", "completion": 22},
+        {"name": "Model Refinement", "completion": 18},
+        {"name": "Advanced Patterns", "completion": 9},
+    ],
+    "struggled_exercises": [
+        {"rank": "01", "name": "Mutual Exclusion", "module": "CTL Semantics", "score": 4.2},
+        {"rank": "02", "name": "Fairness Constraints", "module": "Fairness & Liveness", "score": 4.8},
+        {"rank": "03", "name": "Request-Grant Protocol", "module": "LTL Operators", "score": 3.4},
+        {"rank": "04", "name": "Nested Modalities", "module": "CTL Semantics", "score": 3.7},
+        {"rank": "05", "name": "Until Operator", "module": "LTL Operators", "score": 2.9},
+    ],
+    "misconceptions": [
+        {"label": "F vs G confusion", "description": "67% of students used F where G was required", "percentage": 67},
+        {"label": "X (next) misuse", "description": "42% applied X without considering path semantics", "percentage": 42},
+        {"label": "U (until) operator", "description": "38% missed strong-until weak-until distinction", "percentage": 38},
+        {"label": "Nested modalities", "description": "29% bracketed nested LTL incorrectly", "percentage": 29},
+    ],
+    "students": [
+        {"name": "Amara Dlamini", "exercises_done": 18, "accuracy": 94, "last_active": "12m ago"},
+        {"name": "Sipho Ndlovu", "exercises_done": 6, "accuracy": 62, "last_active": "4 days ago"},
+        {"name": "Jamie Kim", "exercises_done": 16, "accuracy": 88, "last_active": "2h ago"},
+        {"name": "Riley Wong", "exercises_done": 12, "accuracy": 71, "last_active": "3h ago"},
+        {"name": "Thabo Pillay", "exercises_done": 19, "accuracy": 91, "last_active": "5h ago"},
+        {"name": "Lerato Mokoena", "exercises_done": 14, "accuracy": 82, "last_active": "yesterday"},
+    ],
+}
+
+
+@teacher_required
+def teacher_results(request):
+    return render(request, "exercises/admin_results.html", _MOCK_RESULTS_DATA)
