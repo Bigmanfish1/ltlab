@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from apps.accounts.middleware import supabase_login_required
+from apps.accounts.middleware import supabase_login_required, teacher_required
 
 
 # Mock data for testing
@@ -212,3 +212,77 @@ def get_hint(request, exercise_id):
         })
     else:
         return JsonResponse({'error': 'No more hints available'}, status=404)
+
+
+MOCK_TEACHER_EXERCISES = [
+    {"name": "Basic Kripke Structure", "module": "Kripke Structures", "difficulty": "beginner", "attempts": 142, "completion": 92, "avg_tries": 1.4},
+    {"name": "Atomic Propositions", "module": "Kripke Structures", "difficulty": "beginner", "attempts": 138, "completion": 95, "avg_tries": 1.2},
+    {"name": "Labelling States", "module": "Kripke Structures", "difficulty": "beginner", "attempts": 129, "completion": 89, "avg_tries": 1.5},
+    {"name": "Transition Relations", "module": "Kripke Structures", "difficulty": "beginner", "attempts": 121, "completion": 86, "avg_tries": 1.7},
+    {"name": "Always Eventually", "module": "LTL Operators", "difficulty": "intermediate", "attempts": 98, "completion": 71, "avg_tries": 2.3},
+    {"name": "Until Operator", "module": "LTL Operators", "difficulty": "intermediate", "attempts": 76, "completion": 58, "avg_tries": 2.9},
+    {"name": "Weak Until", "module": "LTL Operators", "difficulty": "intermediate", "attempts": 69, "completion": 54, "avg_tries": 3.1},
+    {"name": "Release Operator", "module": "LTL Operators", "difficulty": "intermediate", "attempts": 61, "completion": 49, "avg_tries": 3.3},
+    {"name": "Request-Grant Protocol", "module": "LTL Operators", "difficulty": "intermediate", "attempts": 87, "completion": 64, "avg_tries": 3.4},
+    {"name": "Next-State Reasoning", "module": "LTL Operators", "difficulty": "intermediate", "attempts": 73, "completion": 60, "avg_tries": 2.6},
+    {"name": "Mutual Exclusion", "module": "CTL Semantics", "difficulty": "advanced", "attempts": 54, "completion": 38, "avg_tries": 4.2},
+    {"name": "Nested Modalities", "module": "CTL Semantics", "difficulty": "advanced", "attempts": 41, "completion": 29, "avg_tries": 3.7},
+    {"name": "Path Quantifiers", "module": "CTL Semantics", "difficulty": "advanced", "attempts": 47, "completion": 34, "avg_tries": 3.9},
+    {"name": "Existential Until", "module": "CTL Semantics", "difficulty": "advanced", "attempts": 38, "completion": 27, "avg_tries": 4.1},
+    {"name": "Fairness Constraints", "module": "Fairness & Liveness", "difficulty": "advanced", "attempts": 32, "completion": 22, "avg_tries": 4.8},
+    {"name": "Strong Fairness", "module": "Fairness & Liveness", "difficulty": "advanced", "attempts": 29, "completion": 19, "avg_tries": 4.6},
+    {"name": "Liveness Properties", "module": "Fairness & Liveness", "difficulty": "advanced", "attempts": 35, "completion": 24, "avg_tries": 4.4},
+    {"name": "Starvation Freedom", "module": "Fairness & Liveness", "difficulty": "advanced", "attempts": 27, "completion": 17, "avg_tries": 4.9},
+    {"name": "Counterexample Traces", "module": "Model Refinement", "difficulty": "intermediate", "attempts": 58, "completion": 46, "avg_tries": 3.0},
+    {"name": "Abstraction Mapping", "module": "Model Refinement", "difficulty": "advanced", "attempts": 33, "completion": 21, "avg_tries": 4.5},
+]
+
+MOCK_RESULTS_DATA = {
+    "metrics": [
+        {"label": "TOTAL STUDENTS", "value": "42"},
+        {"label": "AVG ACCURACY", "value": "84%"},
+        {"label": "MOST FAILED EXERCISE", "value": "Mutual Exclusion", "compact": True},
+        {"label": "AVG ATTEMPTS / EX", "value": "2.4"},
+    ],
+    "module_completion": [
+        {"name": "Kripke Structures", "completion": 92},
+        {"name": "LTL Operators", "completion": 71},
+        {"name": "CTL Semantics", "completion": 48},
+        {"name": "Fairness & Liveness", "completion": 22},
+        {"name": "Model Refinement", "completion": 18},
+        {"name": "Advanced Patterns", "completion": 9},
+    ],
+    "struggled_exercises": [
+        {"rank": "01", "name": "Mutual Exclusion", "module": "CTL Semantics", "score": 4.2},
+        {"rank": "02", "name": "Fairness Constraints", "module": "Fairness & Liveness", "score": 4.8},
+        {"rank": "03", "name": "Request-Grant Protocol", "module": "LTL Operators", "score": 3.4},
+        {"rank": "04", "name": "Nested Modalities", "module": "CTL Semantics", "score": 3.7},
+        {"rank": "05", "name": "Until Operator", "module": "LTL Operators", "score": 2.9},
+    ],
+    "misconceptions": [
+        {"label": "F vs G confusion", "description": "67% of students used F where G was required", "percentage": 67},
+        {"label": "X (next) misuse", "description": "42% applied X without considering path semantics", "percentage": 42},
+        {"label": "U (until) operator", "description": "38% missed strong-until weak-until distinction", "percentage": 38},
+        {"label": "Nested modalities", "description": "29% bracketed nested LTL incorrectly", "percentage": 29},
+    ],
+    "students": [
+        {"name": "Amara Dlamini", "exercises_done": 18, "accuracy": 94, "last_active": "12m ago"},
+        {"name": "Sipho Ndlovu", "exercises_done": 6, "accuracy": 62, "last_active": "4 days ago"},
+        {"name": "Jamie Kim", "exercises_done": 16, "accuracy": 88, "last_active": "2h ago"},
+        {"name": "Riley Wong", "exercises_done": 12, "accuracy": 71, "last_active": "3h ago"},
+        {"name": "Thabo Pillay", "exercises_done": 19, "accuracy": 91, "last_active": "5h ago"},
+        {"name": "Lerato Mokoena", "exercises_done": 14, "accuracy": 82, "last_active": "yesterday"},
+    ],
+}
+
+
+@teacher_required
+def teacher_exercises(request):
+    return render(request, 'exercises/admin_exercises.html', {
+        'exercises': MOCK_TEACHER_EXERCISES,
+    })
+
+
+@teacher_required
+def teacher_results(request):
+    return render(request, 'exercises/admin_results.html', MOCK_RESULTS_DATA)
