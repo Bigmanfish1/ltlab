@@ -126,11 +126,11 @@
     // institution-sized roster this filtering should move to a backend query.
     (function () {
         const input = document.getElementById('student-search');
-        const rows = Array.from(document.querySelectorAll('.student-row'));
         const empty = document.getElementById('student-empty');
 
         input.addEventListener('input', function () {
             const q = input.value.trim().toLowerCase();
+            const rows = document.querySelectorAll('.student-row');
             let visible = 0;
             rows.forEach(function (row) {
                 const match = row.dataset.name.includes(q);
