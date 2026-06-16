@@ -17,10 +17,10 @@
         <!-- Filter bar -->
         <div class="flex items-center justify-between mb-6">
             <div class="flex gap-2" id="difficulty-filters">
-                <button data-difficulty="all" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-accent-orange text-text-primary rounded">All</button>
-                <button data-difficulty="beginner" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary hover:border-border-secondary rounded transition-colors">Beginner</button>
-                <button data-difficulty="intermediate" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary hover:border-border-secondary rounded transition-colors">Intermediate</button>
-                <button data-difficulty="advanced" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary hover:border-border-secondary rounded transition-colors">Advanced</button>
+                <button data-difficulty="all" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">All</button>
+                <button data-difficulty="beginner" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Beginner</button>
+                <button data-difficulty="intermediate" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Intermediate</button>
+                <button data-difficulty="advanced" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Advanced</button>
             </div>
             <input
                 id="exercise-search"
@@ -138,17 +138,21 @@
             nextBtn.disabled = page >= pages;
         }
 
+        function setActive(activeTab) {
+            tabs.forEach(function (t) {
+                const active = t === activeTab;
+                t.classList.toggle('border-accent-orange', active);
+                t.classList.toggle('text-text-primary', active);
+                t.classList.toggle('border-border-primary', !active);
+                t.classList.toggle('text-text-secondary', !active);
+            });
+        }
+
         tabs.forEach(function (tab) {
             tab.addEventListener('click', function () {
                 difficulty = tab.dataset.difficulty;
                 page = 1;
-                tabs.forEach(function (t) {
-                    const active = t === tab;
-                    t.classList.toggle('border-accent-orange', active);
-                    t.classList.toggle('text-text-primary', active);
-                    t.classList.toggle('border-border-primary', !active);
-                    t.classList.toggle('text-text-secondary', !active);
-                });
+                setActive(tab);
                 render();
             });
         });
@@ -165,6 +169,8 @@
             render();
         });
 
+        // JS owns active state — set initial tab before first render.
+        setActive(tabs.find(function (t) { return t.dataset.difficulty === difficulty; }));
         render();
     })();
 </script>
