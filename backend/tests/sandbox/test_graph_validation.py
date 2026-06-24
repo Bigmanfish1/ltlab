@@ -144,21 +144,19 @@ class FormulaLengthCapTests(TestCase):
         return response
 
     def test_oversized_formula_returns_error(self):
-        from django.test import Client
-        # We test _validate_graph indirectly: the char cap is in verify_ltl itself.
-        # Build a graph JSON to pass structure validation.
         import json
-        graph = {"elements": {"nodes": [{"data": {"id": "s0", "name": "s0", "initial": True, "props": []}}], "edges": []}}
-        formula = "p " * (MAX_FORMULA_CHARS // 2 + 10)  # definitely over limit
         from django.test import RequestFactory
-        from unittest.mock import patch
+
+        graph = {"elements": {"nodes": [{"data": {"id": "s0", "name": "s0", "initial": True, "props": []}}], "edges": []}}
+        formula = "p " * (MAX_FORMULA_CHARS // 2 + 10)  # definitely over the char limit
         rf = RequestFactory()
         req = rf.post("/sandbox/verify/", {"formula": formula, "graph_data": json.dumps(graph)})
-        with patch("apps.checker.views.supabase_login_required", lambda f: f):
-            response = verify_ltl(req)
+        # supabase_login_required checks both attributes.
+        req.supabase_user = {"id": "test-uid", "email": "test@example.com"}
+        req.profile       = object()
+        response = verify_ltl(req)
         self.assertEqual(response.status_code, 200)
-        content = response.content.decode()
-        self.assertIn("too long", content)
+        self.assertIn("too long", response.content.decode())
 
 
 # ── Proposition-name validation ───────────────────────────────────────────────

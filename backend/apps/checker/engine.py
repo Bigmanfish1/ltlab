@@ -825,14 +825,15 @@ def analyze_lasso(
         for i, nid in enumerate(order):
             in_cycle = i >= cycle_start
             steps.append({
-                "state": nid,
-                "name": name_by_node.get(nid, nid),
-                "props": props_by_pos[i],
-                "status": STATUS_VIOLATING if in_cycle else STATUS_SATISFIED,
-                "highlight": "",
-                "reason": "",
-                "in_cycle": in_cycle,
-                "cycle_back": False,
+                "state":       nid,
+                "name":        name_by_node.get(nid, nid),
+                "props":       props_by_pos[i],
+                "status":      STATUS_VIOLATING if in_cycle else STATUS_SATISFIED,
+                "highlight":   "",
+                "reason":      "",
+                "in_cycle":    in_cycle,
+                "cycle_start": in_cycle and i == cycle_start,
+                "cycle_back":  False,
             })
         if steps:
             steps[-1]["cycle_back"] = True
@@ -849,15 +850,17 @@ def analyze_lasso(
 
     steps = []
     for i, nid in enumerate(order):
+        in_cyc = i >= cycle_start
         steps.append({
-            "state": nid,
-            "name": name_by_node.get(nid, nid),
-            "props": props_by_pos[i],
-            "status": statuses[i],
-            "highlight": highlights[i],
-            "reason": reasons[i],
-            "in_cycle": i >= cycle_start,
-            "cycle_back": False,
+            "state":       nid,
+            "name":        name_by_node.get(nid, nid),
+            "props":       props_by_pos[i],
+            "status":      statuses[i],
+            "highlight":   highlights[i],
+            "reason":      reasons[i],
+            "in_cycle":    in_cyc,
+            "cycle_start": in_cyc and i == cycle_start,
+            "cycle_back":  False,
         })
     if steps:
         steps[-1]["cycle_back"] = True

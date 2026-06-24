@@ -156,7 +156,7 @@
 
           {% for step in trace %}
 
-          {% if step.in_cycle and not forloop.first and not trace|slice:forloop.counter0|first.in_cycle %}
+          {% if step.cycle_start %}
           <div class="font-mono text-[10px] text-[#E0A030] tracking-[0.1em] pl-1 pb-1 border-t border-dashed border-[#2A2A2A] mt-1 pt-2">↻ CYCLE START</div>
           {% endif %}
 

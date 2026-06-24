@@ -634,7 +634,8 @@ class TestVerifyLTLStatusView(TestCase):
         mock_ar.return_value.result = ValueError("Invalid formula")
         resp = self._get("some-task-id")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"error", resp.content)
+        # ValueError messages are shown verbatim (no "Engine error:" prefix).
+        self.assertIn(b"Invalid formula", resp.content)
 
 
 # ── 9. View: _build_result_context (status-driven derivations) ───────────────
