@@ -67,9 +67,16 @@ class EngineStructuralCapTests(TestCase):
         return formula, g
 
     def _too_many_temporal_formula(self) -> tuple[str, dict]:
-        """Build a formula with MAX_TEMPORAL_OPS+1 nested F operators."""
-        formula = "p" + " U q" * (MAX_TEMPORAL_OPS + 1)
-        g = _graph({"s0": ["p", "q"]}, "s0")
+        """Build a formula with MAX_TEMPORAL_OPS+2 temporal operators.
+
+        Uses G followed by (MAX_TEMPORAL_OPS+1) nested X operators.  SPOT has
+        no law to collapse X^n into fewer operators (X^n p means "p in exactly
+        n steps"), so the count survives normalisation.  The formula uses only
+        1 AP so the AP-count check does not trigger first.
+        """
+        xs = " ".join(["X"] * (MAX_TEMPORAL_OPS + 1))
+        formula = f"G {xs} p"
+        g = _graph({"s0": ["p"]}, "s0")
         return formula, g
 
     def test_too_many_aps_raises(self):
