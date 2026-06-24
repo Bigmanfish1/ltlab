@@ -1,23 +1,55 @@
 import json
+import re
 
 from celery.result import AsyncResult
+from django.conf import settings
+from django.core.cache import cache
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.accounts.middleware import supabase_login_required
 
+from .cache_key import make_cache_key
 from .tasks import run_ltl_check
+
+MAX_FORMULA_CHARS = 512
+MAX_NODES = 100
+MAX_EDGES = 400
+
+# Prop names must be valid identifiers and not clash with SPOT's temporal
+# operators (X F G U R W M) or Boolean constants (true false tt ff).
+_PROP_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_RESERVED_PROP_NAMES = frozenset(
+    {
+        "X",
+        "F",
+        "G",
+        "U",
+        "R",
+        "W",
+        "M",
+        "true",
+        "false",
+        "tt",
+        "ff",
+    }
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _error_response(request, message: str):
     """Render the result drawer with a grey error banner."""
-    return render(request, "sandbox/result.html", {
-        "status": "error",
-        "message": message,
-    })
+    return render(
+        request,
+        "sandbox/result.html",
+        {
+            "status": "error",
+            "message": message,
+        },
+    )
 
 
 def _parse_graph(graph_json: str) -> tuple:
@@ -28,21 +60,56 @@ def _parse_graph(graph_json: str) -> tuple:
         graph = {}
     elements = graph.get("elements", {})
     nodes = [
-        n for n in elements.get("nodes", [])
-        if not n.get("data", {}).get("phantom")
+        n for n in elements.get("nodes", []) if not n.get("data", {}).get("phantom")
     ]
     return graph, nodes, len(nodes)
 
 
-def _validate_graph(nodes: list) -> str | None:
-    """Return an error message if the graph fails basic validation, else None."""
+def _validate_graph(nodes: list, edges: list | None = None) -> str | None:
+    """Return an error message if the graph fails validation, else None."""
     if not nodes:
         return "Graph is empty — add at least one state."
+
+    if len(nodes) > MAX_NODES:
+        return (
+            f"Graph has {len(nodes)} states — the sandbox supports at most "
+            f"{MAX_NODES} states."
+        )
+
     initial = [n for n in nodes if n["data"].get("initial")]
     if not initial:
         return "No initial state defined — select a state and press I to mark it."
     if len(initial) > 1:
         return "Multiple initial states found — exactly one is required."
+
+    if edges is not None:
+        if len(edges) > MAX_EDGES:
+            return (
+                f"Graph has {len(edges)} transitions — the sandbox supports at most "
+                f"{MAX_EDGES} transitions."
+            )
+        seen: set[tuple] = set()
+        for e in edges:
+            key = (e["data"].get("source"), e["data"].get("target"))
+            if key in seen:
+                return "Duplicate transition found — only one transition is allowed between any two states."
+            seen.add(key)
+
+    # Validate proposition names across all nodes.
+    for n in nodes:
+        for prop in n["data"].get("props", []):
+            if not _PROP_NAME_RE.match(prop):
+                return (
+                    f'Proposition name "{prop}" is invalid — names must start '
+                    "with a letter or underscore and contain only letters, digits, "
+                    "and underscores (e.g. p, req, my_prop)."
+                )
+            if prop in _RESERVED_PROP_NAMES:
+                return (
+                    f'Proposition name "{prop}" is a reserved LTL operator — '
+                    "choose a different name (e.g. p, req, my_prop)."
+                )
+
     return None
 
 
@@ -61,15 +128,14 @@ def _build_result_context(engine_result: dict, graph_json: str) -> dict:
     trace_str = ""
 
     if holds:
-        trace_str = " → ".join(
-            n["data"]["id"] for n in nodes[:3]
-        ) + (" → …" if node_count > 3 else "")
+        trace_str = " → ".join(n["data"]["id"] for n in nodes[:3]) + (
+            " → …" if node_count > 3 else ""
+        )
     else:
         steps = engine_result["trace"]
         trace_str = " → ".join(s["state"] for s in steps)
         trace_json = json.dumps(steps)
 
-        # Only the states that genuinely break the formula are "violating".
         violating_states = []
         for s in steps:
             if s.get("status") == "violating" and s["state"] not in violating_states:
@@ -103,6 +169,7 @@ def _build_result_context(engine_result: dict, graph_json: str) -> dict:
 
 # ── Views ─────────────────────────────────────────────────────────────────────
 
+
 @csrf_exempt
 @supabase_login_required
 @require_POST
@@ -110,14 +177,36 @@ def verify_ltl(request):
     formula = request.POST.get("formula", "").strip()
     graph_json = request.POST.get("graph_data", "")
 
-    graph, nodes, node_count = _parse_graph(graph_json)
-
     if not formula:
         return _error_response(request, "No formula provided.")
 
-    error = _validate_graph(nodes)
+    if len(formula) > MAX_FORMULA_CHARS:
+        return _error_response(
+            request,
+            f"Formula is too long ({len(formula)} characters) — the sandbox "
+            f"supports at most {MAX_FORMULA_CHARS} characters.",
+        )
+
+    graph, nodes, node_count = _parse_graph(graph_json)
+
+    real_edges = [
+        e
+        for e in graph.get("elements", {}).get("edges", [])
+        if not e.get("data", {}).get("phantom")
+    ]
+    error = _validate_graph(nodes, real_edges)
     if error:
         return _error_response(request, error)
+
+    try:
+        cached = cache.get(make_cache_key(formula, graph))
+    except Exception:
+        cached = None
+    if cached is not None:
+        context = _build_result_context(
+            cached, json.dumps(cached.get("kripke_graph", graph))
+        )
+        return render(request, "sandbox/result.html", context)
 
     task = run_ltl_check.delay(graph, formula)
     return render(request, "sandbox/pending.html", {"task_id": task.id})
@@ -133,9 +222,14 @@ def verify_ltl_status(request, task_id):
 
     if result.state == "FAILURE":
         exc = result.result
-        return _error_response(request, f"Engine error: {exc}")
+        # ValueError means a clean user-facing message from the engine.
+        if isinstance(exc, ValueError):
+            msg = str(exc)
+        else:
+            msg = "Verification was stopped — the formula or graph was too complex."
+        return _error_response(request, msg)
 
-    # SUCCESS — the task echoes formula + kripke_graph back in its return dict
+    # SUCCESS — the task echoes formula + kripke_graph back in its return dict.
     engine_result = result.result
     graph_json = json.dumps(engine_result["kripke_graph"])
     context = _build_result_context(engine_result, graph_json)
@@ -144,25 +238,49 @@ def verify_ltl_status(request, task_id):
 
 @supabase_login_required
 @require_POST
+def verify_ltl_cancel(request):
+    """Revoke a running Celery verification task and clear the result drawer."""
+    task_id = request.POST.get("task_id", "")
+    if task_id:
+        AsyncResult(task_id).revoke(terminate=True)
+    # Return an empty drawer so HTMX clears the spinner.
+    return render(request, "sandbox/result.html", {})
+
+
+@supabase_login_required
+@require_POST
 def counterexample(request):
     formula = request.POST.get("formula", "")
     graph_data = request.POST.get("graph_data", "{}")
-    trace_json = request.POST.get("trace_json", "[]")
-    violating_states_json = request.POST.get("violating_states_json", "[]")
-    violating_edges_json = request.POST.get("violating_edges_json", "[]")
+    trace_json_raw = request.POST.get("trace_json", "[]")
+    violating_states_raw = request.POST.get("violating_states_json", "[]")
+    violating_edges_raw = request.POST.get("violating_edges_json", "[]")
     violating_subformula = request.POST.get("violating_subformula", "")
     violation_kind = request.POST.get("violation_kind", "safety")
 
+    # Parse all incoming JSON to Python objects; fall back gracefully.
     try:
-        trace = json.loads(trace_json)
+        trace = json.loads(trace_json_raw)
     except json.JSONDecodeError:
         trace = []
 
     try:
-        json.loads(graph_data)
+        graph = json.loads(graph_data)
     except json.JSONDecodeError:
-        graph_data = "{}"
+        graph = {}
 
+    try:
+        violating_states = json.loads(violating_states_raw)
+    except json.JSONDecodeError:
+        violating_states = []
+
+    try:
+        violating_edges = json.loads(violating_edges_raw)
+    except json.JSONDecodeError:
+        violating_edges = []
+
+    # Pass Python objects to the template; json_script is used there for safe
+    # JS embedding (escapes </script>, U+2028/U+2029, etc.).
     return render(
         request,
         "sandbox/counterexample.html",
@@ -171,13 +289,12 @@ def counterexample(request):
             "violating_subformula": violating_subformula,
             "violation_kind": violation_kind,
             "trace": trace,
-            # Pre-serialised for safe embedding into JS variable declarations.
-            "graph_json": graph_data,
-            "trace_json": trace_json,
-            "violating_states_json": violating_states_json,
-            "violating_edges_json": violating_edges_json,
-            "formula_json": json.dumps(formula),
-            "violating_subformula_json": json.dumps(violating_subformula),
-            "violation_kind_json": json.dumps(violation_kind),
+            "graph_obj": graph,
+            "trace_obj": trace,
+            "violating_states_obj": violating_states,
+            "violating_edges_obj": violating_edges,
+            "formula_str": formula,
+            "violating_subformula_str": violating_subformula,
+            "violation_kind_str": violation_kind,
         },
     )

@@ -93,6 +93,9 @@
       hx-swap="innerHTML"
       hx-include="#ltl-formula, #graph-data"
       hx-indicator="#run-spinner"
+      hx-on:htmx:before-request="disableRunBtn()"
+      hx-on:htmx:after-swap="enableRunBtn()"
+      hx-on:htmx:response-error="enableRunBtn()"
       class="flex items-center gap-2 bg-[#FF4D00] hover:bg-[#FF6B22] active:bg-[#CC3D00] text-black font-medium text-[13px] px-4 py-2 rounded transition-colors shrink-0 whitespace-nowrap"
     >
       <span id="run-spinner" class="htmx-indicator">
@@ -162,6 +165,15 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       </button>
 
+      <!-- divider -->
+      <div class="w-6 border-t border-[#1F1F1F] my-1"></div>
+
+      <!-- clear canvas -->
+      <button title="Clear canvas" onclick="clearCanvas()"
+        class="w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 10v6"/><path d="M15 10v6"/></svg>
+      </button>
+
     </nav>
 
     <!-- Canvas area -->
@@ -183,18 +195,30 @@
         No initial state — select a node and press&nbsp;<span class="text-[#FAFAFA]">I</span>
       </div>
 
-      <!-- Node hover tooltip -->
+      <!-- Empty canvas placeholder — hidden once any node exists -->
+      <div id="empty-canvas-hint"
+        class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none hidden">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2A2A2A" stroke-width="1.5" class="mb-3"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <div class="font-mono text-[12px] text-[#3A3A3A]">Double-click the canvas to add a state</div>
+      </div>
+
+      <!-- Node hover tooltip (secondary detail — props are shown as chips) -->
       <div id="node-tooltip"
         class="absolute pointer-events-none select-none hidden z-50"
         style="max-width: 200px;">
         <div class="bg-[#111111] border border-[#2A2A2A] rounded-md overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.6)]">
           <div id="node-tooltip-name"
-            class="px-3 py-1.5 font-mono text-[12px] font-semibold text-[#FAFAFA] border-b border-[#1F1F1F] bg-[#1A1A1A]">
+            class="px-3 py-1.5 font-mono text-[12px] font-semibold text-[#FAFAFA] bg-[#1A1A1A]">
           </div>
           <div id="node-tooltip-props"
             class="px-3 py-1.5 font-mono text-[11px] text-[#6B6B6B] leading-relaxed break-all">
           </div>
         </div>
+      </div>
+
+      <!-- Proposition chip overlay — HTML layer synchronized to node positions -->
+      <div id="prop-chips-layer"
+           style="position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5;">
       </div>
 
       <!-- Result drawer (HTMX target) -->
@@ -309,6 +333,27 @@
 
 {% block extra_js %}
 <script>
+// ── Label helper (kept for data-field compat; nodes display name only) ────────
+function formatLabel(name, _props) {
+  return name;
+}
+
+// ── Prop-name validation (mirrors server-side rules) ─────────────────────────
+const PROP_NAME_RE       = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const RESERVED_PROP_NAMES = new Set(['X','F','G','U','R','W','M','true','false','tt','ff']);
+
+function validatePropNames(props) {
+  for (const p of props) {
+    if (!PROP_NAME_RE.test(p)) {
+      return `"${p}" is invalid — names must start with a letter or underscore and contain only letters, digits, and underscores.`;
+    }
+    if (RESERVED_PROP_NAMES.has(p)) {
+      return `"${p}" is a reserved LTL operator — choose a different name.`;
+    }
+  }
+  return null;
+}
+
 // ── Cytoscape style ───────────────────────────────────────────────────────────
 const CY_STYLE = [
   {
@@ -323,16 +368,18 @@ const CY_STYLE = [
       'font-size': 11,
       'text-valign': 'center',
       'text-halign': 'center',
-      'text-wrap': 'none',
-      'width': 36,
-      'height': 36,
+      'width': 44,
+      'height': 44,
     }
   },
   {
+    // Initial state: normal white border — the entry arrow is the marker.
+    // Orange is reserved for selection so the initial state is never
+    // mistaken for a selected one.
     selector: 'node[?initial]',
     style: {
-      'border-color': '#FF4D00',
-      'border-width': 3,
+      'border-color': '#FAFAFA',
+      'border-width': 2,
     }
   },
   {
@@ -344,12 +391,13 @@ const CY_STYLE = [
     }
   },
   {
-    // Edge source highlight during edge-drawing mode
+    // Edge source highlight: lime so "drawing from here" is visually
+    // distinct from selection (orange) and from the initial state (white).
     selector: '.edge-source',
     style: {
-      'border-color': '#FF4D00',
+      'border-color': '#AEFC00',
       'border-width': 3,
-      'background-color': '#1A0800',
+      'background-color': '#0D1A00',
     }
   },
   {
@@ -408,9 +456,9 @@ const CY_STYLE = [
 
 // ── Initial graph elements ────────────────────────────────────────────────────
 const INITIAL_ELEMENTS = [
-  { data: { id: 's0', name: 's0', label: 's0\n{p}',   props: ['p'],    initial: true  }, position: { x: 220, y: 220 } },
-  { data: { id: 's1', name: 's1', label: 's1\n{q}',   props: ['q'],    initial: false }, position: { x: 460, y: 220 } },
-  { data: { id: 's2', name: 's2', label: 's2\n{p,q}', props: ['p','q'],initial: false }, position: { x: 340, y: 380 } },
+  { data: { id: 's0', name: 's0', label: 's0', props: ['p'],     initial: true  }, position: { x: 220, y: 220 } },
+  { data: { id: 's1', name: 's1', label: 's1', props: ['q'],     initial: false }, position: { x: 460, y: 220 } },
+  { data: { id: 's2', name: 's2', label: 's2', props: ['p','q'], initial: false }, position: { x: 340, y: 380 } },
   { data: { id: 'e0', source: 's0', target: 's1' } },
   { data: { id: 'e1', source: 's1', target: 's2' } },
   { data: { id: 'e2', source: 's2', target: 's0' } },
@@ -421,9 +469,9 @@ const EXAMPLES = {
   mutex: {
     formula: 'G ¬(c1 ∧ c2)',
     elements: [
-      { data: { id: 'n', name: 'n', label: 'n\n{}',     props: [],       initial: true  }, position: { x: 150, y: 250 } },
-      { data: { id: 'c1', name: 'c1', label: 'c1\n{c1}', props: ['c1'],   initial: false }, position: { x: 350, y: 150 } },
-      { data: { id: 'c2', name: 'c2', label: 'c2\n{c2}', props: ['c2'],   initial: false }, position: { x: 350, y: 350 } },
+      { data: { id: 'n',  name: 'n',  label: 'n',  props: [],     initial: true  }, position: { x: 150, y: 250 } },
+      { data: { id: 'c1', name: 'c1', label: 'c1', props: ['c1'], initial: false }, position: { x: 350, y: 150 } },
+      { data: { id: 'c2', name: 'c2', label: 'c2', props: ['c2'], initial: false }, position: { x: 350, y: 350 } },
       { data: { id: 'e0', source: 'n',  target: 'c1' } },
       { data: { id: 'e1', source: 'n',  target: 'c2' } },
       { data: { id: 'e2', source: 'c1', target: 'n'  } },
@@ -433,9 +481,9 @@ const EXAMPLES = {
   reqgrant: {
     formula: 'G (req → F grant)',
     elements: [
-      { data: { id: 'idle',  name: 'idle',  label: 'idle\n{}',      props: [],        initial: true  }, position: { x: 150, y: 270 } },
-      { data: { id: 'req',   name: 'req',   label: 'req\n{req}',    props: ['req'],   initial: false }, position: { x: 340, y: 130 } },
-      { data: { id: 'grant', name: 'grant', label: 'grant\n{grant}',props: ['grant'], initial: false }, position: { x: 530, y: 270 } },
+      { data: { id: 'idle',  name: 'idle',  label: 'idle',  props: [],        initial: true  }, position: { x: 150, y: 270 } },
+      { data: { id: 'req',   name: 'req',   label: 'req',   props: ['req'],   initial: false }, position: { x: 340, y: 130 } },
+      { data: { id: 'grant', name: 'grant', label: 'grant', props: ['grant'], initial: false }, position: { x: 530, y: 270 } },
       { data: { id: 'e0', source: 'idle',  target: 'req'   } },
       { data: { id: 'e1', source: 'req',   target: 'grant' } },
       { data: { id: 'e2', source: 'grant', target: 'idle'  } },
@@ -444,10 +492,10 @@ const EXAMPLES = {
   traffic: {
     formula: 'G F green',
     elements: [
-      { data: { id: 'red',   name: 'red',   label: 'red\n{red}',    props: ['red'],   initial: true  }, position: { x: 150, y: 250 } },
-      { data: { id: 'green', name: 'green', label: 'green\n{green}',props: ['green'], initial: false }, position: { x: 340, y: 130 } },
-      { data: { id: 'amber', name: 'amber', label: 'amber\n{amber}',props: ['amber'], initial: false }, position: { x: 530, y: 250 } },
-      { data: { id: 'rr',    name: 'red2',  label: 'red2\n{red}',   props: ['red'],   initial: false }, position: { x: 340, y: 370 } },
+      { data: { id: 'red',   name: 'red',   label: 'red',   props: ['red'],   initial: true  }, position: { x: 150, y: 250 } },
+      { data: { id: 'green', name: 'green', label: 'green', props: ['green'], initial: false }, position: { x: 340, y: 130 } },
+      { data: { id: 'amber', name: 'amber', label: 'amber', props: ['amber'], initial: false }, position: { x: 530, y: 250 } },
+      { data: { id: 'rr',    name: 'red2',  label: 'red2',  props: ['red'],   initial: false }, position: { x: 340, y: 370 } },
       { data: { id: 'e0', source: 'red',   target: 'green' } },
       { data: { id: 'e1', source: 'green', target: 'amber' } },
       { data: { id: 'e2', source: 'amber', target: 'rr'    } },
@@ -485,6 +533,8 @@ function undoAction() {
   cy.json(undoStack.pop());
   refreshAllInitialArrows();
   updateInitialHint();
+  updateEmptyCanvasHint();
+  rebuildAllChips();
   syncGraphData();
 }
 
@@ -494,6 +544,8 @@ function redoAction() {
   cy.json(redoStack.pop());
   refreshAllInitialArrows();
   updateInitialHint();
+  updateEmptyCanvasHint();
+  rebuildAllChips();
   syncGraphData();
 }
 
@@ -593,6 +645,122 @@ function updateInitialHint() {
   document.getElementById('no-initial-hint').classList.toggle('hidden', hasInitial);
 }
 
+// ── Empty-canvas placeholder ──────────────────────────────────────────────────
+function updateEmptyCanvasHint() {
+  const hasNodes = cy.nodes().filter(n => !n.data('phantom')).length > 0;
+  document.getElementById('empty-canvas-hint').classList.toggle('hidden', hasNodes);
+}
+
+// ── Clear canvas ──────────────────────────────────────────────────────────────
+function clearCanvas() {
+  if (cy.nodes().filter(n => !n.data('phantom')).length === 0) return;
+  saveSnapshot();
+  cy.elements().remove();
+  updateInitialHint();
+  updateEmptyCanvasHint();
+  rebuildAllChips();
+  syncGraphData();
+}
+
+// ── Proposition chip overlay ──────────────────────────────────────────────────
+// Propositions are shown as small lime chip pills floating below each node in
+// a separate HTML layer, so node circles stay clean (only the state name).
+// This matches the chip visual language used in the counterexample sidebar.
+//
+// Performance contract:
+//   pan/zoom  → only update style.left / style.top (no DOM creation)
+//   add/remove/data → recreate chip DOM for that node only
+//   rebuildAllChips() → full rebuild (after undo/redo/example load / cy.json)
+const _chipsLayer  = document.getElementById('prop-chips-layer');
+const _chipWraps   = new Map();  // nodeId → chip-wrapper DOM element
+
+function _chipWrapHtml(node) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText =
+    'position:absolute;display:flex;flex-wrap:wrap;justify-content:center;' +
+    'gap:2px;transform:translateX(-50%);max-width:140px;transition:opacity 120ms;';
+
+  const props = node.data('props') || [];
+  if (props.length === 0) {
+    const c = document.createElement('span');
+    c.style.cssText =
+      'font-family:monospace;font-size:12px;color:#2A2A2A;background:#0F0F0F;' +
+      'border:1px solid #1A1A1A;padding:3px 9px;border-radius:4px;' +
+      'white-space:nowrap;line-height:1.5;letter-spacing:0.03em;';
+    c.textContent = '∅';
+    wrap.appendChild(c);
+  } else {
+    props.forEach(p => {
+      const c = document.createElement('span');
+      c.style.cssText =
+        'font-family:monospace;font-size:12px;color:#AEFC00;background:#060E06;' +
+        'border:1px solid #1A3A14;padding:3px 9px;border-radius:4px;' +
+        'white-space:nowrap;line-height:1.5;letter-spacing:0.03em;';
+      c.textContent = p;
+      wrap.appendChild(c);
+    });
+  }
+  return wrap;
+}
+
+function _positionChipWrap(node, wrap) {
+  const pos = node.renderedPosition();
+  const r   = node.renderedWidth() / 2;
+  wrap.style.left = pos.x + 'px';
+  wrap.style.top  = (pos.y + r + 4) + 'px';
+}
+
+function _addChip(node) {
+  if (node.data('phantom')) return;
+  const wrap = _chipWrapHtml(node);
+  _chipsLayer.appendChild(wrap);
+  _chipWraps.set(node.id(), wrap);
+  _positionChipWrap(node, wrap);
+}
+
+function _removeChip(node) {
+  const wrap = _chipWraps.get(node.id());
+  if (wrap) { wrap.remove(); _chipWraps.delete(node.id()); }
+}
+
+function _refreshChip(node) {
+  if (node.data('phantom')) return;
+  const existing = _chipWraps.get(node.id());
+  if (existing) existing.remove();
+  const wrap = _chipWrapHtml(node);
+  _chipsLayer.appendChild(wrap);
+  _chipWraps.set(node.id(), wrap);
+  _positionChipWrap(node, wrap);
+}
+
+function _repositionAll() {
+  cy.nodes().filter(n => !n.data('phantom')).forEach(n => {
+    const wrap = _chipWraps.get(n.id());
+    if (wrap) _positionChipWrap(n, wrap);
+  });
+}
+
+function rebuildAllChips() {
+  _chipsLayer.innerHTML = '';
+  _chipWraps.clear();
+  cy.nodes().filter(n => !n.data('phantom')).forEach(n => _addChip(n));
+}
+
+
+// ── Run button in-flight state ────────────────────────────────────────────────
+function disableRunBtn() {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  btn.style.pointerEvents = 'none';
+}
+function enableRunBtn() {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = false;
+  btn.style.opacity = '';
+  btn.style.pointerEvents = '';
+}
+
 // ── Inline warning in result drawer ──────────────────────────────────────────
 function showDrawerWarning(msg) {
   const drawer = document.getElementById('result-drawer');
@@ -648,6 +816,10 @@ function showContextMenu(node, renderedPos) {
     {
       label: 'Add self-loop',
       action: () => {
+        if (cy.edges(`[source = "${node.id()}"][target = "${node.id()}"]`).length > 0) {
+          showDrawerWarning('A self-loop already exists on state <b>' + (node.data('name') || node.id()) + '</b>.');
+          return;
+        }
         saveSnapshot();
         cy.add({ group: 'edges', data: {
           id: 'e' + node.id() + '_self_' + Date.now(),
@@ -711,6 +883,8 @@ function loadExample(name) {
   document.getElementById('ltl-formula').value = ex.formula;
   refreshAllInitialArrows();
   updateInitialHint();
+  updateEmptyCanvasHint();
+  rebuildAllChips();
   syncGraphData();
   cy.fit(cy.elements('[!phantom]'), 80);
 }
@@ -825,19 +999,29 @@ function openLabelEditor(node) {
   nameInput.focus();
   nameInput.select();
 
+  // Inline error label inside the editor panel
+  const errorEl = document.createElement('div');
+  errorEl.style.cssText = 'font-family:monospace;font-size:10px;color:#FF4D00;margin-top:2px;min-height:14px;';
+  panel.appendChild(errorEl);
+
   let committed = false;
   function commit() {
     if (committed) return;
+    const name  = nameInput.value.trim() || node.id();
+    const props = propsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    const propErr = validatePropNames(props);
+    if (propErr) {
+      errorEl.textContent = propErr;
+      return;
+    }
+    errorEl.textContent = '';
     committed = true;
     saveSnapshot();
-    const name = nameInput.value.trim() || node.id();
-    const props = propsInput.value.split(',').map(s => s.trim()).filter(Boolean);
     const wasInitial = !!node.data('initial');
     const nowInitial = !!initCheck.checked;
     node.data('name', name);
+    node.data('label', name);
     node.data('props', props);
-    const propsStr = props.length ? '\n{' + props.join(',') + '}' : '';
-    node.data('label', name + propsStr);
     if (wasInitial !== nowInitial) {
       cy.nodes().forEach(n => n.data('initial', false));
       if (nowInitial) node.data('initial', true);
@@ -901,23 +1085,33 @@ cy.on('tap', 'node', function(evt) {
       node.addClass('edge-source');
       document.getElementById('tool-indicator').textContent = 'MODE: EDGE — click target (or same node for self-loop)';
     } else if (edgeSource.id() === node.id()) {
-      // Same node clicked again → create a self-loop
-      saveSnapshot();
-      const edgeId = 'e' + node.id() + '_self_' + Date.now();
-      cy.add({ group: 'edges', data: { id: edgeId, source: node.id(), target: node.id() } });
+      // Same node clicked again → create a self-loop (if one doesn't already exist)
+      if (cy.edges(`[source = "${node.id()}"][target = "${node.id()}"]`).length > 0) {
+        showDrawerWarning('A self-loop already exists on state <b>' + (node.data('name') || node.id()) + '</b>.');
+      } else {
+        saveSnapshot();
+        const edgeId = 'e' + node.id() + '_self_' + Date.now();
+        cy.add({ group: 'edges', data: { id: edgeId, source: node.id(), target: node.id() } });
+        syncGraphData();
+      }
       edgeSource.removeClass('edge-source');
       edgeSource = null;
       document.getElementById('tool-indicator').textContent = 'MODE: EDGE';
-      syncGraphData();
     } else {
-      // Different node → create directed edge
-      saveSnapshot();
-      const edgeId = 'e' + edgeSource.id() + '_' + node.id() + '_' + Date.now();
-      cy.add({ group: 'edges', data: { id: edgeId, source: edgeSource.id(), target: node.id() } });
+      // Different node → create directed edge (if one doesn't already exist)
+      const srcId = edgeSource.id();
+      const tgtId = node.id();
+      if (cy.edges(`[source = "${srcId}"][target = "${tgtId}"]`).filter(e => !e.data('phantom')).length > 0) {
+        showDrawerWarning('A transition from <b>' + (edgeSource.data('name') || srcId) + '</b> to <b>' + (node.data('name') || tgtId) + '</b> already exists.');
+      } else {
+        saveSnapshot();
+        const edgeId = 'e' + srcId + '_' + tgtId + '_' + Date.now();
+        cy.add({ group: 'edges', data: { id: edgeId, source: srcId, target: tgtId } });
+        syncGraphData();
+      }
       edgeSource.removeClass('edge-source');
       edgeSource = null;
       document.getElementById('tool-indicator').textContent = 'MODE: EDGE';
-      syncGraphData();
     }
     return;
   }
@@ -960,6 +1154,7 @@ cy.on('dblclick', function(evt) {
   });
   if (isFirstInitial) refreshInitialArrow(cy.getElementById(id));
   updateInitialHint();
+  updateEmptyCanvasHint();
   syncGraphData();
 });
 
@@ -1006,8 +1201,11 @@ cy.on('mouseover', 'node', function(evt) {
   const props = node.data('props') || [];
   const initial = node.data('initial') ? ' · initial' : '';
 
-  tooltipName.textContent  = name + initial;
-  tooltipProps.textContent = props.length ? `{ ${props.join(', ')} }` : '∅  (no propositions)';
+  tooltipName.textContent = name + initial;
+  // Tooltip shows a compact hint; props are already visible as chips below the node.
+  tooltipProps.textContent = props.length
+    ? `props: ${props.join(', ')}`
+    : 'no propositions';
 
   // Position above the node, centred on it — calculated once and fixed
   nodeTooltip.classList.remove('hidden');
@@ -1045,6 +1243,7 @@ cy.on('remove', 'node', function(evt) {
     const phantom = cy.$(`#phantom_${node.id()}`);
     if (phantom.length) phantom.remove();
     updateInitialHint();
+    updateEmptyCanvasHint();
   }
 });
 
@@ -1100,10 +1299,22 @@ document.getElementById('run-btn').addEventListener('htmx:beforeRequest', functi
   }
 });
 
+// ── Cytoscape event hooks for chip overlay ────────────────────────────────────
+cy.on('add', 'node', evt => _addChip(evt.target));
+cy.on('remove', 'node', evt => _removeChip(evt.target));
+cy.on('data', 'node', evt => _refreshChip(evt.target));
+cy.on('pan zoom resize layoutstop', _repositionAll);
+cy.on('position', 'node', evt => {
+  const wrap = _chipWraps.get(evt.target.id());
+  if (wrap) _positionChipWrap(evt.target, wrap);
+});
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 setTool('node');
 refreshAllInitialArrows();
 updateInitialHint();
+updateEmptyCanvasHint();
+rebuildAllChips();
 syncGraphData();
 
 // HTMX: expand result drawer when content arrives
