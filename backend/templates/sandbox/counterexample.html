@@ -155,17 +155,30 @@
         <div class="space-y-2" id="trace-list">
 
           {% for step in trace %}
+
+          {% if step.cycle_start %}
+          <div class="font-mono text-[10px] text-[#E0A030] tracking-[0.1em] pl-1 pb-1 border-t border-dashed border-[#2A2A2A] mt-1 pt-2">↻ CYCLE START</div>
+          {% endif %}
+
           <div class="trace-row flex items-start gap-3 px-2 py-2 rounded -mx-2"
                data-step="{{ forloop.counter0 }}">
 
-            <!-- Step index -->
+            <!-- Step index + cycle badge -->
             <div class="font-mono text-[11px] text-[#6B6B6B] w-5 mt-0.5 shrink-0 select-none">
               {{ forloop.counter0|stringformat:"02d" }}
             </div>
 
-            <!-- State name + props -->
+            <!-- State display name + props + cycle marker -->
             <div class="flex-1 min-w-0">
-              <div class="font-mono text-[13px] text-[#FAFAFA] mb-1.5">{{ step.state }}</div>
+              <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                <div class="font-mono text-[13px] text-[#FAFAFA]">{{ step.name|default:step.state }}</div>
+                {% if step.in_cycle %}
+                <span class="font-mono text-[9px] text-[#E0A030] bg-[#1F1808] border border-[#4A3A1A] px-1 py-0.5 rounded leading-none">↻</span>
+                {% endif %}
+                {% if step.cycle_back %}
+                <span class="font-mono text-[9px] text-[#E0A030] bg-[#1F1808] border border-[#4A3A1A] px-1 py-0.5 rounded leading-none">LOOP</span>
+                {% endif %}
+              </div>
               <div class="flex gap-1 flex-wrap">
                 {% for prop in step.props %}
                 <span class="font-mono text-[10px] px-1.5 py-0.5 bg-[#0A0A0A] border border-[#1F1F1F] text-[#AEFC00]">
@@ -173,35 +186,34 @@
                 </span>
                 {% empty %}
                 <span class="font-mono text-[10px] px-1.5 py-0.5 bg-[#0A0A0A] border border-[#1F1F1F] text-[#3A3A3A]">
-                  {}
+                  ∅
                 </span>
                 {% endfor %}
               </div>
+              {% if step.cycle_back %}
+              <div class="font-mono text-[9px] text-[#6B6B6B] mt-1">↺ loops back to cycle start</div>
+              {% endif %}
             </div>
 
             <!-- Per-state status icon -->
             <div class="mt-0.5 shrink-0">
               {% if step.status == "satisfied" %}
-              <!-- check (green) -->
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                 stroke="#AEFC00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
               {% elif step.status == "violating" %}
-              <!-- x (red) -->
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                 stroke="#FF4D00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"/>
                 <line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
               {% elif step.status == "pending" %}
-              <!-- clock (amber) — obligation still open -->
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                 stroke="#E0A030" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/>
               </svg>
               {% else %}
-              <!-- dash (grey) — obligation does not apply / vacuous -->
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                 stroke="#6B6B6B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12"/>
@@ -219,27 +231,36 @@
 
       <!-- Controls -->
       <div class="p-5 border-t border-[#1F1F1F] space-y-2">
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-3 gap-2">
 
           <!-- Step back -->
           <button id="btn-prev" onclick="goTo(currentStep - 1)"
             class="flex items-center justify-center gap-1.5 border border-[#2A2A2A] py-2
                    text-[12px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] transition-colors rounded">
-            <!-- ArrowLeft -->
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <line x1="19" y1="12" x2="5" y2="12"/>
               <polyline points="12 19 5 12 12 5"/>
             </svg>
-            Step Back
+            Back
+          </button>
+
+          <!-- Play / Pause auto-step -->
+          <button id="btn-play" onclick="togglePlay()"
+            class="flex items-center justify-center gap-1 border border-[#2A2A2A] py-2
+                   text-[12px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] transition-colors rounded">
+            <svg id="play-icon" width="13" height="13" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <span id="play-label">Play</span>
           </button>
 
           <!-- Step forward -->
           <button id="btn-next" onclick="goTo(currentStep + 1)"
             class="flex items-center justify-center gap-1.5 border border-[#2A2A2A] py-2
                    text-[12px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] transition-colors rounded">
-            Step Fwd
-            <!-- ArrowRight -->
+            Fwd
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <line x1="5" y1="12" x2="19" y2="12"/>
@@ -249,12 +270,12 @@
 
         </div>
 
-        <!-- Back to exercise -->
+        <!-- Back to Sandbox -->
         <a href="/sandbox/"
           class="block w-full bg-[#FF4D00] hover:bg-[#FF6B22] active:bg-[#CC3D00]
                  text-black text-center py-2.5 text-[13px] font-medium
                  transition-colors rounded">
-          Back to Exercise
+          Back to Sandbox
         </a>
       </div>
 
@@ -266,14 +287,20 @@
 
 
 {% block extra_js %}
+{{ trace_obj|json_script:"__trace" }}
+{{ graph_obj|json_script:"__graph" }}
+{{ violating_edges_obj|json_script:"__vedges" }}
+{{ formula_str|json_script:"__formula" }}
+{{ violating_subformula_str|json_script:"__vsubformula" }}
+{{ violation_kind_str|json_script:"__vkind" }}
 <script>
-// ── Data from server ───────────────────────────────────────────────────────────
-const TRACE               = {{ trace_json|safe }};
-const GRAPH_DATA          = {{ graph_json|safe }};
-const VIOLATING_EDGES     = {{ violating_edges_json|safe }};
-const FORMULA             = {{ formula_json|safe }};
-const VIOLATING_SUBFORMULA = {{ violating_subformula_json|safe }};
-const VIOLATION_KIND      = {{ violation_kind_json|safe }};
+// ── Data from server (safely embedded via json_script) ─────────────────────────
+const TRACE               = JSON.parse(document.getElementById('__trace').textContent);
+const GRAPH_DATA          = JSON.parse(document.getElementById('__graph').textContent);
+const VIOLATING_EDGES     = JSON.parse(document.getElementById('__vedges').textContent);
+const FORMULA             = JSON.parse(document.getElementById('__formula').textContent);
+const VIOLATING_SUBFORMULA = JSON.parse(document.getElementById('__vsubformula').textContent);
+const VIOLATION_KIND      = JSON.parse(document.getElementById('__vkind').textContent);
 
 // Per-status presentation (colours + labels) shared across the page.
 const STATUS_INFO = {
@@ -592,8 +619,8 @@ function updateStatePanel() {
   const step = TRACE[currentStep];
   const info = statusInfo(step.status);
 
-  // Title
-  document.getElementById('state-panel-name').textContent = step.state;
+  // Title — prefer human-readable name, fall back to id
+  document.getElementById('state-panel-name').textContent = step.name || step.state;
 
   // Badge reflects the precise per-state status
   const badge = document.getElementById('state-panel-badge');
@@ -625,12 +652,17 @@ function updateStatePanel() {
     propsEl.appendChild(span);
   }
 
-  // Checking — highlight the per-step active token, coloured by status
+  // Checking — highlight the per-step active token in the state panel.
+  // Use renderFormulaHighlighted so the offset tracking is consistent.
   const checkEl   = document.getElementById('state-panel-checking');
   const highlight = step.highlight || '';
   const hlColor   = info.color;
   if (highlight && FORMULA.includes(highlight)) {
-    const idx    = FORMULA.indexOf(highlight);
+    // Find the same occurrence that syncFormulaDisplay already found (_hlOffset
+    // was advanced by the header/sidebar calls before this).
+    const idx = FORMULA.lastIndexOf(highlight, _hlOffset) !== -1
+      ? FORMULA.lastIndexOf(highlight, _hlOffset)
+      : FORMULA.indexOf(highlight);
     const before = escHtml(FORMULA.slice(0, idx));
     const mid    = escHtml(highlight);
     const after  = escHtml(FORMULA.slice(idx + highlight.length));
@@ -654,12 +686,23 @@ function updateStatePanel() {
 }
 
 // ── Formula display with dynamic per-step highlighting ─────────────────────────
-// highlight: token/subformula to underline  color: CSS color string
-function renderFormulaHighlighted(containerId, highlight, color) {
+// Finds the occurrence of `highlight` inside FORMULA that best matches the
+// current step context: prefer the occurrence closest to the last-matched
+// position so repeated subformulas advance through the formula left-to-right.
+let _hlOffset = 0;  // tracks last match position across steps
+
+function renderFormulaHighlighted(containerId, highlight, color, resetOffset) {
   const el = document.getElementById(containerId);
   if (!el) return;
   if (highlight && FORMULA.includes(highlight)) {
-    const idx    = FORMULA.indexOf(highlight);
+    if (resetOffset) _hlOffset = 0;
+    let idx = FORMULA.indexOf(highlight, _hlOffset);
+    if (idx === -1) {
+      // Wrap around if nothing found past current offset.
+      idx = FORMULA.indexOf(highlight);
+      _hlOffset = 0;
+    }
+    _hlOffset = idx + highlight.length;
     const before = escHtml(FORMULA.slice(0, idx));
     const mid    = escHtml(highlight);
     const after  = escHtml(FORMULA.slice(idx + highlight.length));
@@ -668,6 +711,7 @@ function renderFormulaHighlighted(containerId, highlight, color) {
       `<span style="border-bottom:2px solid ${color};padding-bottom:2px;color:${color};">${mid}</span>` +
       after;
   } else {
+    _hlOffset = 0;
     el.textContent = FORMULA;
   }
 }
@@ -675,28 +719,56 @@ function renderFormulaHighlighted(containerId, highlight, color) {
 // Sync both formula displays to the current step (or overview)
 function syncFormulaDisplay() {
   if (currentStep < 0) {
-    // Overview: dim highlight of the overall violating subformula
-    renderFormulaHighlighted('header-formula',  VIOLATING_SUBFORMULA, '#6B3A2A');
-    renderFormulaHighlighted('sidebar-formula', VIOLATING_SUBFORMULA, '#6B3A2A');
+    // Overview: dim highlight of the overall violating subformula; reset offset.
+    renderFormulaHighlighted('header-formula',  VIOLATING_SUBFORMULA, '#6B3A2A', true);
+    renderFormulaHighlighted('sidebar-formula', VIOLATING_SUBFORMULA, '#6B3A2A', true);
   } else {
     const step  = TRACE[currentStep];
     const color = statusInfo(step.status).color;
-    renderFormulaHighlighted('header-formula',  step.highlight || '', color);
-    renderFormulaHighlighted('sidebar-formula', step.highlight || '', color);
+    renderFormulaHighlighted('header-formula',  step.highlight || '', color, currentStep === 0);
+    renderFormulaHighlighted('sidebar-formula', step.highlight || '', color, false);
   }
 }
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────────
+// Only intercept arrow keys when focus is NOT inside the trace list (so normal
+// scrolling inside that element still works).
 document.addEventListener('keydown', function(e) {
+  const traceList = document.getElementById('trace-list');
+  if (traceList && traceList.contains(document.activeElement)) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
     e.preventDefault();
     goTo(currentStep + 1);
-  }
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
     e.preventDefault();
     goTo(currentStep - 1);
   }
 });
+
+// ── Play / Pause auto-step ─────────────────────────────────────────────────────
+let _playTimer = null;
+const PLAY_INTERVAL_MS = 1200;
+
+function togglePlay() {
+  if (_playTimer) {
+    clearInterval(_playTimer);
+    _playTimer = null;
+    document.getElementById('play-label').textContent = 'Play';
+    document.getElementById('play-icon').innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+  } else {
+    document.getElementById('play-label').textContent = 'Pause';
+    document.getElementById('play-icon').innerHTML =
+      '<line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/>';
+    _playTimer = setInterval(function() {
+      if (currentStep >= TRACE.length - 1) {
+        // Reached end — stop.
+        togglePlay();
+      } else {
+        goTo(currentStep + 1);
+      }
+    }, PLAY_INTERVAL_MS);
+  }
+}
 
 // ── Violation-type explainer ────────────────────────────────────────────────────
 function renderViolationKindNote() {

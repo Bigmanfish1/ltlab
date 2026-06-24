@@ -1,7 +1,8 @@
 """LTL model checking engine built on SPOT.
 
-Three public functions cover the full pipeline:
+Four public functions cover the full pipeline:
 
+  validate_request     — pre-flight structural complexity + AP-subset guard
   cytoscape_to_kripke  — Cytoscape.js JSON  → SPOT kripke_graph + BDD dict
   check_ltl            — kripke_graph + formula → satisfied / violated + lasso
   analyze_lasso        — raw lasso → per-step analysis for the counterexample page
@@ -25,6 +26,7 @@ analyze_lasso returns a dict:
 
 Each trace step consumed by the counterexample page template has:
   state      : str   node ID (e.g. "s0")
+  name       : str   human-readable state name (may differ from id after rename)
   props      : list[str]   atomic propositions holding at this state
   status     : str   one of
                  "satisfied"  the local obligation actively holds here
@@ -86,6 +88,15 @@ def _require_spot() -> None:
         )
 
 
+# ── Structural complexity limits (SPOT-grounded) ─────────────────────────────
+# Translation blowup is ~2^(subformulas) × 2^|AP| in the worst case.
+# These caps keep the negated-formula automaton in the low-thousands of states,
+# which × ≤100 Kripke states stays sub-second and well within memory.
+MAX_FORMULA_APS   = 8   # distinct atomic propositions in the formula
+MAX_TEMPORAL_OPS  = 10  # temporal-operator nodes (X F G U R W M)
+MAX_FORMULA_NODES = 40  # total AST nodes (spot.length equivalent)
+
+
 # ── Formula normalisation ────────────────────────────────────────────────────
 
 def _normalize_formula(formula_str: str) -> str:
@@ -98,6 +109,122 @@ def _normalize_formula(formula_str: str) -> str:
         .replace("→", "->")
         .replace("↔", "<->")
     )
+
+
+# ── Formula AST helpers ──────────────────────────────────────────────────────
+
+def _formula_node_count(f) -> int:
+    """Count total AST nodes (equivalent to spot.length for our purposes)."""
+    try:
+        children = f.size()
+    except Exception:
+        return 1
+    if children == 0:
+        return 1
+    return 1 + sum(_formula_node_count(f[i]) for i in range(children))
+
+
+def _collect_formula_aps_set(f, ops: dict) -> set[str]:
+    """Return the set of all atomic-proposition names in the formula tree."""
+    aps: set[str] = set()
+    stack = [f]
+    while stack:
+        node = stack.pop()
+        tag = _op_tag(node, ops)
+        if tag == "ap":
+            try:
+                aps.add(node.ap_name())
+            except Exception:
+                pass
+        else:
+            try:
+                for i in range(node.size()):
+                    stack.append(node[i])
+            except Exception:
+                pass
+    return aps
+
+
+def _count_temporal_ops(f, ops: dict) -> int:
+    """Count temporal-operator nodes (X F G U R W M) in the formula tree."""
+    temporal_tags = {"X", "F", "G", "U", "R", "W", "M"}
+    count = 0
+    stack = [f]
+    while stack:
+        node = stack.pop()
+        tag = _op_tag(node, ops)
+        if tag in temporal_tags:
+            count += 1
+        try:
+            for i in range(node.size()):
+                stack.append(node[i])
+        except Exception:
+            pass
+    return count
+
+
+# ── Pre-flight validation (PRIMARY DoS guard — call before translate()) ───────
+
+def validate_request(graph: dict, formula_str: str) -> None:
+    """Validate the formula and graph before the expensive SPOT translation.
+
+    Must be called at the top of run_ltl_check, before spot.translate().
+    Raises ValueError with a user-friendly message on any violation so the
+    Celery task fails cleanly instead of blowing up memory/CPU.
+
+    Checks (in order):
+      1. Formula parses successfully.
+      2. AST-level structural caps (prevent 2^n blowup in translate()).
+      3. Formula APs are a subset of propositions declared on graph states.
+    """
+    _require_spot()
+
+    normalised = _normalize_formula(formula_str)
+    try:
+        f = spot.formula(normalised)
+    except (SyntaxError, RuntimeError) as exc:
+        raise ValueError(f"Invalid LTL formula: {exc}") from exc
+
+    ops = _op_constants()
+
+    # ── Structural caps ───────────────────────────────────────────────────────
+    node_count = _formula_node_count(f)
+    if node_count > MAX_FORMULA_NODES:
+        raise ValueError(
+            f"Formula is too complex ({node_count} subformulas) — "
+            f"the sandbox supports at most {MAX_FORMULA_NODES}. "
+            "Try splitting the formula into smaller pieces."
+        )
+
+    temporal = _count_temporal_ops(f, ops)
+    if temporal > MAX_TEMPORAL_OPS:
+        raise ValueError(
+            f"Formula contains {temporal} temporal operators (X/F/G/U/R/W/M) — "
+            f"the sandbox supports at most {MAX_TEMPORAL_OPS}."
+        )
+
+    formula_aps = _collect_formula_aps_set(f, ops)
+    if len(formula_aps) > MAX_FORMULA_APS:
+        raise ValueError(
+            f"Formula references {len(formula_aps)} distinct propositions — "
+            f"the sandbox supports at most {MAX_FORMULA_APS}."
+        )
+
+    # ── AP subset: formula must not reference undeclared propositions ─────────
+    elements = graph.get("elements", {})
+    declared_props: set[str] = set()
+    for n in elements.get("nodes", []):
+        if not n.get("data", {}).get("phantom"):
+            for p in n["data"].get("props", []):
+                declared_props.add(p)
+
+    undeclared = formula_aps - declared_props
+    if undeclared:
+        names = ", ".join(sorted(undeclared))
+        raise ValueError(
+            f"Formula references proposition(s) not declared on any state: {names}. "
+            "Add these propositions to the relevant states, or remove them from the formula."
+        )
 
 
 # ── 1. Kripke graph conversion ───────────────────────────────────────────────
@@ -667,6 +794,11 @@ def analyze_lasso(
         n["data"]["id"]: list(n["data"].get("props", []))
         for n in raw_nodes
     }
+    # name may differ from id when the user renames a state in the editor.
+    name_by_node: dict[str, str] = {
+        n["data"]["id"]: n["data"].get("name", n["data"]["id"])
+        for n in raw_nodes
+    }
 
     order = [
         spot_id_to_node.get(step["spot_id"], str(step["spot_id"]))
@@ -693,13 +825,15 @@ def analyze_lasso(
         for i, nid in enumerate(order):
             in_cycle = i >= cycle_start
             steps.append({
-                "state": nid,
-                "props": props_by_pos[i],
-                "status": STATUS_VIOLATING if in_cycle else STATUS_SATISFIED,
-                "highlight": "",
-                "reason": "",
-                "in_cycle": in_cycle,
-                "cycle_back": False,
+                "state":       nid,
+                "name":        name_by_node.get(nid, nid),
+                "props":       props_by_pos[i],
+                "status":      STATUS_VIOLATING if in_cycle else STATUS_SATISFIED,
+                "highlight":   "",
+                "reason":      "",
+                "in_cycle":    in_cycle,
+                "cycle_start": in_cycle and i == cycle_start,
+                "cycle_back":  False,
             })
         if steps:
             steps[-1]["cycle_back"] = True
@@ -716,14 +850,17 @@ def analyze_lasso(
 
     steps = []
     for i, nid in enumerate(order):
+        in_cyc = i >= cycle_start
         steps.append({
-            "state": nid,
-            "props": props_by_pos[i],
-            "status": statuses[i],
-            "highlight": highlights[i],
-            "reason": reasons[i],
-            "in_cycle": i >= cycle_start,
-            "cycle_back": False,
+            "state":       nid,
+            "name":        name_by_node.get(nid, nid),
+            "props":       props_by_pos[i],
+            "status":      statuses[i],
+            "highlight":   highlights[i],
+            "reason":      reasons[i],
+            "in_cycle":    in_cyc,
+            "cycle_start": in_cyc and i == cycle_start,
+            "cycle_back":  False,
         })
     if steps:
         steps[-1]["cycle_back"] = True

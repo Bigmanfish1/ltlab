@@ -41,10 +41,14 @@ services:
   worker:
     container_name: ltlab-worker
     build: ./backend
-    command: celery -A config worker --loglevel=info
+    command: ./start-worker.sh
     volumes:
       - ./backend:/app
     env_file: .env
+    environment:
+      - CELERY_CONCURRENCY=2
+      - CELERY_MAX_TASKS_PER_CHILD=50
+      - CELERY_MAX_MEMORY_PER_CHILD=300000
     depends_on:
       db:
         condition: service_healthy

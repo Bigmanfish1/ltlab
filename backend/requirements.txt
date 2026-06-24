@@ -5,6 +5,7 @@ django-environ>=0.11
 whitenoise>=6.8
 django-ninja>=1.3
 gunicorn>=22.0
+gevent>=24.0
 ruff>=0.4
 spottl==2.13.0.1
 # Pinned to <3 — views._pop_pkce_verifier relies on supabase-py/gotrue 2.x
