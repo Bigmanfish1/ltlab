@@ -1,12 +1,10 @@
 import json
 import re
 
-from celery.result import AsyncResult
-from django.conf import settings
 from django.core.cache import cache
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required
 
@@ -208,43 +206,17 @@ def verify_ltl(request):
         )
         return render(request, "sandbox/result.html", context)
 
-    task = run_ltl_check.delay(graph, formula)
-    return render(request, "sandbox/pending.html", {"task_id": task.id})
+    # Run the check synchronously — at the 15-state cap it is sub-millisecond,
+    # so the request returns the rendered result directly. A ValueError carries
+    # a clean, user-facing message from the engine (bad formula / complexity cap).
+    try:
+        engine_result = run_ltl_check(graph, formula)
+    except ValueError as exc:
+        return _error_response(request, str(exc))
 
-
-@supabase_login_required
-@require_GET
-def verify_ltl_status(request, task_id):
-    result = AsyncResult(task_id)
-
-    if result.state in ("PENDING", "STARTED", "RETRY"):
-        return render(request, "sandbox/pending.html", {"task_id": task_id})
-
-    if result.state == "FAILURE":
-        exc = result.result
-        # ValueError means a clean user-facing message from the engine.
-        if isinstance(exc, ValueError):
-            msg = str(exc)
-        else:
-            msg = "Verification was stopped — the formula or graph was too complex."
-        return _error_response(request, msg)
-
-    # SUCCESS — the task echoes formula + kripke_graph back in its return dict.
-    engine_result = result.result
     graph_json = json.dumps(engine_result["kripke_graph"])
     context = _build_result_context(engine_result, graph_json)
     return render(request, "sandbox/result.html", context)
-
-
-@supabase_login_required
-@require_POST
-def verify_ltl_cancel(request):
-    """Revoke a running Celery verification task and clear the result drawer."""
-    task_id = request.POST.get("task_id", "")
-    if task_id:
-        AsyncResult(task_id).revoke(terminate=True)
-    # Return an empty drawer so HTMX clears the spinner.
-    return render(request, "sandbox/result.html", {})
 
 
 @supabase_login_required
