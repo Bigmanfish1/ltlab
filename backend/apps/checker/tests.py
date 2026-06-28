@@ -548,69 +548,24 @@ class TestVerifyLTLView(TestCase):
         self.assertIn(b"Multiple initial", resp.content)
 
     @patch("apps.checker.views.run_ltl_check")
-    def test_valid_request_enqueues_task_and_returns_pending(self, mock_task):
-        mock_async = MagicMock()
-        mock_async.id = "test-task-id-123"
-        mock_task.delay.return_value = mock_async
-        resp = self._post("G p")
-        self.assertEqual(resp.status_code, 200)
-        mock_task.delay.assert_called_once()
-        self.assertIn(b"Running verification", resp.content)
-
-
-# ── 8. View: verify_ltl_status ───────────────────────────────────────────────
-
-class TestVerifyLTLStatusView(TestCase):
-    """Tests for the async polling status endpoint."""
-
-    def setUp(self):
-        self.factory = RequestFactory()
-        self.graph = _graph(
-            [{"id": "s0", "props": ["p"], "initial": True},
-             {"id": "s1", "props": []}],
-            [("s0", "s1"), ("s1", "s0")],
-        )
-
-    def _get(self, task_id):
-        from .views import verify_ltl_status
-        req = self.factory.get(f"/sandbox/verify/status/{task_id}/")
-        req.supabase_user = MagicMock()
-        req.profile = MagicMock()
-        return verify_ltl_status(req, task_id)
-
-    @patch("apps.checker.views.AsyncResult")
-    def test_pending_state_returns_pending_fragment(self, mock_ar):
-        mock_ar.return_value.state = "PENDING"
-        resp = self._get("some-task-id")
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"Running verification", resp.content)
-
-    @patch("apps.checker.views.AsyncResult")
-    def test_started_state_returns_pending_fragment(self, mock_ar):
-        mock_ar.return_value.state = "STARTED"
-        resp = self._get("some-task-id")
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"Running verification", resp.content)
-
-    @patch("apps.checker.views.AsyncResult")
-    def test_success_satisfied_renders_holds(self, mock_ar):
-        mock_ar.return_value.state = "SUCCESS"
-        mock_ar.return_value.result = {
+    def test_valid_request_runs_synchronously_and_renders_holds(self, mock_run):
+        # The check runs in-process; a satisfied result renders the holds drawer.
+        mock_run.return_value = {
             "result": "satisfied",
             "formula": "G p",
-            "kripke_graph": self.graph,
+            "kripke_graph": json.loads(self.graph),
         }
-        resp = self._get("some-task-id")
+        resp = self._post("G p")
         self.assertEqual(resp.status_code, 200)
+        mock_run.assert_called_once()
         self.assertIn(b"holds", resp.content)
 
-    @patch("apps.checker.views.AsyncResult")
-    def test_success_violated_renders_violated(self, mock_ar):
-        mock_ar.return_value.state = "SUCCESS"
-        mock_ar.return_value.result = {
+    @patch("apps.checker.views.run_ltl_check")
+    def test_valid_request_violated_renders_violated(self, mock_run):
+        mock_run.return_value = {
             "result": "violated",
             "formula": "G p",
-            "kripke_graph": self.graph,
+            "kripke_graph": json.loads(self.graph),
             "violation_kind": "safety",
             "violating_subformula": "p",
             "trace": [
@@ -622,19 +577,18 @@ class TestVerifyLTLStatusView(TestCase):
                  "in_cycle": True, "cycle_back": True},
             ],
         }
-        resp = self._get("some-task-id")
+        resp = self._post("G p")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"violated", resp.content)
         # The violating state must be threaded into the View Counterexample form.
         self.assertIn(b"s1", resp.content)
 
-    @patch("apps.checker.views.AsyncResult")
-    def test_failure_renders_error(self, mock_ar):
-        mock_ar.return_value.state = "FAILURE"
-        mock_ar.return_value.result = ValueError("Invalid formula")
-        resp = self._get("some-task-id")
+    @patch("apps.checker.views.run_ltl_check")
+    def test_engine_value_error_renders_error_verbatim(self, mock_run):
+        # A ValueError from the engine carries a clean user-facing message.
+        mock_run.side_effect = ValueError("Invalid formula")
+        resp = self._post("G p")
         self.assertEqual(resp.status_code, 200)
-        # ValueError messages are shown verbatim (no "Engine error:" prefix).
         self.assertIn(b"Invalid formula", resp.content)
 
 
