@@ -47,21 +47,10 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
     env:
       SECRET_KEY: ci-secret-key-not-used-in-production
       DEBUG: "True"
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/ltlab_test
-      REDIS_URL: redis://localhost:6379/0
       DJANGO_SETTINGS_MODULE: config.settings.development
 
     steps:
