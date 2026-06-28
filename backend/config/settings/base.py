@@ -89,41 +89,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_ANON_KEY = env("SUPABASE_ANON_KEY", default="")
 
-# Django cache — use Redis so web and worker processes share the same store.
-# Falls back to the built-in local-memory backend in environments without Redis
-# (e.g. plain manage.py runserver for quick local hacking).
-_REDIS_URL = env("REDIS_URL", default="")
-if _REDIS_URL:
-    CACHES = {
-        "default": {
-            "BACKEND":  "django.core.cache.backends.redis.RedisCache",
-            "LOCATION": _REDIS_URL,
-        }
-    }
+# Django cache — per-process local memory (the Django default backend).
+# The LTL check runs in-process and is sub-millisecond, so caching is only a
+# minor optimisation for repeated identical submissions. On Cloud Run each
+# autoscaled instance keeps its own cache; this is never shared state the app
+# depends on, so the per-process backend is the correct, dependency-free choice.
 
 # TTL for cached LTL results (seconds).  Students running the same example
-# repeatedly (classroom bursts) will get instant responses on cache hits.
+# repeatedly (classroom bursts) get an instant response on a same-instance hit.
 RESULT_CACHE_TTL = env.int("RESULT_CACHE_TTL", default=3600)
-
-# Celery
-CELERY_BROKER_URL        = env("REDIS_URL", default="redis://redis:6379/0")
-CELERY_RESULT_BACKEND    = env("REDIS_URL", default="redis://redis:6379/0")
-CELERY_ACCEPT_CONTENT    = ["json"]
-CELERY_TASK_SERIALIZER   = "json"
-CELERY_RESULT_SERIALIZER = "json"
-CELERY_TIMEZONE          = TIME_ZONE
-
-# Time limits — soft limit is a backstop for Python-side loops; it cannot
-# interrupt SPOT's C++ translate() (signal delivered at bytecode boundary only).
-# The structural caps in engine.validate_request are the primary DoS guard.
-CELERY_TASK_SOFT_TIME_LIMIT = env.int("CELERY_SOFT_TIME_LIMIT", default=10)
-CELERY_TASK_TIME_LIMIT      = env.int("CELERY_TIME_LIMIT",      default=30)
-
-# OOM mitigation: recycle workers after N tasks or M MB of memory used.
-# SPOT can leave fragmented BDD memory after heavy runs; recycling prevents
-# gradual RSS growth from accumulating into an OOM kill.
-CELERY_WORKER_MAX_TASKS_PER_CHILD  = env.int("CELERY_MAX_TASKS_PER_CHILD",  default=50)
-CELERY_WORKER_MAX_MEMORY_PER_CHILD = env.int("CELERY_MAX_MEMORY_PER_CHILD", default=300_000)  # KB
-
-# Prevent Redis result accumulation — results expire after 1 hour.
-CELERY_RESULT_EXPIRES = env.int("CELERY_RESULT_EXPIRES", default=3600)

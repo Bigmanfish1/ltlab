@@ -1,4 +1,4 @@
-from django.conf import settings
+from django.db import connection
 from django.http import HttpResponse
 from ninja import NinjaAPI
 
@@ -20,18 +20,14 @@ def health(request):
 
 @api.get("/ready", tags=["system"])
 def ready(request):
-    """Readiness probe — confirms Redis and a Celery worker are reachable."""
-    try:
-        import redis
-        r = redis.from_url(settings.CELERY_BROKER_URL, socket_connect_timeout=2)
-        r.ping()
-    except Exception:
-        return HttpResponse(status=503)
+    """Readiness probe — confirms the database is reachable.
 
+    The LTL check runs in-process (no queue/worker), so the database is the
+    only external dependency to verify here.
+    """
     try:
-        from config.celery import app as celery_app
-        if not celery_app.control.ping(timeout=1):
-            return HttpResponse(status=503)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
     except Exception:
         return HttpResponse(status=503)
 
