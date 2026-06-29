@@ -20,5 +20,8 @@ RUN chmod +x /entrypoint.sh
 COPY . .
 RUN chmod +x start-web.sh
 
+# Default to the production server (gunicorn via start-web.sh) so any deploy of
+# this image is production-safe. Local development overrides this in
+# docker-compose.yml (`command: python manage.py runserver`).
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["./start-web.sh"]
