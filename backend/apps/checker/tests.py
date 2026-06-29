@@ -591,6 +591,17 @@ class TestVerifyLTLView(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Invalid formula", resp.content)
 
+    @patch("apps.checker.views.run_ltl_check")
+    def test_engine_non_value_error_renders_friendly_banner(self, mock_run):
+        # A non-ValueError (e.g. SPOT RuntimeError, or unexpected engine bug) must
+        # be caught and shown as an error banner, never propagate as a 500.
+        mock_run.side_effect = RuntimeError("SPOT is not installed")
+        resp = self._post("G p")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Verification was stopped", resp.content)
+        # The raw exception text must not leak into the response.
+        self.assertNotIn(b"SPOT is not installed", resp.content)
+
 
 # ── 9. View: _build_result_context (status-driven derivations) ───────────────
 

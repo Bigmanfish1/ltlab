@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 
 from django.core.cache import cache
@@ -10,6 +11,8 @@ from apps.accounts.middleware import supabase_login_required
 
 from .cache_key import make_cache_key
 from .tasks import run_ltl_check
+
+logger = logging.getLogger(__name__)
 
 MAX_FORMULA_CHARS = 512
 MAX_NODES = 100
@@ -209,10 +212,20 @@ def verify_ltl(request):
     # Run the check synchronously — at the 15-state cap it is sub-millisecond,
     # so the request returns the rendered result directly. A ValueError carries
     # a clean, user-facing message from the engine (bad formula / complexity cap).
+    # Any other exception (e.g. a SPOT/RuntimeError, or malformed input that slips
+    # past validation) is logged and surfaced as a generic banner rather than an
+    # unhandled 500 — the deleted async status view used to do this for the
+    # Celery FAILURE path.
     try:
         engine_result = run_ltl_check(graph, formula)
     except ValueError as exc:
         return _error_response(request, str(exc))
+    except Exception:
+        logger.exception("LTL verification failed unexpectedly")
+        return _error_response(
+            request,
+            "Verification was stopped — the formula or graph could not be processed.",
+        )
 
     graph_json = json.dumps(engine_result["kripke_graph"])
     context = _build_result_context(engine_result, graph_json)
