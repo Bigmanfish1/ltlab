@@ -20,10 +20,6 @@ CACHES = {
     }
 }
 
-# Celery always eager in tests — tasks run synchronously, no broker needed.
-CELERY_TASK_ALWAYS_EAGER = True
-CELERY_TASK_EAGER_PROPAGATES = True
-
 # Silence migration output during test runs.
 MIGRATION_MODULES = {app: None for app in [
     "accounts", "checker", "exercises", "home",
