@@ -108,7 +108,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: vulnerability-scan
-    if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    # TEMPORARY: feature branch added to test manual deploy before merge. REVERT before merging.
+    if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/gcp-cloud-run-migration')
 
     # Workload Identity Federation — GitHub authenticates to GCP with a
     # short-lived OIDC token, no long-lived service-account key. The provider is
