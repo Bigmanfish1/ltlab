@@ -90,7 +90,7 @@ SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_ANON_KEY = env("SUPABASE_ANON_KEY", default="")
 
 # Django cache — per-process local memory (the Django default backend).
-# The LTL check runs in-process and is sub-millisecond, so caching is only a
+# The LTL check runs in-process in a few milliseconds, so caching is only a
 # minor optimisation for repeated identical submissions. On Cloud Run each
 # autoscaled instance keeps its own cache; this is never shared state the app
 # depends on, so the per-process backend is the correct, dependency-free choice.

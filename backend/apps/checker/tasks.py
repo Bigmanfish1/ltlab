@@ -8,9 +8,11 @@ from .engine import analyze_lasso, check_ltl, cytoscape_to_kripke, validate_requ
 def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
     """Check an LTL formula against a Cytoscape.js Kripke structure.
 
-    Runs synchronously inside the request — at the sandbox's 15-state cap a
-    check is sub-millisecond, so there is no benefit to a background queue.
-    Cloud Run absorbs concurrent bursts by autoscaling instances.
+    Runs synchronously inside the request — a typical check completes in a few
+    milliseconds (measured on small graphs), and the validation caps (≤100
+    states in the view; ≤8 APs / ≤10 temporal operators / ≤40 formula nodes in
+    validate_request) bound the work, so a background queue would add latency
+    without benefit. Cloud Run absorbs concurrent bursts by autoscaling instances.
 
     Returns a dict ready for JSON serialisation:
       {"result": "satisfied", "formula": str, "kripke_graph": dict}

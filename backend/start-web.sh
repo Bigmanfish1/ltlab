@@ -4,8 +4,8 @@ python manage.py migrate --fake-initial --noinput
 python manage.py collectstatic --noinput
 # gthread worker class (Google's recommended Cloud Run config): a single worker
 # with multiple threads. SPOT holds the GIL during its C++ calls (measured), so
-# threads do not give CPU parallelism — but each 15-state check is sub-millisecond,
-# so threads simply absorb request concurrency. CPU parallelism for bursts comes
+# threads do not give CPU parallelism — but a typical check is only a few
+# milliseconds, so threads simply absorb request concurrency. CPU parallelism comes
 # from Cloud Run autoscaling more instances, not from threads here.
 #
 # --timeout 30: runaway-check backstop (matches the old Celery hard time limit).

@@ -209,8 +209,8 @@ def verify_ltl(request):
         )
         return render(request, "sandbox/result.html", context)
 
-    # Run the check synchronously — at the 15-state cap it is sub-millisecond,
-    # so the request returns the rendered result directly. A ValueError carries
+    # Run the check synchronously — a typical check takes a few milliseconds, so
+    # the request returns the rendered result directly. A ValueError carries
     # a clean, user-facing message from the engine (bad formula / complexity cap).
     # Any other exception (e.g. a SPOT/RuntimeError, or malformed input that slips
     # past validation) is logged and surfaced as a generic banner rather than an
