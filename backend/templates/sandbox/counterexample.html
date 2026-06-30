@@ -745,28 +745,60 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// ── Play / Pause auto-step ─────────────────────────────────────────────────────
-let _playTimer = null;
-const PLAY_INTERVAL_MS = 1200;
+// ── Play / Pause / Replay auto-step ───────────────────────────────────────────
+let _playTimer    = null;
+let _playFinished = false;
+const PLAY_INTERVAL_MS = 3000;
+
+function _setPlayBtn(mode) {
+  const label = document.getElementById('play-label');
+  const icon  = document.getElementById('play-icon');
+  if (mode === 'pause') {
+    label.textContent = 'Pause';
+    icon.innerHTML = '<line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/>';
+  } else if (mode === 'replay') {
+    label.textContent = 'Replay';
+    icon.innerHTML = '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>';
+  } else {
+    label.textContent = 'Play';
+    icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+  }
+}
+
+function _stopPlay() {
+  if (_playTimer) { clearInterval(_playTimer); _playTimer = null; }
+}
+
+function _startPlay() {
+  _stopPlay();
+  _playFinished = false;
+  _setPlayBtn('pause');
+  goTo(currentStep + 1);  // advance immediately on first step
+  _playTimer = setInterval(function() {
+    if (currentStep >= TRACE.length - 1) {
+      _stopPlay();
+      _playFinished = true;
+      _setPlayBtn('replay');
+    } else {
+      goTo(currentStep + 1);
+    }
+  }, PLAY_INTERVAL_MS);
+}
 
 function togglePlay() {
+  if (_playFinished) {
+    // Replay — reset to overview then play from the top.
+    goTo(-1);
+    _startPlay();
+    return;
+  }
   if (_playTimer) {
-    clearInterval(_playTimer);
-    _playTimer = null;
-    document.getElementById('play-label').textContent = 'Play';
-    document.getElementById('play-icon').innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+    // Pause.
+    _stopPlay();
+    _setPlayBtn('play');
   } else {
-    document.getElementById('play-label').textContent = 'Pause';
-    document.getElementById('play-icon').innerHTML =
-      '<line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/>';
-    _playTimer = setInterval(function() {
-      if (currentStep >= TRACE.length - 1) {
-        // Reached end — stop.
-        togglePlay();
-      } else {
-        goTo(currentStep + 1);
-      }
-    }, PLAY_INTERVAL_MS);
+    // Play / resume.
+    _startPlay();
   }
 }
 
