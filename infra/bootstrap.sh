@@ -80,28 +80,41 @@ gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" \
   --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/attribute.repository/${GH_REPO}" >/dev/null
 
-# Runtime env, applied identically to the service and the migrate Job.
-ENV_VARS="DJANGO_SETTINGS_MODULE=config.settings.production,DEBUG=False,ALLOWED_HOSTS=.run.app,SECRET_KEY=${SECRET_KEY},DATABASE_URL=${DATABASE_URL},SUPABASE_URL=${SUPABASE_URL},SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}"
+# Runtime env, applied identically to the service and the migrate Job. Written
+# as a YAML file rather than --set-env-vars: that flag splits values on ',', so a
+# secret containing a comma (e.g. a rotated DB password) would silently corrupt
+# the env. Single-quoted YAML escapes every special char ("'" -> "''").
+ENV_FILE="$(mktemp)"
+trap 'rm -f "$ENV_FILE"' EXIT
+emit_env() { printf "%s: '%s'\n" "$1" "${2//\'/\'\'}" >> "$ENV_FILE"; }
+emit_env DJANGO_SETTINGS_MODULE config.settings.production
+emit_env DEBUG False
+emit_env ALLOWED_HOSTS .run.app
+emit_env SECRET_KEY "$SECRET_KEY"
+emit_env DATABASE_URL "$DATABASE_URL"
+emit_env SUPABASE_URL "$SUPABASE_URL"
+emit_env SUPABASE_ANON_KEY "$SUPABASE_ANON_KEY"
+
 # Placeholder image so the service/Job can be created; CI replaces it with the
 # real build on the next deploy.
 PLACEHOLDER="us-docker.pkg.dev/cloudrun/container/hello"
 
 echo "==> Migrate Job: $MIGRATE_JOB"
 if gcloud run jobs describe "$MIGRATE_JOB" --region="$REGION" >/dev/null 2>&1; then
-  gcloud run jobs update "$MIGRATE_JOB" --region="$REGION" --set-env-vars="$ENV_VARS"
+  gcloud run jobs update "$MIGRATE_JOB" --region="$REGION" --env-vars-file="$ENV_FILE"
 else
   gcloud run jobs create "$MIGRATE_JOB" --region="$REGION" --image="$PLACEHOLDER" \
-    --set-env-vars="$ENV_VARS" \
+    --env-vars-file="$ENV_FILE" \
     --command=python --args=manage.py,migrate,--fake-initial,--noinput
 fi
 
 echo "==> Cloud Run service: $SERVICE"
 if gcloud run services describe "$SERVICE" --region="$REGION" >/dev/null 2>&1; then
-  gcloud run services update "$SERVICE" --region="$REGION" --set-env-vars="$ENV_VARS"
+  gcloud run services update "$SERVICE" --region="$REGION" --env-vars-file="$ENV_FILE"
 else
   gcloud run deploy "$SERVICE" --region="$REGION" --image="$PLACEHOLDER" \
     --min-instances=0 --concurrency=8 --cpu=1 --memory=512Mi --timeout=300 \
-    --cpu-boost --allow-unauthenticated --set-env-vars="$ENV_VARS"
+    --cpu-boost --allow-unauthenticated --env-vars-file="$ENV_FILE"
 fi
 
 echo "==> Done. Trigger the GitHub 'CI/CD' workflow to build + migrate + deploy the real image."
