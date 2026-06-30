@@ -2,6 +2,9 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+# Fail safe to production: a missing DJANGO_SETTINGS_MODULE must not fall back to
+# development (DEBUG=True, ALLOWED_HOSTS=['*']). Local dev overrides via compose.
+ENV DJANGO_SETTINGS_MODULE=config.settings.production
 
 WORKDIR /app
 
@@ -20,8 +23,12 @@ RUN chmod +x /entrypoint.sh
 COPY . .
 RUN chmod +x start-web.sh
 
-# Default to the production server (gunicorn via start-web.sh) so any deploy of
-# this image is production-safe. Local development overrides this in
-# docker-compose.yml (`command: python manage.py runserver`).
+# Collect static at build (once per image), not per cold start. Settings import
+# needs SECRET_KEY + DATABASE_URL — pass throwaway values; collectstatic hits no DB.
+RUN SECRET_KEY=build-only-not-used \
+    DATABASE_URL=postgres://build:build@localhost:5432/build \
+    python manage.py collectstatic --noinput
+
+# Default to the production server; local dev overrides via docker-compose command.
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["./start-web.sh"]
