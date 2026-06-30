@@ -110,9 +110,8 @@ jobs:
     needs: vulnerability-scan
     if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
 
-    # Workload Identity Federation — GitHub authenticates to GCP with a
-    # short-lived OIDC token, no long-lived service-account key. The provider is
-    # locked to this repo's owner (see GCP workloadIdentityPools/github-pool).
+    # WIF: GitHub auths to GCP with a short-lived OIDC token (no stored key);
+    # provider locked to this repo's owner.
     permissions:
       contents: read
       id-token: write
@@ -121,8 +120,10 @@ jobs:
       GCP_PROJECT: project-10a4cc96-5dd3-4010-8a3
       GCP_REGION: us-central1
       CLOUD_RUN_SERVICE: ltlab
+      MIGRATE_JOB: ltlab-migrate
       WIF_PROVIDER: projects/87262955263/locations/global/workloadIdentityPools/github-pool/providers/github-provider
       DEPLOY_SA: gh-deploy@project-10a4cc96-5dd3-4010-8a3.iam.gserviceaccount.com
+      IMAGE: us-central1-docker.pkg.dev/project-10a4cc96-5dd3-4010-8a3/ltlab/ltlab:${{ github.sha }}
 
     steps:
       - name: Checkout code
@@ -137,13 +138,23 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3.0.1
 
-      # Builds from backend/Dockerfile via Cloud Build and rolls out a new
-      # revision. Env vars, scaling, and resource limits already set on the
-      # service are retained (Cloud Run merges unspecified settings).
+      # Build once so the migrate Job and the service share the identical image.
+      - name: Build image
+        run: |
+          gcloud builds submit backend \
+            --tag "$IMAGE" --project "$GCP_PROJECT" --quiet
+
+      # Migrate once before the new revision serves, via a one-off Job (not per
+      # instance). --fake-initial matches the externally-managed Supabase schema.
+      - name: Apply database migrations
+        run: |
+          gcloud run jobs update "$MIGRATE_JOB" --image "$IMAGE" \
+            --region "$GCP_REGION" --project "$GCP_PROJECT" --quiet
+          gcloud run jobs execute "$MIGRATE_JOB" --wait \
+            --region "$GCP_REGION" --project "$GCP_PROJECT"
+
+      # Roll out the same image; existing env vars and scaling are retained.
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy "$CLOUD_RUN_SERVICE" \
-            --source backend \
-            --project "$GCP_PROJECT" \
-            --region "$GCP_REGION" \
-            --quiet
+          gcloud run deploy "$CLOUD_RUN_SERVICE" --image "$IMAGE" \
+            --region "$GCP_REGION" --project "$GCP_PROJECT" --quiet
