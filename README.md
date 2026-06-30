@@ -12,12 +12,12 @@ Students build Kripke structures visually, write LTL formulas, and submit them f
 |-------|-----------|
 | Web framework | Django 5.1 + django-ninja (REST) |
 | Database | PostgreSQL 16 (local dev) / Supabase (production) |
-| Task queue | Celery 5 + Redis 7 |
+| LTL compute | Synchronous, in-process (SPOT C++ engine via `spottl`) |
 | Frontend | Tailwind CSS (CDN), HTMX 2, Cytoscape.js 3.30 |
 | Static files | WhiteNoise |
 | Dev environment | VS Code / Cursor Dev Containers |
 | Linting | Ruff |
-| Hosting | Render (backend) |
+| Hosting | Google Cloud Run (Docker, scale-to-zero) |
 
 ---
 
@@ -90,9 +90,8 @@ All variables are read from `.env` (see `.env.example`). Never commit `.env`.
 | `POSTGRES_DB` | Database name (used by Postgres container) | `ltlab` |
 | `POSTGRES_USER` | Database user | `ltlab` |
 | `POSTGRES_PASSWORD` | Database password | `change-me` |
-| `REDIS_URL` | Redis connection URL (broker + result backend) | `redis://redis:6379/0` |
 | `ALLOWED_HOSTS` | Comma-separated list of allowed hosts | `localhost,127.0.0.1,0.0.0.0` |
-| `RUN_MIGRATIONS` | Controls whether migrations run on container startup. Hardcoded to `true` in `docker-compose.yml` for local dev — do not set this on Render. | not set |
+| `RUN_MIGRATIONS` | Controls whether migrations run on container startup. Hardcoded to `true` in `docker-compose.yml` for local dev — not set in production (Cloud Run migrates via the `ltlab-migrate` Job, not on instance startup). | not set |
 
 ---
 
@@ -113,9 +112,13 @@ Supabase session in `sb-access-token` / `sb-refresh-token` cookies.
 - The user is linked to their `Profile` by **email** (the join key).
 
 **Logout** revokes the session at Supabase (`scope=global` — signs the user out of *every*
-device) **and** adds the session to a small in-process denylist so the still-unexpired access
-token stops working immediately. The denylist is per-process, which is correct for the single
-gunicorn worker in production; scaling to multiple workers would need a shared store.
+device, server-side revoking the refresh token) **and** adds the session to a small in-process
+denylist so the still-unexpired access token stops working immediately. The denylist is
+per-process: on Cloud Run with autoscaling/scale-to-zero a token revoked on one instance can
+still pass on another until its `exp` (≤1h). This gap is bounded and self-healing — once the
+access token expires the session cannot be refreshed anywhere because `scope=global` already
+revoked the refresh token. Accepted for now; instant cross-instance logout would need a shared
+store (e.g. Firestore with native TTL).
 
 ---
 
@@ -129,19 +132,19 @@ ltlab/
 ├── .devcontainer/
 │   └── devcontainer.json   # Dev container config
 ├── .env.example            # Template for required environment variables
-├── docker-compose.yml      # All four services (web, worker, db, redis)
-├── render.yaml             # Render deployment config
+├── docker-compose.yml      # Local services (web, db)
+├── infra/
+│   └── bootstrap.sh        # Idempotent IaC for Cloud Run deploy infra (no Terraform)
 ├── ruff.toml               # Ruff linting config (root)
 └── backend/
     ├── Dockerfile
-    ├── entrypoint.sh       # Runs migrations on startup if RUN_MIGRATIONS=true
-    ├── start-web.sh        # Render entrypoint — gunicorn + in-process Celery worker
+    ├── entrypoint.sh       # Runs migrations on startup if RUN_MIGRATIONS=true (local Docker)
+    ├── start-web.sh        # Cloud Run entrypoint — gunicorn gthread (migrate/static run elsewhere)
     ├── manage.py
     ├── requirements.txt
     ├── ruff.toml
     ├── config/
     │   ├── api.py          # NinjaAPI root — mount app routers here
-    │   ├── celery.py       # Celery app definition
     │   ├── urls.py         # URL root (/, /admin/, /api/)
     │   ├── views.py
     │   ├── asgi.py
@@ -149,7 +152,7 @@ ltlab/
     │   └── settings/
     │       ├── base.py     # Shared settings
     │       ├── development.py
-    │       └── production.py  # Production settings for Render
+    │       └── production.py  # Production settings for Cloud Run
     ├── apps/
     │   ├── accounts/       # Custom Supabase PKCE OAuth, Profile model, decorators
     │   │   ├── jwt_auth.py        # Local ES256 JWT verification + session denylist
@@ -162,7 +165,7 @@ ltlab/
     │   ├── home/          # Landing page + dashboards
     │   ├── exercises/     # Guided exercises (mock data — no DB models yet)
     │   ├── kripke/        # Kripke structure persistence (models not implemented yet)
-    │   └── checker/       # LTL checking engine + Celery task (engine not implemented yet)
+    │   └── checker/       # LTL engine (SPOT) + synchronous run_ltl_check in tasks.py
     ├── static/
     ├── templates/
     │   ├── base.html
@@ -219,22 +222,34 @@ The pipeline runs lint, test, and scan — if all three pass, the deploy job run
 
 ## Production Deployment
 
-Live at **https://ltlab.onrender.com** — a single Render web service (`ltlab`) running gunicorn *and* an in-process Celery worker together via `backend/start-web.sh`. (Render's free tier has no free Background Worker tier, so Celery runs as a backgrounded process inside the same container instead of as a separate service — see `render.yaml` comments / git history if you need the full reasoning.)
+Live at **https://ltlab-87262955263.us-central1.run.app** — a single Google Cloud Run
+service (`ltlab`, region `us-central1`, scale-to-zero) running gunicorn (gthread) via
+`backend/start-web.sh`. There is no Celery worker and no Redis: the LTL check runs
+synchronously in the request, and classroom bursts are absorbed by Cloud Run autoscaling
+instances horizontally.
 
-**To deploy:** push to `main`, then manually trigger the workflow — Actions tab → **CI/CD** → **Run workflow** → `main`. If lint/test/scan pass, the `deploy` job POSTs to the `RENDER_DEPLOY_HOOK` secret and Render rebuilds + redeploys.
+**Instance startup runs gunicorn only.** Migrations and static are *not* run per-instance
+(that would race across autoscaled instances):
+- **Migrations** run once per deploy as the **`ltlab-migrate` Cloud Run Job**
+  (`migrate --fake-initial`), executed by the deploy pipeline before the new revision serves.
+- **`collectstatic`** runs at **Docker build time** (a `RUN` layer in the Dockerfile), baked
+  into the image.
+
+**Required env vars** (set on the Cloud Run service, never committed): `DJANGO_SETTINGS_MODULE`,
+`DEBUG`, `ALLOWED_HOSTS`, `SECRET_KEY`, `DATABASE_URL` (Supabase session pooler, port 5432),
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`. `REDIS_URL` is intentionally **not** set — cache falls back
+to per-process `LocMemCache`, correct on autoscaled instances.
 
 **To check it's working:**
-- `curl https://ltlab.onrender.com/api/health` → expect `200 {"status": "ok", "service": "ltlab"}`
-- Render dashboard → `ltlab` → **Logs** → look for `celery@<hostname> ready.` with **no traceback after it** (confirms the in-process worker connected to Redis)
+- `curl https://ltlab-87262955263.us-central1.run.app/api/health` → expect
+  `200 {"status": "ok", "service": "ltlab"}`
 
-**Resuming after a pause / spin-down:**
-- Free Render web services spin down after ~15 min idle — this also stops the backgrounded Celery worker, since it's the same container. Just hit the URL again; it cold-starts in ~30–60s and both come back up together.
-- Manually suspended via Render dashboard (`ltlab` → Settings → Suspend Web Service)? Resume from the same place.
+**Cold start:** the service scales to zero when idle; the next request cold-starts the instance
+(a few seconds), then serves normally.
 
-**⚠️ Upstash Redis auto-archive risk:** the production `REDIS_URL` points at a free Upstash Redis instance. Upstash auto-archives free databases after a stretch of real inactivity (no `SET`/`GET`/etc — pings don't count; their docs/ToS disagree on whether it's ~7 or ~14 days). If that happens:
-- Data is backed up, not lost — but restoring generates a **new `REDIS_URL` + token**, which then has to be re-pasted into Render's env vars (raw URL, no quotes, with `?ssl_cert_reqs=CERT_REQUIRED` appended)
-- Whoever holds the Upstash account login handles the restore
-- Cheap mitigation: running a real LTL exercise through the app every week or so during quiet stretches counts as activity and keeps the database alive
+> Deploy infra (deploy SA, Workload Identity Federation, Artifact Registry repo, Cloud Run
+> service, `ltlab-migrate` Job) is recreated idempotently by `infra/bootstrap.sh` — the source
+> of truth, no Terraform.
 
 ---
 
@@ -284,9 +299,7 @@ docker exec -it ltlab-web python manage.py set_role <email> student
 
 ```bash
 docker logs -f ltlab-web      # Django dev server
-docker logs -f ltlab-worker   # Celery worker
 docker logs -f ltlab-db       # PostgreSQL
-docker logs -f ltlab-redis    # Redis
 ```
 
 ### Rebuilding After Dependency Changes
@@ -294,7 +307,7 @@ docker logs -f ltlab-redis    # Redis
 If you add packages to `requirements.txt`:
 
 ```bash
-docker compose build --no-cache web worker
+docker compose build --no-cache web
 docker compose up
 ```
 
@@ -320,14 +333,21 @@ New routers should be created in `apps/<app>/api.py` and mounted in `config/api.
 Browser
   │  HTTP
   ▼
-Render — single web service `ltlab`
-  ├─ Gunicorn   (Django + WhiteNoise)
-  └─ Celery worker (backgrounded in same container, via start-web.sh)
-       │                                  │
-       │ DB queries                       │ task dispatch / results
-       ▼                                  ▼
-Supabase Postgres                  Upstash Redis  (rediss://, broker + result backend)
+Google Cloud Run — service `ltlab`   ← autoscales instances on load
+  └─ Gunicorn (gthread, Django + WhiteNoise)
+       │  LTL check runs synchronously in-process (SPOT)
+       │  DB queries
+       ▼
+Supabase Postgres
 ```
 
-Local development replaces Supabase Postgres with a local Docker Postgres container, and runs Celery as its own `ltlab-worker` container (see `docker-compose.yml`) — production collapses both into one process for free-tier hosting reasons (see Production Deployment section above).
-Migrations run automatically on local startup when `RUN_MIGRATIONS=true` is hardcoded in `docker-compose.yml`.
+The LTL check runs synchronously inside the request — a typical check completes in a few
+milliseconds (measured on small graphs), and the validation caps (≤100 states; ≤8 atomic
+propositions / ≤10 temporal operators / ≤40 formula nodes) bound the work, so there is no task
+queue, no Celery, and no Redis. Concurrency under classroom bursts is handled by Cloud Run
+autoscaling instances horizontally.
+
+Local development replaces Supabase Postgres with a local Docker Postgres container (see
+`docker-compose.yml`). Migrations run automatically on local startup when `RUN_MIGRATIONS=true`
+is hardcoded in `docker-compose.yml`; in production they run via the `ltlab-migrate` Cloud Run
+Job (see Production Deployment above), not on instance startup.
