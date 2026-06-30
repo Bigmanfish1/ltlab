@@ -139,10 +139,23 @@ jobs:
         uses: google-github-actions/setup-gcloud@v3.0.1
 
       # Build once so the migrate Job and the service share the identical image.
+      # --async avoids gcloud trying to stream logs (which needs roles/viewer and
+      # would fail); we poll build status ourselves instead.
       - name: Build image
         run: |
-          gcloud builds submit backend \
-            --tag "$IMAGE" --project "$GCP_PROJECT" --quiet --suppress-logs
+          BUILD_ID=$(gcloud builds submit backend \
+            --tag "$IMAGE" --project "$GCP_PROJECT" --quiet --async \
+            --format='value(id)')
+          echo "Build ID: $BUILD_ID"
+          while true; do
+            STATUS=$(gcloud builds describe "$BUILD_ID" \
+              --project "$GCP_PROJECT" --format='value(status)')
+            echo "Build status: $STATUS"
+            [ "$STATUS" = "SUCCESS" ] && break
+            [[ "$STATUS" =~ ^(FAILURE|TIMEOUT|CANCELLED|EXPIRED|INTERNAL_ERROR)$ ]] && \
+              { echo "Build failed: $STATUS"; exit 1; }
+            sleep 15
+          done
 
       # Migrate once before the new revision serves, via a one-off Job (not per
       # instance). --fake-initial matches the externally-managed Supabase schema.
