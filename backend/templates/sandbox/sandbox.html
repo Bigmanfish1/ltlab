@@ -94,7 +94,7 @@
       hx-include="#ltl-formula, #graph-data"
       hx-indicator="#run-spinner"
       hx-on:htmx:before-request="disableRunBtn()"
-      hx-on:htmx:after-swap="enableRunBtn()"
+      hx-on:htmx:after-request="enableRunBtn()"
       hx-on:htmx:response-error="enableRunBtn()"
       class="flex items-center gap-2 bg-[#FF4D00] hover:bg-[#FF6B22] active:bg-[#CC3D00] text-black font-medium text-[13px] px-4 py-2 rounded transition-colors shrink-0 whitespace-nowrap"
     >
