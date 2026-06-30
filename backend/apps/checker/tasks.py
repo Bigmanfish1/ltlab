@@ -8,11 +8,10 @@ from .engine import analyze_lasso, check_ltl, cytoscape_to_kripke, validate_requ
 def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
     """Check an LTL formula against a Cytoscape.js Kripke structure.
 
-    Runs synchronously inside the request — a typical check completes in a few
-    milliseconds (measured on small graphs), and the validation caps (≤100
-    states in the view; ≤8 APs / ≤10 temporal operators / ≤40 formula nodes in
-    validate_request) bound the work, so a background queue would add latency
-    without benefit. Cloud Run absorbs concurrent bursts by autoscaling instances.
+    Runs synchronously in the request — a typical check is a few ms (measured on
+    small graphs) and the validation caps bound the work (≤100 states; ≤8 APs /
+    ≤10 temporal operators / ≤40 formula nodes), so a queue would only add
+    latency. Cloud Run absorbs bursts by autoscaling instances.
 
     Returns a dict ready for JSON serialisation:
       {"result": "satisfied", "formula": str, "kripke_graph": dict}
@@ -49,9 +48,8 @@ def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
     result["formula"]      = ltl_formula
     result["kripke_graph"] = kripke_graph
 
-    # Cache the completed result so repeat runs (same classroom burst) are
-    # served instantly. LocMemCache is per-instance on Cloud Run — a harmless
-    # micro-optimisation, never shared state the app depends on.
+    # Cache the result so repeat runs are instant. Per-instance LocMemCache —
+    # a micro-optimisation, never shared state the app depends on.
     try:
         ttl = getattr(settings, "RESULT_CACHE_TTL", 3600)
         cache.set(make_cache_key(ltl_formula, kripke_graph), result, ttl)
