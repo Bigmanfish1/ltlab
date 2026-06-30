@@ -142,7 +142,7 @@ jobs:
       - name: Build image
         run: |
           gcloud builds submit backend \
-            --tag "$IMAGE" --project "$GCP_PROJECT" --quiet
+            --tag "$IMAGE" --project "$GCP_PROJECT" --quiet --suppress-logs
 
       # Migrate once before the new revision serves, via a one-off Job (not per
       # instance). --fake-initial matches the externally-managed Supabase schema.
