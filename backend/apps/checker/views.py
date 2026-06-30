@@ -209,13 +209,9 @@ def verify_ltl(request):
         )
         return render(request, "sandbox/result.html", context)
 
-    # Run the check synchronously — a typical check takes a few milliseconds, so
-    # the request returns the rendered result directly. A ValueError carries
-    # a clean, user-facing message from the engine (bad formula / complexity cap).
-    # Any other exception (e.g. a SPOT/RuntimeError, or malformed input that slips
-    # past validation) is logged and surfaced as a generic banner rather than an
-    # unhandled 500 — the deleted async status view used to do this for the
-    # Celery FAILURE path.
+    # Synchronous — a check is a few ms. ValueError carries a clean user-facing
+    # message (bad formula / complexity cap); any other exception is logged and
+    # shown as a generic banner instead of a 500.
     try:
         engine_result = run_ltl_check(graph, formula)
     except ValueError as exc:

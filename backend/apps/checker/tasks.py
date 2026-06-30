@@ -48,8 +48,7 @@ def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
     result["formula"]      = ltl_formula
     result["kripke_graph"] = kripke_graph
 
-    # Cache the result so repeat runs are instant. Per-instance LocMemCache —
-    # a micro-optimisation, never shared state the app depends on.
+    # Cache so repeat runs are instant — per-instance, never depended-on state.
     try:
         ttl = getattr(settings, "RESULT_CACHE_TTL", 3600)
         cache.set(make_cache_key(ltl_formula, kripke_graph), result, ttl)

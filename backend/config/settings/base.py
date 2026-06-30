@@ -89,12 +89,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_ANON_KEY = env("SUPABASE_ANON_KEY", default="")
 
-# Django cache — per-process local memory (the Django default backend).
-# The LTL check runs in-process in a few milliseconds, so caching is only a
-# minor optimisation for repeated identical submissions. On Cloud Run each
-# autoscaled instance keeps its own cache; this is never shared state the app
-# depends on, so the per-process backend is the correct, dependency-free choice.
+# Django cache — default per-process LocMemCache. Caching only speeds up repeat
+# submissions; it's never shared state the app depends on, so a per-instance
+# cache on autoscaled Cloud Run is correct and dependency-free.
 
-# TTL for cached LTL results (seconds).  Students running the same example
-# repeatedly (classroom bursts) get an instant response on a same-instance hit.
+# TTL for cached LTL results (seconds) — instant response on a same-instance hit.
 RESULT_CACHE_TTL = env.int("RESULT_CACHE_TTL", default=3600)

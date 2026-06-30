@@ -138,9 +138,8 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3.0.1
 
-      # Build once so the migrate Job and the service share the identical image.
-      # --async avoids gcloud trying to stream logs (which needs roles/viewer and
-      # would fail); we poll build status ourselves instead.
+      # Build once so the migrate Job and service share the image. --async skips
+      # log streaming (needs roles/viewer); we poll status instead.
       - name: Build image
         run: |
           BUILD_ID=$(gcloud builds submit backend \
@@ -153,8 +152,7 @@ jobs:
               --project "$GCP_PROJECT" --format='value(status)' 2>/dev/null || true)
             echo "Build status: ${STATUS:-<none>}"
             [ "$STATUS" = "SUCCESS" ] && break
-            # STATUS_UNKNOWN is terminal too; an empty status is a transient
-            # describe error — keep polling until the deadline.
+            # STATUS_UNKNOWN is terminal; empty = transient describe error, keep polling.
             case "$STATUS" in
               FAILURE|TIMEOUT|CANCELLED|EXPIRED|INTERNAL_ERROR|STATUS_UNKNOWN)
                 echo "Build failed: $STATUS"; exit 1 ;;
