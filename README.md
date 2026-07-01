@@ -236,7 +236,7 @@ instances horizontally.
   into the image.
 
 **Required env vars** (set on the Cloud Run service, never committed): `DJANGO_SETTINGS_MODULE`,
-`DEBUG`, `ALLOWED_HOSTS`, `SECRET_KEY`, `DATABASE_URL` (Supabase session pooler, port 5432),
+`DEBUG`, `ALLOWED_HOSTS`, `SECRET_KEY`, `DATABASE_URL` (Supabase transaction pooler, port 6543),
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`. `REDIS_URL` is intentionally **not** set — cache falls back
 to per-process `LocMemCache`, correct on autoscaled instances.
 
