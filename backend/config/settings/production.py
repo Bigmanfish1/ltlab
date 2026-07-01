@@ -1,12 +1,11 @@
 from .base import *
-import os
  
 DEBUG = False
  
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["ltlab.onrender.com"])
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[".run.app"])
  
 # Security settings
-USE_X_FORWARDED_HOST = True  # Render proxies requests; trust X-Forwarded-Host for build_absolute_uri
+USE_X_FORWARDED_HOST = True  # Cloud Run proxies requests; trust X-Forwarded-Host for build_absolute_uri
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
