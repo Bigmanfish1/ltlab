@@ -14,3 +14,19 @@ CSRF_COOKIE_SECURE = True
 
 # Transaction-mode pooler (6543) can't keep server-side cursors across connections.
 DISABLE_SERVER_SIDE_CURSORS = True
+
+# Emit 500 tracebacks to stderr; DEBUG stays False (Django default only mails admins).
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {"format": "{levelname} {asctime} {name} {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "verbose"},
+    },
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+    },
+}
