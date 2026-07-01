@@ -12,7 +12,9 @@ SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
 # Transaction-mode pooler (6543) can't keep server-side cursors across connections.
-DISABLE_SERVER_SIDE_CURSORS = True
+# This is a per-connection option, so it must live inside DATABASES, not as a
+# module-level setting (Django reads it from the connection's settings_dict).
+DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
 
 # Emit 500 tracebacks to stderr; DEBUG stays False (Django default only mails admins).
 LOGGING = {
