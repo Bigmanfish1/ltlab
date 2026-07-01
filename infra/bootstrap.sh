@@ -8,7 +8,7 @@
 #   - gcloud authenticated as a project Owner/Editor (`gcloud auth login`)
 #   - export the runtime secrets first:
 #       export SECRET_KEY=...           # python -c "import secrets; print(secrets.token_urlsafe(50))"
-#       export DATABASE_URL=...         # Supabase session pooler URI, port 5432
+#       export DATABASE_URL=...         # Supabase transaction pooler URI, port 6543
 #       export SUPABASE_URL=...
 #       export SUPABASE_ANON_KEY=...
 #
