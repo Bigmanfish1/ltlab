@@ -13,6 +13,10 @@ CSRF_COOKIE_SECURE = True
 
 # Transaction-mode pooler (6543) can't keep server-side cursors across connections.
 DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
+DATABASES["default"]["CONN_MAX_AGE"] = 60
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+# setdefault so a connect timeout doesn't clobber options parsed from DATABASE_URL.
+DATABASES["default"].setdefault("OPTIONS", {})["connect_timeout"] = 5
 
 # Emit 500 tracebacks to stderr; DEBUG stays False (Django default only mails admins).
 LOGGING = {
