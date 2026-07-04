@@ -167,6 +167,11 @@ jobs:
       # instance). --fake-initial matches the externally-managed Supabase schema.
       - name: Apply database migrations
         run: |
+          if ! gcloud run jobs describe "$MIGRATE_JOB" \
+              --region "$GCP_REGION" --project "$GCP_PROJECT" >/dev/null 2>&1; then
+            echo "Migrate Job '$MIGRATE_JOB' not found — run infra/bootstrap.sh once on this project first." >&2
+            exit 1
+          fi
           gcloud run jobs update "$MIGRATE_JOB" --image "$IMAGE" \
             --region "$GCP_REGION" --project "$GCP_PROJECT" --quiet
           gcloud run jobs execute "$MIGRATE_JOB" --wait \
