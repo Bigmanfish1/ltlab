@@ -1,0 +1,198 @@
+{% load static %}
+{% comment %}
+  Reusable Kripke-structure graph editor component.
+
+  Include it wherever a student needs to build/edit a Kripke structure — the
+  sandbox page, or an exercise question. Each instance is independent, so you
+  may include it more than once on one page (give each a distinct `id`).
+
+  The editor keeps a hidden <input name="{input_name}"> synced with the
+  serialized graph (phantom-stripped `cy.json()`), so placing this inside a
+  <form> submits the student's structure with no extra wiring — the same shape
+  the checker's verify/counterexample views already consume.
+
+  Parameters (all optional):
+    id             Unique instance id / element-id prefix.     Default "kripke"
+    input_name     name= of the hidden graph input for forms.  Default "graph_data"
+    elements_json  JSON string of initial Cytoscape elements.  Default demo graph
+    readonly       Truthy → non-editable viewer (no toolbar).  Default editable
+    show_toolbar   Explicitly show/hide the toolbar.           Default: shown unless readonly
+    height         Explicit CSS height (e.g. "420px").         Default: fills parent.
+
+  The editor emits bubbling DOM events on its mount element:
+    kripke:warn   (detail.html)  — a user-facing warning to display
+    kripke:change                — the graph changed (hidden input already synced)
+
+  Assets (Cytoscape + kripke_editor.js) are lazily loaded and de-duplicated, so
+  the including page needs to add nothing to its <head>.
+{% endcomment %}
+
+{% with eid=id|default:"kripke" %}
+<div class="kripke-editor flex flex-1 min-w-0 min-h-0"
+     {% if height %}style="height: {{ height }};"{% endif %}>
+
+  {% if not readonly and show_toolbar|default:True %}
+  <!-- Left toolbar -->
+  <nav id="{{ eid }}-toolbar"
+       class="w-12 bg-[#111111] border-r border-[#1F1F1F] flex flex-col items-center py-3 gap-1 shrink-0 z-10">
+
+    <!-- node -->
+    <button data-tool="node" title="Select / double-click canvas to add node (N)"
+      class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/></svg>
+    </button>
+
+    <!-- edge -->
+    <button data-tool="edge" title="Add edge (E)"
+      class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
+    </button>
+
+    <!-- label -->
+    <button data-tool="label" title="Edit label (L)"
+      class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+    </button>
+
+    <!-- delete -->
+    <button data-tool="delete" title="Delete (D)"
+      class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+    </button>
+
+    <!-- divider -->
+    <div class="w-6 border-t border-[#1F1F1F] my-1"></div>
+
+    <!-- undo -->
+    <button data-action="undo" title="Undo (Ctrl+Z)"
+      class="w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+    </button>
+
+    <!-- redo -->
+    <button data-action="redo" title="Redo (Ctrl+Y)"
+      class="w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
+    </button>
+
+    <!-- divider -->
+    <div class="w-6 border-t border-[#1F1F1F] my-1"></div>
+
+    <!-- initial state toggle -->
+    <button data-action="toggle-initial" title="Toggle initial state (I)"
+      class="w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    </button>
+
+    <!-- divider -->
+    <div class="w-6 border-t border-[#1F1F1F] my-1"></div>
+
+    <!-- clear canvas -->
+    <button data-action="clear" title="Clear canvas"
+      class="w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 10v6"/><path d="M15 10v6"/></svg>
+    </button>
+
+  </nav>
+  {% endif %}
+
+  <!-- Canvas area -->
+  <div class="flex-1 relative overflow-hidden" style="background:#0A0A0A;">
+    <div id="{{ eid }}-cy" class="kripke-cy absolute inset-0"></div>
+
+    <!-- Hidden input: serialized graph, submitted with any wrapping form. -->
+    <input type="hidden" id="{{ eid }}-graph-data"
+           name="{{ input_name|default:'graph_data' }}" value="" />
+
+    {% if not readonly and show_toolbar|default:True %}
+    <!-- Tool mode indicator -->
+    <div id="{{ eid }}-indicator"
+      class="absolute top-3 left-3 font-mono text-[11px] text-[#6B6B6B] bg-[#111111] border border-[#1F1F1F] px-2 py-1 rounded pointer-events-none select-none">
+      MODE: NODE
+    </div>
+
+    <!-- No-initial-state hint -->
+    <div id="{{ eid }}-no-initial-hint"
+      class="absolute top-3 left-1/2 -translate-x-1/2 font-mono text-[11px] text-[#6B6B6B] bg-[#111111] border border-[#1F1F1F] px-3 py-1 rounded pointer-events-none select-none hidden">
+      No initial state — select a node and press&nbsp;<span class="text-[#FAFAFA]">I</span>
+    </div>
+
+    <!-- Empty canvas placeholder -->
+    <div id="{{ eid }}-empty-canvas-hint"
+      class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none hidden">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2A2A2A" stroke-width="1.5" class="mb-3"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      <div class="font-mono text-[12px] text-[#3A3A3A]">Double-click the canvas to add a state</div>
+    </div>
+    {% endif %}
+
+    <!-- Node hover tooltip -->
+    <div id="{{ eid }}-node-tooltip"
+      class="absolute pointer-events-none select-none hidden z-50" style="max-width: 200px;">
+      <div class="bg-[#111111] border border-[#2A2A2A] rounded-md overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.6)]">
+        <div id="{{ eid }}-node-tooltip-name"
+          class="px-3 py-1.5 font-mono text-[12px] font-semibold text-[#FAFAFA] bg-[#1A1A1A]"></div>
+        <div id="{{ eid }}-node-tooltip-props"
+          class="px-3 py-1.5 font-mono text-[11px] text-[#6B6B6B] leading-relaxed break-all"></div>
+      </div>
+    </div>
+
+    <!-- Proposition chip overlay — HTML layer synchronized to node positions -->
+    <div id="{{ eid }}-prop-chips-layer"
+         style="position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5;"></div>
+  </div>
+</div>
+
+{% if elements_json %}
+<script type="application/json" id="{{ eid }}-elements">{{ elements_json|safe }}</script>
+{% endif %}
+
+<style>
+  #{{ eid }}-cy { width: 100%; height: 100%; }
+</style>
+
+<script>
+(function () {
+  var ID = "{{ eid }}";
+  var CYTOSCAPE_SRC = "https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js";
+  var EDITOR_SRC = "{% static 'js/kripke_editor.js' %}";
+
+  function ready(fn) {
+    if (document.readyState !== "loading") fn();
+    else document.addEventListener("DOMContentLoaded", fn);
+  }
+
+  // Load a script once; de-dupe concurrent/repeated requests by data-kripke.
+  function ensureScript(src, key, cb) {
+    var existing = document.querySelector('script[data-kripke="' + key + '"]');
+    if (existing) {
+      if (existing.getAttribute("data-loaded")) cb();
+      else existing.addEventListener("load", cb);
+      return;
+    }
+    var s = document.createElement("script");
+    s.src = src;
+    s.setAttribute("data-kripke", key);
+    s.addEventListener("load", function () { s.setAttribute("data-loaded", "1"); cb(); });
+    document.head.appendChild(s);
+  }
+
+  function boot() {
+    var cfg = { id: ID, editable: {% if readonly %}false{% else %}true{% endif %} };
+    var elTag = document.getElementById(ID + "-elements");
+    if (elTag) {
+      try { cfg.elements = JSON.parse(elTag.textContent); } catch (e) {}
+    }
+    window.initKripkeEditor(cfg);
+  }
+
+  ready(function () {
+    var withCytoscape = function () {
+      if (window.initKripkeEditor) return boot();
+      ensureScript(EDITOR_SRC, "editor", boot);
+    };
+    if (window.cytoscape) withCytoscape();
+    else ensureScript(CYTOSCAPE_SRC, "cytoscape", withCytoscape);
+  });
+})();
+</script>
+{% endwith %}
