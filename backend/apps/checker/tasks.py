@@ -1,7 +1,3 @@
-from django.conf import settings
-from django.core.cache import cache
-
-from .cache_key import make_cache_key
 from .engine import analyze_lasso, check_ltl, cytoscape_to_kripke, validate_request
 
 
@@ -47,12 +43,5 @@ def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
 
     result["formula"]      = ltl_formula
     result["kripke_graph"] = kripke_graph
-
-    # Cache so repeat runs are instant — per-instance, never depended-on state.
-    try:
-        ttl = getattr(settings, "RESULT_CACHE_TTL", 3600)
-        cache.set(make_cache_key(ltl_formula, kripke_graph), result, ttl)
-    except Exception:
-        pass  # cache failure must never break the check
 
     return result

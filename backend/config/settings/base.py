@@ -88,10 +88,3 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_ANON_KEY = env("SUPABASE_ANON_KEY", default="")
-
-# Django cache — default per-process LocMemCache. Caching only speeds up repeat
-# submissions; it's never shared state the app depends on, so a per-instance
-# cache on autoscaled Cloud Run is correct and dependency-free.
-
-# TTL for cached LTL results (seconds) — instant response on a same-instance hit.
-RESULT_CACHE_TTL = env.int("RESULT_CACHE_TTL", default=3600)

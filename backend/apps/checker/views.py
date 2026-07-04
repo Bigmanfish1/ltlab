@@ -2,14 +2,12 @@ import json
 import logging
 import re
 
-from django.core.cache import cache
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required
 
-from .cache_key import make_cache_key
 from .tasks import run_ltl_check
 
 logger = logging.getLogger(__name__)
@@ -198,16 +196,6 @@ def verify_ltl(request):
     error = _validate_graph(nodes, real_edges)
     if error:
         return _error_response(request, error)
-
-    try:
-        cached = cache.get(make_cache_key(formula, graph))
-    except Exception:
-        cached = None
-    if cached is not None:
-        context = _build_result_context(
-            cached, json.dumps(cached.get("kripke_graph", graph))
-        )
-        return render(request, "sandbox/result.html", context)
 
     # Synchronous — a check is a few ms. ValueError carries a clean user-facing
     # message (bad formula / complexity cap); any other exception is logged and
