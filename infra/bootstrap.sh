@@ -113,7 +113,7 @@ if gcloud run services describe "$SERVICE" --region="$REGION" >/dev/null 2>&1; t
   gcloud run services update "$SERVICE" --region="$REGION" --env-vars-file="$ENV_FILE"
 else
   gcloud run deploy "$SERVICE" --region="$REGION" --image="$PLACEHOLDER" \
-    --min-instances=0 --concurrency=8 --cpu=1 --memory=512Mi --timeout=300 \
+    --min-instances=0 --max-instances=20 --concurrency=8 --cpu=1 --memory=512Mi --timeout=300 \
     --cpu-boost --allow-unauthenticated --env-vars-file="$ENV_FILE"
 fi
 
