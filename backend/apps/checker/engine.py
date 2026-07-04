@@ -170,7 +170,7 @@ def validate_request(graph: dict, formula_str: str) -> None:
 
     Must be called at the top of run_ltl_check, before spot.translate().
     Raises ValueError with a user-friendly message on any violation so the
-    Celery task fails cleanly instead of blowing up memory/CPU.
+    check fails cleanly instead of blowing up memory/CPU.
 
     Checks (in order):
       1. Formula parses successfully.
