@@ -242,3 +242,91 @@ def teacher_exercises(request):
     return render(request, 'exercises/teacher_exercises.html', {
         'exercises': MOCK_TEACHER_EXERCISES,
     })
+
+
+# --- Manage tab (mock) -------------------------------------------------------
+# Mock module list for the Manage screen. No DB models yet — the real Topics/
+# Exercises tables carry no visibility/ordering/prerequisite columns (see the
+# teacher-pages plan's schema-gap notes), so visibility/unlocks are mock-only
+# and reset on reload.
+MOCK_MODULES = [
+    {
+        "id": 1, "index": "01", "title": "Kripke Basics",
+        "exercise_count": 6, "unlocks_after": "None", "visible": True,
+        "exercises": [
+            {"id": 101, "name": "Basic Kripke Structure", "difficulty": "beginner"},
+            {"id": 102, "name": "Atomic Propositions", "difficulty": "beginner"},
+            {"id": 103, "name": "Labelling States", "difficulty": "beginner"},
+        ],
+    },
+    {
+        "id": 2, "index": "02", "title": "Kripke Structures",
+        "exercise_count": 8, "unlocks_after": "Kripke Basics", "visible": True,
+        "exercises": [
+            {"id": 201, "name": "Transition Relations", "difficulty": "beginner"},
+            {"id": 202, "name": "Next-State Reasoning", "difficulty": "intermediate"},
+        ],
+    },
+    {
+        "id": 3, "index": "03", "title": "LTL Operators",
+        "exercise_count": 10, "unlocks_after": "Kripke Structures", "visible": True,
+        "exercises": [
+            {"id": 301, "name": "Always Eventually", "difficulty": "intermediate"},
+            {"id": 302, "name": "Until Operator", "difficulty": "intermediate"},
+            {"id": 303, "name": "Request-Grant Protocol", "difficulty": "intermediate"},
+        ],
+    },
+    {
+        "id": 4, "index": "04", "title": "CTL Semantics",
+        "exercise_count": 7, "unlocks_after": "LTL Operators", "visible": False,
+        "exercises": [
+            {"id": 401, "name": "Mutual Exclusion", "difficulty": "advanced"},
+            {"id": 402, "name": "Nested Modalities", "difficulty": "advanced"},
+        ],
+    },
+    {
+        "id": 5, "index": "05", "title": "Fairness & Liveness",
+        "exercise_count": 5, "unlocks_after": "CTL Semantics", "visible": False,
+        "exercises": [
+            {"id": 501, "name": "Fairness Constraints", "difficulty": "advanced"},
+            {"id": 502, "name": "Liveness Properties", "difficulty": "advanced"},
+        ],
+    },
+]
+
+# Operator palette shown in the builder. "Allowed operators" has no DB column yet
+# (schema-gap note in the plan) — mock/interactive only this phase.
+BUILDER_OPERATORS = ["G", "F", "X", "U", "¬", "∧", "∨", "→"]
+
+
+@teacher_required
+def manage(request):
+    """Teacher Manage tab — modules list with nested exercises (mock)."""
+    return render(request, "manage/teacher_manage.html", {
+        "modules": MOCK_MODULES,
+    })
+
+
+@teacher_required
+def exercise_builder(request, exercise_id=None):
+    """Create/edit an exercise (mock, GET only this phase).
+
+    Same view backs both /teacher/exercises/new/ and /.../<id>/edit/; when
+    editing we surface a mock prefill. Save Draft / Publish are inert until the
+    vertical/backend phase (blocked on schema gaps — see the plan)."""
+    prefill = None
+    if exercise_id is not None:
+        prefill = {
+            "id": exercise_id,
+            "description": "Write a formula stating req eventually leads to grant.",
+            "difficulty": "intermediate",
+            "module_id": 3,
+            "hints": ["Think about the implication operator.", "", ""],
+            "target_formula": "G (req -> F grant)",
+        }
+    return render(request, "exercises/teacher_exercise_builder.html", {
+        "modules": [{"id": m["id"], "title": m["title"]} for m in MOCK_MODULES],
+        "operators": BUILDER_OPERATORS,
+        "prefill": prefill,
+        "is_edit": exercise_id is not None,
+    })
