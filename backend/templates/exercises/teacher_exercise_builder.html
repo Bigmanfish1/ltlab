@@ -7,6 +7,29 @@
 <style>
     .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator { display: inline-flex; }
+    .field-error {
+        overflow: hidden;
+        max-height: 0;
+        opacity: 0;
+        margin-top: 0;
+        transform: translateY(-4px);
+        transition: max-height .22s ease, opacity .22s ease, transform .22s ease, margin-top .22s ease;
+    }
+    .field-error.show {
+        max-height: 3rem;
+        opacity: 1;
+        margin-top: .25rem;
+        transform: translateY(0);
+    }
+    .server-error {
+        animation: toast-in .25s ease both;
+        transition: opacity .25s ease, transform .25s ease;
+    }
+    .server-error.hide { opacity: 0; transform: translateX(24px); }
+    @keyframes toast-in {
+        from { opacity: 0; transform: translateX(24px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
 </style>
 {% endblock %}
 
@@ -43,14 +66,14 @@
                     <input type="text" name="title" data-field="title" placeholder="e.g. Request-Grant Protocol"
                         class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors"
                         value="{% if prefill %}{{ prefill.title }}{% endif %}" />
-                    <p class="field-error text-[11px] text-accent-orange mt-1 hidden" data-error-for="title"></p>
+                    <p class="field-error text-[11px] text-accent-orange" data-error-for="title"></p>
                 </div>
 
                 <div class="mb-6">
                     <label class="block text-[13px] text-text-primary mb-2">Task Description</label>
                     <textarea name="description" data-field="description" rows="4" placeholder="Write the plain-English prompt the student will see..."
                         class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-3 rounded focus:border-border-secondary focus:outline-none transition-colors resize-none">{% if prefill %}{{ prefill.description }}{% endif %}</textarea>
-                    <p class="field-error text-[11px] text-accent-orange mt-1 hidden" data-error-for="description"></p>
+                    <p class="field-error text-[11px] text-accent-orange" data-error-for="description"></p>
                 </div>
 
                 <div class="mb-6">
@@ -64,7 +87,7 @@
                         </button>
                         {% endfor %}
                     </div>
-                    <p class="field-error text-[11px] text-accent-orange mt-1 hidden" data-error-for="difficulty"></p>
+                    <p class="field-error text-[11px] text-accent-orange" data-error-for="difficulty"></p>
                 </div>
 
                 <div class="mb-6">
@@ -75,7 +98,7 @@
                         <option value="{{ m.id }}" {% if prefill and prefill.module_id == m.id %}selected{% endif %}>{{ m.title }}</option>
                         {% endfor %}
                     </select>
-                    <p class="field-error text-[11px] text-accent-orange mt-1 hidden" data-error-for="topic"></p>
+                    <p class="field-error text-[11px] text-accent-orange" data-error-for="topic"></p>
                 </div>
 
                 <label class="block text-[13px] text-text-primary mb-2">Allowed Operators</label>
@@ -252,13 +275,13 @@
         function fieldEl(name) { return document.querySelector('[data-field="' + name + '"]'); }
         function showFieldError(name, msg) {
             const p = errorEl(name);
-            if (p) { p.textContent = msg; p.classList.remove('hidden'); }
+            if (p) { p.textContent = msg; p.classList.add('show'); }
             const f = fieldEl(name);
             if (f) { f.classList.add('border-accent-orange'); f.classList.remove('border-border-primary'); }
         }
         function clearFieldError(name) {
             const p = errorEl(name);
-            if (p) p.classList.add('hidden');
+            if (p) p.classList.remove('show');
             const f = fieldEl(name);
             if (f) { f.classList.remove('border-accent-orange'); f.classList.add('border-border-primary'); }
         }
@@ -285,12 +308,16 @@
 
         const serverErrors = document.getElementById('server-errors');
         if (serverErrors) {
+            function dismissToast(el) {
+                el.classList.add('hide');
+                setTimeout(function () { el.remove(); }, 250);
+            }
             serverErrors.addEventListener('click', function (e) {
                 const el = e.target.closest('.js-dismiss');
-                if (el) el.closest('.server-error').remove();
+                if (el) dismissToast(el.closest('.server-error'));
             });
             setTimeout(function () {
-                serverErrors.querySelectorAll('.server-error').forEach(function (el) { el.remove(); });
+                serverErrors.querySelectorAll('.server-error').forEach(dismissToast);
             }, 6000);
         }
     })();
