@@ -557,9 +557,13 @@
     function showContextMenu(node, renderedPos) {
       if (contextMenu) { contextMenu.remove(); contextMenu = null; }
 
+      const mountRect = mount.getBoundingClientRect();
+      const menuLeft = mountRect.left + renderedPos.x;
+      const menuTop = mountRect.top + renderedPos.y;
+
       contextMenu = document.createElement("div");
       contextMenu.style.cssText = `
-        position: fixed; left: ${renderedPos.x}px; top: ${renderedPos.y}px;
+        position: fixed; left: ${menuLeft}px; top: ${menuTop}px;
         background: #111111; border: 1px solid #2A2A2A; border-radius: 6px;
         padding: 4px 0; z-index: 200; min-width: 180px;
         box-shadow: 0 4px 16px rgba(0,0,0,0.6);
