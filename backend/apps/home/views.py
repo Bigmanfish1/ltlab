@@ -159,12 +159,12 @@ _MOCK_RESULTS_DATA = {
         {"label": "Nested modalities", "description": "29% bracketed nested LTL incorrectly", "percentage": 29},
     ],
     "students": [
-        {"name": "Amara Dlamini", "exercises_done": 18, "accuracy": 94, "last_active": "12m ago"},
-        {"name": "Sipho Ndlovu", "exercises_done": 6, "accuracy": 62, "last_active": "4 days ago"},
-        {"name": "Jamie Kim", "exercises_done": 16, "accuracy": 88, "last_active": "2h ago"},
-        {"name": "Riley Wong", "exercises_done": 12, "accuracy": 71, "last_active": "3h ago"},
-        {"name": "Thabo Pillay", "exercises_done": 19, "accuracy": 91, "last_active": "5h ago"},
-        {"name": "Lerato Mokoena", "exercises_done": 14, "accuracy": 82, "last_active": "yesterday"},
+        {"id": 1, "name": "Amara Dlamini", "exercises_done": 18, "accuracy": 94, "last_active": "12m ago"},
+        {"id": 2, "name": "Sipho Ndlovu", "exercises_done": 6, "accuracy": 62, "last_active": "4 days ago"},
+        {"id": 3, "name": "Jamie Kim", "exercises_done": 16, "accuracy": 88, "last_active": "2h ago"},
+        {"id": 4, "name": "Riley Wong", "exercises_done": 12, "accuracy": 71, "last_active": "3h ago"},
+        {"id": 5, "name": "Thabo Pillay", "exercises_done": 19, "accuracy": 91, "last_active": "5h ago"},
+        {"id": 6, "name": "Lerato Mokoena", "exercises_done": 14, "accuracy": 82, "last_active": "yesterday"},
     ],
 }
 
@@ -172,3 +172,39 @@ _MOCK_RESULTS_DATA = {
 @teacher_required
 def teacher_results(request):
     return render(request, "results/teacher_results.html", _MOCK_RESULTS_DATA)
+
+
+# Per-student detail reached from the Results "View →" link. Mock data keyed by
+# the same ids as _MOCK_RESULTS_DATA["students"]; Attempts has no hints_used
+# column yet (schema-gap note in the plan), so hints figures are mock-only.
+_MOCK_STUDENT_DETAIL = {
+    1: {
+        "name": "Amara Dlamini", "exercises_done": 18, "accuracy": 94, "hints_used": 7,
+        "history": [
+            {"exercise": "Request-Grant Protocol", "formula": "G (req -> F grant)", "result": True, "hints": 1, "date": "12 May"},
+            {"exercise": "Mutual Exclusion", "formula": "G ¬(p ∧ q)", "result": False, "hints": 2, "date": "11 May"},
+            {"exercise": "Until Operator", "formula": "p U q", "result": True, "hints": 0, "date": "10 May"},
+            {"exercise": "Always Eventually", "formula": "G F p", "result": True, "hints": 1, "date": "09 May"},
+        ],
+        "last_submission": {"formula": "G (req -> F grant)", "verdict": "Property holds.", "holds": True},
+    },
+}
+
+
+@teacher_required
+def teacher_student_detail(request, student_id):
+    """Per-student analytics (mock). Falls back to a generic record for ids
+    without bespoke mock data so every Results row's View → resolves."""
+    detail = _MOCK_STUDENT_DETAIL.get(student_id)
+    if detail is None:
+        source = next((s for s in _MOCK_RESULTS_DATA["students"] if s["id"] == student_id), None)
+        name = source["name"] if source else "Unknown Student"
+        detail = {
+            "name": name,
+            "exercises_done": source["exercises_done"] if source else 0,
+            "accuracy": source["accuracy"] if source else 0,
+            "hints_used": 0,
+            "history": [],
+            "last_submission": None,
+        }
+    return render(request, "results/teacher_student_detail.html", detail)

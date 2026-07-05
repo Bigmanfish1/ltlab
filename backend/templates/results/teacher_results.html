@@ -107,7 +107,7 @@
                         <td class="px-2 py-4 font-mono text-[13px] text-text-primary">{{ student.accuracy }}%</td>
                         <td class="px-2 py-4 font-mono text-[11px] text-text-secondary">{{ student.last_active }}</td>
                         <td class="px-2 py-4">
-                            <a href="#" class="font-mono text-[11px] text-accent-orange hover:opacity-80 transition-opacity">View →</a>
+                            <a href="{% url 'teacher_student_detail' student.id %}" class="font-mono text-[11px] text-accent-orange hover:opacity-80 transition-opacity">View →</a>
                         </td>
                     </tr>
                     {% endfor %}
