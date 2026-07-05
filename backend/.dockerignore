@@ -1,0 +1,22 @@
+# Keep the build context out of the runtime image (context is backend/).
+
+# Tests — kept out of prod packages (see CLAUDE.md).
+tests/
+
+# Python / tooling caches
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+
+# collectstatic runs at build; don't ship a stale local copy
+staticfiles/
+
+# Local env / secrets
+.env
+.env.*
+
+# VCS / docs
+.git/
+*.md
