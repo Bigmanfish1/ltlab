@@ -143,8 +143,11 @@ jobs:
       # log streaming (needs roles/viewer); we poll status instead.
       - name: Build image
         run: |
+          # Explicit staging dir so submit skips a project-level buckets.list
+          # (deploy SA has bucket-scoped storage perms, not project-wide list).
           BUILD_ID=$(gcloud builds submit backend \
             --tag "$IMAGE" --project "$GCP_PROJECT" --quiet --async \
+            --gcs-source-staging-dir="gs://${GCP_PROJECT}_cloudbuild/source" \
             --format='value(id)')
           echo "Build ID: $BUILD_ID"
           DEADLINE=$(( SECONDS + 1800 ))   # 30-min cap — fail fast, don't ride GH's 6h timeout
