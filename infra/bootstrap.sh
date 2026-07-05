@@ -82,9 +82,13 @@ for ROLE in roles/run.admin roles/cloudbuild.builds.editor \
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${DEPLOY_SA}" --role="$ROLE" --condition=None >/dev/null
 done
-# Source upload scoped to the staging bucket, not project-wide storage.admin.
+# Least privilege for `gcloud builds submit` on the staging bucket: objectAdmin
+# (upload source) + legacyBucketReader (storage.buckets.get, which objectAdmin
+# lacks). No bucket delete / setIamPolicy. Bucket must pre-exist (created above).
 gcloud storage buckets add-iam-policy-binding "gs://${CLOUDBUILD_BUCKET}" \
   --member="serviceAccount:${DEPLOY_SA}" --role="roles/storage.objectAdmin" >/dev/null
+gcloud storage buckets add-iam-policy-binding "gs://${CLOUDBUILD_BUCKET}" \
+  --member="serviceAccount:${DEPLOY_SA}" --role="roles/storage.legacyBucketReader" >/dev/null
 
 echo "==> Cloud Build (Compute SA) roles"
 for ROLE in roles/cloudbuild.builds.builder roles/storage.objectViewer \
