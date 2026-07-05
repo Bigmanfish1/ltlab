@@ -1,17 +1,16 @@
 import json
+import logging
 import re
 
-from celery.result import AsyncResult
-from django.conf import settings
-from django.core.cache import cache
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required
 
-from .cache_key import make_cache_key
 from .tasks import run_ltl_check
+
+logger = logging.getLogger(__name__)
 
 MAX_FORMULA_CHARS = 512
 MAX_NODES = 100
@@ -198,53 +197,23 @@ def verify_ltl(request):
     if error:
         return _error_response(request, error)
 
+    # Synchronous — a check is a few ms. ValueError carries a clean user-facing
+    # message (bad formula / complexity cap); any other exception is logged and
+    # shown as a generic banner instead of a 500.
     try:
-        cached = cache.get(make_cache_key(formula, graph))
+        engine_result = run_ltl_check(graph, formula)
+    except ValueError as exc:
+        return _error_response(request, str(exc))
     except Exception:
-        cached = None
-    if cached is not None:
-        context = _build_result_context(
-            cached, json.dumps(cached.get("kripke_graph", graph))
+        logger.exception("LTL verification failed unexpectedly")
+        return _error_response(
+            request,
+            "Verification was stopped — the formula or graph could not be processed.",
         )
-        return render(request, "sandbox/result.html", context)
 
-    task = run_ltl_check.delay(graph, formula)
-    return render(request, "sandbox/pending.html", {"task_id": task.id})
-
-
-@supabase_login_required
-@require_GET
-def verify_ltl_status(request, task_id):
-    result = AsyncResult(task_id)
-
-    if result.state in ("PENDING", "STARTED", "RETRY"):
-        return render(request, "sandbox/pending.html", {"task_id": task_id})
-
-    if result.state == "FAILURE":
-        exc = result.result
-        # ValueError means a clean user-facing message from the engine.
-        if isinstance(exc, ValueError):
-            msg = str(exc)
-        else:
-            msg = "Verification was stopped — the formula or graph was too complex."
-        return _error_response(request, msg)
-
-    # SUCCESS — the task echoes formula + kripke_graph back in its return dict.
-    engine_result = result.result
     graph_json = json.dumps(engine_result["kripke_graph"])
     context = _build_result_context(engine_result, graph_json)
     return render(request, "sandbox/result.html", context)
-
-
-@supabase_login_required
-@require_POST
-def verify_ltl_cancel(request):
-    """Revoke a running Celery verification task and clear the result drawer."""
-    task_id = request.POST.get("task_id", "")
-    if task_id:
-        AsyncResult(task_id).revoke(terminate=True)
-    # Return an empty drawer so HTMX clears the spinner.
-    return render(request, "sandbox/result.html", {})
 
 
 @supabase_login_required

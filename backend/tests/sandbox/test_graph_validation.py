@@ -131,18 +131,6 @@ class GraphSizeCapTests(TestCase):
 
 class FormulaLengthCapTests(TestCase):
 
-    def _post_verify(self, formula, graph_json):
-        from django.test import RequestFactory
-        rf = RequestFactory()
-        req = rf.post("/sandbox/verify/", {"formula": formula, "graph_data": graph_json})
-        req.user = type("User", (), {"is_authenticated": True})()
-        # Bypass supabase_login_required: patch the decorator result
-        from unittest.mock import patch
-        with patch("apps.checker.views.run_ltl_check") as mock_task:
-            mock_task.delay.return_value = type("R", (), {"id": "fake"})()
-            response = verify_ltl(req)
-        return response
-
     def test_oversized_formula_returns_error(self):
         import json
         from django.test import RequestFactory

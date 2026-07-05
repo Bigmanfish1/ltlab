@@ -47,21 +47,10 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
     env:
       SECRET_KEY: ci-secret-key-not-used-in-production
       DEBUG: "True"
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/ltlab_test
-      REDIS_URL: redis://localhost:6379/0
       DJANGO_SETTINGS_MODULE: config.settings.development
 
     steps:
@@ -121,8 +110,81 @@ jobs:
     needs: vulnerability-scan
     if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
 
+    # WIF: GitHub auths to GCP with a short-lived OIDC token (no stored key);
+    # provider locked to this repo's owner.
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT: project-10a4cc96-5dd3-4010-8a3
+      GCP_REGION: us-central1
+      CLOUD_RUN_SERVICE: ltlab
+      MIGRATE_JOB: ltlab-migrate
+      WIF_PROVIDER: projects/87262955263/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+      DEPLOY_SA: gh-deploy@project-10a4cc96-5dd3-4010-8a3.iam.gserviceaccount.com
+      IMAGE: us-central1-docker.pkg.dev/project-10a4cc96-5dd3-4010-8a3/ltlab/ltlab:${{ github.sha }}
+
     steps:
-      - name: Trigger Render deploy
-        env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-        run: curl --fail -X POST "$RENDER_DEPLOY_HOOK"
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3.0.1
+
+      # Build once so the migrate Job and service share the image. --async skips
+      # log streaming (needs roles/viewer); we poll status instead.
+      - name: Build image
+        run: |
+          # Explicit staging dir so submit skips a project-level buckets.list
+          # (deploy SA has bucket-scoped storage perms, not project-wide list).
+          BUILD_ID=$(gcloud builds submit backend \
+            --tag "$IMAGE" --project "$GCP_PROJECT" --quiet --async \
+            --gcs-source-staging-dir="gs://${GCP_PROJECT}_cloudbuild/source" \
+            --format='value(id)')
+          echo "Build ID: $BUILD_ID"
+          DEADLINE=$(( SECONDS + 1800 ))   # 30-min cap — fail fast, don't ride GH's 6h timeout
+          while true; do
+            STATUS=$(gcloud builds describe "$BUILD_ID" \
+              --project "$GCP_PROJECT" --format='value(status)' 2>/dev/null || true)
+            echo "Build status: ${STATUS:-<none>}"
+            [ "$STATUS" = "SUCCESS" ] && break
+            # STATUS_UNKNOWN is terminal; empty = transient describe error, keep polling.
+            case "$STATUS" in
+              FAILURE|TIMEOUT|CANCELLED|EXPIRED|INTERNAL_ERROR|STATUS_UNKNOWN)
+                echo "Build failed: $STATUS"; exit 1 ;;
+            esac
+            if [ "$SECONDS" -ge "$DEADLINE" ]; then
+              echo "Build poll timed out after 30 min (last status: ${STATUS:-<none>})"; exit 1
+            fi
+            sleep 15
+          done
+
+      # Migrate once before the new revision serves, via a one-off Job (not per
+      # instance). --fake-initial matches the externally-managed Supabase schema.
+      - name: Apply database migrations
+        run: |
+          if ! gcloud run jobs describe "$MIGRATE_JOB" \
+              --region "$GCP_REGION" --project "$GCP_PROJECT" >/dev/null 2>&1; then
+            echo "Migrate Job '$MIGRATE_JOB' not found — run infra/bootstrap.sh once on this project first." >&2
+            exit 1
+          fi
+          gcloud run jobs update "$MIGRATE_JOB" --image "$IMAGE" \
+            --region "$GCP_REGION" --project "$GCP_PROJECT" --quiet
+          gcloud run jobs execute "$MIGRATE_JOB" --wait \
+            --region "$GCP_REGION" --project "$GCP_PROJECT"
+
+      # Roll out the same image; existing env vars and scaling are retained.
+      # max-instances is re-asserted every deploy: it caps fleet DB connections
+      # (instances x threads) under the Supavisor pooler's client limit.
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "$CLOUD_RUN_SERVICE" --image "$IMAGE" \
+            --region "$GCP_REGION" --project "$GCP_PROJECT" --quiet \
+            --max-instances 20

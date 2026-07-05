@@ -11,15 +11,6 @@ services:
       timeout: 5s
       retries: 10
 
-  redis:
-    container_name: ltlab-redis
-    image: redis:7-alpine
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   web:
     container_name: ltlab-web
     build: ./backend
@@ -34,25 +25,6 @@ services:
       - RUN_MIGRATIONS=true
     depends_on:
       db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  worker:
-    container_name: ltlab-worker
-    build: ./backend
-    command: ./start-worker.sh
-    volumes:
-      - ./backend:/app
-    env_file: .env
-    environment:
-      - CELERY_CONCURRENCY=2
-      - CELERY_MAX_TASKS_PER_CHILD=50
-      - CELERY_MAX_MEMORY_PER_CHILD=300000
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
         condition: service_healthy
 
 volumes:

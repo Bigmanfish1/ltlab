@@ -3,7 +3,16 @@
 Use with:  python3 manage.py test --settings=config.settings.test
 """
 
-from .base import *  # noqa: F401, F403
+# Set before `from .base import *`: base.py reads these at import with no
+# defaults. Values are throwaway (DB is swapped for SQLite below).
+import os
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production")
+os.environ.setdefault("DATABASE_URL", "sqlite://:memory:")
+os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
+os.environ.setdefault("SUPABASE_ANON_KEY", "test-anon-key")
+
+from .base import *  # noqa: E402, F401, F403
 
 # Override DB to SQLite in-memory so the test runner needs no Postgres install.
 DATABASES = {
@@ -20,19 +29,8 @@ CACHES = {
     }
 }
 
-# Celery always eager in tests — tasks run synchronously, no broker needed.
-CELERY_TASK_ALWAYS_EAGER = True
-CELERY_TASK_EAGER_PROPAGATES = True
-
 # Silence migration output during test runs.
 MIGRATION_MODULES = {app: None for app in [
     "accounts", "checker", "exercises", "home",
     "auth", "contenttypes", "sessions", "admin",
 ]}
-
-# Supabase keys — not used by unit tests but required by settings import.
-import os
-os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production")
-os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
-os.environ.setdefault("SUPABASE_KEY", "test-key")
-os.environ.setdefault("SUPABASE_JWT_SECRET", "test-jwt-secret")
