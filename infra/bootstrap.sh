@@ -77,8 +77,10 @@ echo "==> Deploy service account + roles (least privilege — no project-wide st
 gcloud iam service-accounts describe "$DEPLOY_SA" >/dev/null 2>&1 \
   || gcloud iam service-accounts create gh-deploy \
        --display-name="GitHub Actions Cloud Run deployer"
+# serviceUsageConsumer: builds submit needs serviceusage.services.use.
 for ROLE in roles/run.admin roles/cloudbuild.builds.editor \
-            roles/artifactregistry.writer roles/iam.serviceAccountUser; do
+            roles/artifactregistry.writer roles/iam.serviceAccountUser \
+            roles/serviceusage.serviceUsageConsumer; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${DEPLOY_SA}" --role="$ROLE" --condition=None >/dev/null
 done
