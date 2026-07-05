@@ -174,9 +174,6 @@ def teacher_results(request):
     return render(request, "results/teacher_results.html", _MOCK_RESULTS_DATA)
 
 
-# Per-student detail reached from the Results "View →" link. Mock data keyed by
-# the same ids as _MOCK_RESULTS_DATA["students"]; Attempts has no hints_used
-# column yet (schema-gap note in the plan), so hints figures are mock-only.
 _MOCK_STUDENT_DETAIL = {
     1: {
         "name": "Amara Dlamini", "exercises_done": 18, "accuracy": 94, "hints_used": 7,
@@ -193,8 +190,6 @@ _MOCK_STUDENT_DETAIL = {
 
 @teacher_required
 def teacher_student_detail(request, student_id):
-    """Per-student analytics (mock). Falls back to a generic record for ids
-    without bespoke mock data so every Results row's View → resolves."""
     detail = _MOCK_STUDENT_DETAIL.get(student_id)
     if detail is None:
         source = next((s for s in _MOCK_RESULTS_DATA["students"] if s["id"] == student_id), None)
