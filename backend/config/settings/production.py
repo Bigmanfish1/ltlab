@@ -10,6 +10,10 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+# HSTS (1yr). *.run.app is already preloaded; this also covers a custom domain.
+SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
 
 # Transaction-mode pooler (6543) can't keep server-side cursors across connections.
 DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
