@@ -251,6 +251,7 @@ def recent_activity(limit=6):
         initials = "".join(p[0] for p in name.split()[:2]).upper() or "?"
         verb = "completed" if a.is_correct else "attempted"
         out.append({
+            "student_id": a.student_id,
             "initials": initials,
             "text": f"{name} {verb} {a.exercise.title} · {a.exercise.topic.title}",
             "time": _humanize(a.created_at),

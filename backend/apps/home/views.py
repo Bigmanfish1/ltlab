@@ -1,4 +1,5 @@
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.accounts.models import Profile
@@ -66,7 +67,7 @@ def teacher_dashboard(request):
     context = {
         "teacher_name": request.profile.name or request.profile.email,
         "stats": [
-            {"label": "STUDENTS ENROLLED", "value": stats["students_enrolled"], "delta": "", "positive": True},
+            {"label": "STUDENTS ENROLLED", "value": stats["students_enrolled"], "delta": "", "positive": True, "href": reverse("results") + "?section=roster"},
             {"label": "ACTIVE THIS WEEK", "value": stats["active_this_week"], "delta": "", "positive": True},
             {"label": "CLASS ACCURACY", "value": f"{stats['class_accuracy']}%", "delta": "", "positive": True},
         ],

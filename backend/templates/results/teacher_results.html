@@ -79,7 +79,7 @@
         </div>
 
         <!-- Students table (open layout, no outer box) -->
-        <div>
+        <div id="roster" class="scroll-mt-24">
             <div class="flex items-center justify-between mb-5">
                 <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">STUDENTS</div>
                 <input
@@ -138,6 +138,16 @@
                 if (match) visible++;
             });
             empty.classList.toggle('hidden', visible !== 0);
+        });
+    })();
+
+    (function () {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('section') !== 'roster') return;
+        const target = document.getElementById('roster');
+        if (!target) return;
+        requestAnimationFrame(function () {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     })();
 </script>

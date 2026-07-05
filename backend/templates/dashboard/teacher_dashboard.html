@@ -12,7 +12,7 @@
 
     <div class="grid grid-cols-3 gap-4 mb-12">
         {% for stat in stats %}
-        <div class="bg-bg-secondary border border-border-primary p-6 rounded">
+        <{% if stat.href %}a href="{{ stat.href }}"{% else %}div{% endif %} class="block bg-bg-secondary border border-border-primary p-6 rounded {% if stat.href %}hover:border-accent-orange transition-colors{% endif %}">
             <div class="font-mono text-[11px] text-text-secondary tracking-[0.12em] mb-3">{{ stat.label }}</div>
             <div class="text-5xl text-text-primary font-bold mb-2 leading-none" style="letter-spacing: -0.04em;">
                 {{ stat.value }}
@@ -20,7 +20,7 @@
             <div class="text-xs font-mono {% if stat.positive %}text-accent-lime{% else %}text-accent-orange{% endif %}">
                 {{ stat.delta }}
             </div>
-        </div>
+        </{% if stat.href %}a{% else %}div{% endif %}>
         {% endfor %}
     </div>
 
@@ -29,14 +29,14 @@
             <div class="text-[13px] text-text-secondary tracking-[0.12em] mb-4">RECENT ACTIVITY</div>
             <div>
                 {% for item in activity %}
-                <div class="h-12 flex items-center gap-3 border-b border-border-primary">
+                <a href="{% url 'teacher_student_detail' item.student_id %}" class="h-12 flex items-center gap-3 border-b border-border-primary hover:bg-bg-secondary transition-colors -mx-2 px-2">
                     <div class="w-8 h-8 bg-bg-tertiary flex items-center justify-center font-mono text-[11px] text-text-primary">
                         {{ item.initials }}
                     </div>
                     <span class="w-1.5 h-1.5 rounded-full {% if item.type == 'done' %}bg-accent-lime{% else %}bg-accent-orange{% endif %}"></span>
                     <div class="flex-1 text-[13px] text-text-primary">{{ item.text }}</div>
                     <div class="text-xs text-text-secondary font-mono">{{ item.time }}</div>
-                </div>
+                </a>
                 {% endfor %}
             </div>
         </div>
