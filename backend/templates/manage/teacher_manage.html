@@ -53,7 +53,7 @@
                     {% empty %}
                     <div class="px-5 py-3 text-[13px] text-text-secondary">No exercises yet.</div>
                     {% endfor %}
-                    <a href="{% url 'exercise_builder' %}" class="flex items-center justify-center gap-2 px-5 py-3 text-[13px] text-text-secondary hover:text-text-primary transition-colors">
+                    <a href="{% url 'exercise_builder' %}?topic={{ module.id }}" class="flex items-center justify-center gap-2 px-5 py-3 text-[13px] text-text-secondary hover:text-text-primary transition-colors">
                         + Add Exercise to Module
                     </a>
                 </div>

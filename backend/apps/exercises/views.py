@@ -309,6 +309,7 @@ def _builder_context(exercise, form=None):
         "allowed_operators": allowed,
         "elements_json": elements_json,
         "prefill": prefill,
+        "selected_topic_id": prefill["module_id"] if prefill else None,
         "is_edit": exercise is not None,
         "exercise_id": exercise.id if exercise else None,
     }
@@ -328,7 +329,12 @@ def exercise_builder(request, exercise_id=None):
     if request.method == "POST":
         return _save_exercise(request, exercise)
 
-    return render(request, "exercises/teacher_exercise_builder.html", _builder_context(exercise))
+    context = _builder_context(exercise)
+    if exercise is None:
+        tid = request.GET.get("topic", "")
+        if tid.isdigit() and Topic.objects.filter(pk=tid).exists():
+            context["selected_topic_id"] = int(tid)
+    return render(request, "exercises/teacher_exercise_builder.html", context)
 
 
 def _save_exercise(request, exercise):
