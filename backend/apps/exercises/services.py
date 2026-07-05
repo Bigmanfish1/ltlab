@@ -280,12 +280,13 @@ def student_detail(student):
     last_submission = None
     if last is not None:
         structure = last.exercise.kripke_structure
-        elements = structure.get("elements") if isinstance(structure, dict) else None
+        elements = structure.get("elements") if isinstance(structure, dict) else {}
+        array = (elements.get("nodes") or []) + (elements.get("edges") or []) if elements else []
         last_submission = {
             "formula": last.formula_input or "",
             "verdict": "Property holds." if last.is_correct else "Property violated.",
             "holds": last.is_correct,
-            "elements_json": json.dumps(elements) if elements else "",
+            "elements_json": json.dumps(array) if array else "",
         }
     return {
         "id": student.id,

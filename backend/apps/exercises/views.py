@@ -316,10 +316,11 @@ def _builder_context(exercise, form=None):
 
 
 def _elements_json(structure):
-    if not structure:
+    if not structure or not isinstance(structure, dict):
         return ""
-    elements = structure.get("elements") if isinstance(structure, dict) else None
-    return json.dumps(elements) if elements else ""
+    elements = structure.get("elements") or {}
+    array = (elements.get("nodes") or []) + (elements.get("edges") or [])
+    return json.dumps(array) if array else ""
 
 
 @teacher_required
