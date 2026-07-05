@@ -324,9 +324,15 @@ def exercise_builder(request, exercise_id=None):
             "hints": ["Think about the implication operator.", "", ""],
             "target_formula": "G (req -> F grant)",
         }
+    # Pad/normalise the three hint slots so the template can loop without custom
+    # filters (Django ships none for list indexing).
+    hint_values = (prefill["hints"] if prefill else [])[:3]
+    hint_values += [""] * (3 - len(hint_values))
     return render(request, "exercises/teacher_exercise_builder.html", {
         "modules": [{"id": m["id"], "title": m["title"]} for m in MOCK_MODULES],
         "operators": BUILDER_OPERATORS,
+        "difficulties": ["beginner", "intermediate", "advanced"],
+        "hint_values": hint_values,
         "prefill": prefill,
         "is_edit": exercise_id is not None,
     })

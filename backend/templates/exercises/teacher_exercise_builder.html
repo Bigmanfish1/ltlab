@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Exercise Builder - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-bg-primary">
+    {% include "header.html" %}
+    <div class="max-w-[1280px] mx-auto px-12 py-10">
+
+        <!-- Heading -->
+        <div class="flex items-start justify-between mb-8">
+            <div>
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-2">
+                    Manage / Exercises / {% if is_edit %}Edit{% else %}New{% endif %}
+                </div>
+                <h1 class="text-[32px] text-text-primary font-semibold" style="letter-spacing: -0.02em;">Exercise Builder</h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <button type="button" class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors" title="Not wired yet (mock)">
+                    Save Draft
+                </button>
+                <button type="button" class="px-4 py-2 bg-accent-orange text-bg-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:opacity-90 transition-opacity" title="Not wired yet (mock)">
+                    Publish →
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-[38%_62%] gap-8">
+
+            <!-- LEFT: exercise details -->
+            <div>
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">EXERCISE DETAILS</div>
+
+                <label class="block text-[13px] text-text-primary mb-2">Task Description</label>
+                <textarea rows="4" placeholder="Write the plain-English prompt the student will see..."
+                    class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-3 rounded mb-6 focus:border-border-secondary focus:outline-none transition-colors resize-none">{% if prefill %}{{ prefill.description }}{% endif %}</textarea>
+
+                <label class="block text-[13px] text-text-primary mb-2">Difficulty</label>
+                <div class="flex gap-2 mb-6" id="difficulty-toggle">
+                    {% for level in difficulties %}
+                    <button type="button" data-difficulty="{{ level }}"
+                        class="difficulty-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">
+                        {{ level }}
+                    </button>
+                    {% endfor %}
+                </div>
+
+                <label class="block text-[13px] text-text-primary mb-2">Module</label>
+                <select class="w-full bg-bg-secondary border border-border-primary text-text-primary text-[13px] px-4 py-2.5 rounded mb-6 focus:border-border-secondary focus:outline-none transition-colors">
+                    <option value="">Assign to module...</option>
+                    {% for m in modules %}
+                    <option value="{{ m.id }}" {% if prefill and prefill.module_id == m.id %}selected{% endif %}>{{ m.title }}</option>
+                    {% endfor %}
+                </select>
+
+                <label class="block text-[13px] text-text-primary mb-2">Allowed Operators</label>
+                <div class="flex flex-wrap gap-2 mb-1" id="operator-toggle">
+                    {% for op in operators %}
+                    <button type="button" data-op="{{ op }}"
+                        class="operator-btn w-9 h-9 font-mono text-[13px] border border-border-primary text-text-secondary rounded transition-colors">
+                        {{ op }}
+                    </button>
+                    {% endfor %}
+                </div>
+                <div class="text-[11px] text-text-secondary mb-6">Disabled operators are hidden from students.</div>
+
+                <label class="block text-[13px] text-text-primary mb-2">Progressive Hints</label>
+                <div class="space-y-2">
+                    {% for hint in hint_values %}
+                    <input type="text" placeholder="Hint {{ forloop.counter }}..."
+                        class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors"
+                        value="{{ hint }}" />
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- RIGHT: solution -->
+            <div>
+                <div class="flex items-center justify-between mb-5">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">SOLUTION — KRIPKE STRUCTURE</div>
+                    <span class="font-mono text-[10px] tracking-[0.12em] uppercase px-2 py-0.5 border border-accent-orange text-accent-orange rounded">Memorandum</span>
+                </div>
+                <div class="text-[12px] text-accent-orange mb-3">This is the memorandum. Students never see this.</div>
+
+                <!-- Reusable Kripke editor (editable). Loads its own Cytoscape assets. -->
+                <div class="bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-8" style="height: 420px;">
+                    {% include "components/kripke_editor.html" with id="memo" input_name="memo_graph" height="420px" %}
+                </div>
+
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-4">SOLUTION — LTL FORMULA</div>
+                <div class="flex flex-wrap gap-2 mb-3" id="formula-operators">
+                    {% for op in operators %}
+                    <button type="button" data-op="{{ op }}"
+                        class="formula-op w-9 h-9 font-mono text-[13px] bg-bg-secondary border border-border-primary text-text-primary rounded hover:border-accent-orange transition-colors">
+                        {{ op }}
+                    </button>
+                    {% endfor %}
+                </div>
+                <input type="text" id="formula-input" placeholder="Enter the solution formula..."
+                    class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[14px] px-4 py-3 rounded mb-3 focus:border-border-secondary focus:outline-none transition-colors"
+                    value="{% if prefill %}{{ prefill.target_formula }}{% endif %}" />
+                <button type="button" class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors" title="Not wired yet (mock)">
+                    Validate Formula →
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Builder interactivity — client-side only (mock). Difficulty + allowed-
+    // operator toggles are visual state; formula operator buttons insert glyphs
+    // into the formula input. Save Draft / Publish / Validate are inert until the
+    // vertical/backend phase.
+    (function () {
+        const prefillDifficulty = "{% if prefill %}{{ prefill.difficulty }}{% endif %}";
+
+        // Difficulty: single-select toggle
+        const diffBtns = Array.from(document.querySelectorAll('.difficulty-btn'));
+        function setDifficulty(active) {
+            diffBtns.forEach(function (b) {
+                const on = b === active;
+                b.classList.toggle('bg-accent-orange', on);
+                b.classList.toggle('text-bg-primary', on);
+                b.classList.toggle('border-accent-orange', on);
+                b.classList.toggle('text-text-secondary', !on);
+                b.classList.toggle('border-border-primary', !on);
+            });
+        }
+        diffBtns.forEach(function (b) {
+            b.addEventListener('click', function () { setDifficulty(b); });
+            if (b.dataset.difficulty === prefillDifficulty) setDifficulty(b);
+        });
+
+        // Allowed operators: multi-select toggle (default all enabled)
+        document.querySelectorAll('.operator-btn').forEach(function (b) {
+            function paint(on) {
+                b.classList.toggle('bg-accent-orange', on);
+                b.classList.toggle('text-bg-primary', on);
+                b.classList.toggle('border-accent-orange', on);
+                b.classList.toggle('text-text-secondary', !on);
+                b.classList.toggle('border-border-primary', !on);
+            }
+            let on = true;
+            paint(on);
+            b.addEventListener('click', function () { on = !on; paint(on); });
+        });
+
+        // Formula operator buttons insert at cursor
+        const input = document.getElementById('formula-input');
+        document.querySelectorAll('.formula-op').forEach(function (b) {
+            b.addEventListener('click', function () {
+                const op = b.dataset.op;
+                const start = input.selectionStart ?? input.value.length;
+                const end = input.selectionEnd ?? input.value.length;
+                input.value = input.value.slice(0, start) + op + input.value.slice(end);
+                input.focus();
+                const pos = start + op.length;
+                input.setSelectionRange(pos, pos);
+            });
+        });
+    })();
+</script>
+{% endblock %}
