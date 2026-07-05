@@ -1,4 +1,5 @@
 import json
+import math
 from collections import defaultdict
 from datetime import timedelta
 
@@ -67,12 +68,15 @@ def enrolled_students():
 
 
 def _pct(n, d):
-    return round(100 * n / d) if d else 0
+    # round half up; n, d are non-negative counts here so floor(x+0.5) is exact
+    return math.floor(100 * n / d + 0.5) if d else 0
 
 
 def _attempt_matrix():
+    # numerator population must match the enrolled denominator, else completion can exceed 100%
+    enrolled_ids = enrolled_students().values_list("id", flat=True)
     matrix = defaultdict(lambda: defaultdict(list))
-    rows = Attempt.objects.values_list(
+    rows = Attempt.objects.filter(student_id__in=enrolled_ids).values_list(
         "exercise_id", "student_id", "is_correct", "created_at", "formula_input", "hints_used"
     ).order_by("created_at")
     for ex_id, st_id, correct, created, formula, hints in rows:
@@ -91,17 +95,23 @@ def _exercise_metrics(exercise, per_student, enrolled_count):
         if first_correct is not None:
             solvers += 1
             tries_to_solve.append(first_correct + 1)
+    engaged = len(per_student)
+    completion_raw = 100 * solvers / enrolled_count if enrolled_count else 0.0
     completion = _pct(solvers, enrolled_count)
     avg_tries = round(sum(tries_to_solve) / len(tries_to_solve), 1) if tries_to_solve else 0.0
     fail_attempts = total_attempts - sum(
         1 for attempts in per_student.values() for a in attempts if a["correct"]
     )
+    # struggle = mean submissions per engaged student; unsolved exercises rank high (unlike avg_tries)
+    struggle = round(total_attempts / engaged, 1) if engaged else 0.0
     return {
         "attempts": total_attempts,
         "solvers": solvers,
         "completion": completion,
+        "completion_raw": completion_raw,
         "avg_tries": avg_tries,
         "fail_attempts": fail_attempts,
+        "struggle": struggle,
     }
 
 
@@ -118,7 +128,9 @@ def exercise_rows():
             "difficulty": ex.difficulty,
             "attempts": m["attempts"],
             "completion": m["completion"],
+            "completion_raw": m["completion_raw"],
             "avg_tries": m["avg_tries"],
+            "struggle": m["struggle"],
         })
     return rows
 
@@ -127,10 +139,11 @@ def topic_completion():
     rows = exercise_rows()
     by_topic = defaultdict(list)
     for r in rows:
-        by_topic[r["module"]].append(r["completion"])
+        by_topic[r["module"]].append(r["completion_raw"])
     out = []
     for topic in Topic.objects.all():
         comps = by_topic.get(topic.title, [])
+        # average the raw rates, round once (avoids compounding per-exercise rounding)
         out.append({"name": topic.title, "completion": round(sum(comps) / len(comps)) if comps else 0})
     return out
 
@@ -138,7 +151,7 @@ def topic_completion():
 def class_metrics():
     matrix = _attempt_matrix()
     enrolled_count = enrolled_students().count()
-    total = correct = engaged_pairs = 0
+    total = correct = exercises_with_attempts = 0
     most_failed = None
     most_failed_rate = -1.0
     for ex in Exercise.objects.all():
@@ -147,8 +160,8 @@ def class_metrics():
         ex_correct = sum(1 for a in per_student.values() for x in a if x["correct"])
         total += ex_total
         correct += ex_correct
-        engaged_pairs += len(per_student)
         if ex_total:
+            exercises_with_attempts += 1
             fail_rate = (ex_total - ex_correct) / ex_total
             if fail_rate > most_failed_rate:
                 most_failed_rate = fail_rate
@@ -157,16 +170,22 @@ def class_metrics():
         "total_students": enrolled_count,
         "avg_accuracy": _pct(correct, total),
         "most_failed_exercise": most_failed or "—",
-        "avg_attempts_per_ex": round(total / engaged_pairs, 1) if engaged_pairs else 0.0,
+        "avg_attempts_per_ex": round(total / exercises_with_attempts, 1) if exercises_with_attempts else 0.0,
     }
 
 
 def struggled_exercises(limit=5):
     rows = [r for r in exercise_rows() if r["attempts"]]
-    rows.sort(key=lambda r: r["avg_tries"], reverse=True)
+    rows.sort(key=lambda r: r["struggle"], reverse=True)
     out = []
     for i, r in enumerate(rows[:limit], start=1):
-        out.append({"rank": f"{i:02d}", "name": r["name"], "module": r["module"], "score": r["avg_tries"]})
+        out.append({
+            "rank": f"{i:02d}",
+            "name": r["name"],
+            "module": r["module"],
+            "tries": r["struggle"],
+            "solved": r["completion"],
+        })
     return out
 
 
@@ -181,9 +200,10 @@ def misconception_breakdown():
         if bucket:
             counts[bucket] += 1
             total_wrong += 1
+    pcts = _largest_remainder(counts, total_wrong)
     out = []
     for bucket, n in counts.items():
-        pct = _pct(n, total_wrong)
+        pct = pcts.get(bucket, 0)
         out.append({
             "key": bucket,
             "label": MISCONCEPTION_LABELS[bucket],
@@ -192,6 +212,18 @@ def misconception_breakdown():
         })
     out.sort(key=lambda x: x["percentage"], reverse=True)
     return out
+
+
+def _largest_remainder(counts, total):
+    # apportion integer percentages that sum to exactly 100 (Hamilton method)
+    if not total:
+        return {}
+    raw = {b: 100 * n / total for b, n in counts.items()}
+    floors = {b: int(v) for b, v in raw.items()}
+    leftover = 100 - sum(floors.values())
+    for b, _ in sorted(raw.items(), key=lambda kv: kv[1] - int(kv[1]), reverse=True)[:leftover]:
+        floors[b] += 1
+    return floors
 
 
 def students_roster():
@@ -234,7 +266,11 @@ def dashboard_stats():
     roster = students_roster()
     metrics = class_metrics()
     week_ago = timezone.now() - timedelta(days=7)
-    active = Attempt.objects.filter(created_at__gte=week_ago).values("student_id").distinct().count()
+    enrolled_ids = enrolled_students().values_list("id", flat=True)
+    active = (
+        Attempt.objects.filter(created_at__gte=week_ago, student_id__in=enrolled_ids)
+        .values("student_id").distinct().count()
+    )
     return {
         "students_enrolled": metrics["total_students"],
         "active_this_week": active,
