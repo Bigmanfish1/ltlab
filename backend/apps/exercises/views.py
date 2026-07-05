@@ -279,13 +279,16 @@ def _builder_context(exercise, form=None):
     if form is not None:
         hint_values = form["hints"]
         allowed = form["allowed_operators"]
-        graph_json = form["graph_data"]
+        try:
+            elements_json = _elements_json(json.loads(form["graph_data"]) if form["graph_data"] else None)
+        except json.JSONDecodeError:
+            elements_json = ""
         prefill = form
     elif exercise is not None:
         hints = list(exercise.hints or [])[:3]
         hint_values = hints + [""] * (3 - len(hints))
         allowed = exercise.allowed_operators or BUILDER_OPERATORS
-        graph_json = json.dumps(exercise.kripke_structure) if exercise.kripke_structure else ""
+        elements_json = _elements_json(exercise.kripke_structure)
         prefill = {
             "title": exercise.title,
             "description": exercise.description,
@@ -296,7 +299,7 @@ def _builder_context(exercise, form=None):
     else:
         hint_values = ["", "", ""]
         allowed = list(BUILDER_OPERATORS)
-        graph_json = ""
+        elements_json = ""
         prefill = None
     return {
         "modules": list(Topic.objects.all()),
@@ -304,11 +307,18 @@ def _builder_context(exercise, form=None):
         "difficulties": DIFFICULTIES,
         "hint_values": hint_values,
         "allowed_operators": allowed,
-        "graph_json": graph_json,
+        "elements_json": elements_json,
         "prefill": prefill,
         "is_edit": exercise is not None,
         "exercise_id": exercise.id if exercise else None,
     }
+
+
+def _elements_json(structure):
+    if not structure:
+        return ""
+    elements = structure.get("elements") if isinstance(structure, dict) else None
+    return json.dumps(elements) if elements else ""
 
 
 @teacher_required
@@ -365,6 +375,8 @@ def _save_exercise(request, exercise):
             graph = json.loads(graph_data)
         except json.JSONDecodeError:
             errors.append("The Kripke structure could not be read.")
+    elif exercise is not None:
+        graph = exercise.kripke_structure
 
     if publishing and not errors:
         if not graph:

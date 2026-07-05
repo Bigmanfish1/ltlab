@@ -64,7 +64,7 @@
                 {% if last_submission %}
                 <div class="bg-bg-secondary border border-border-primary rounded overflow-hidden">
                     <div class="flex" style="height: 300px;">
-                        {% include "components/kripke_editor.html" with id="last" readonly=1 height="300px" %}
+                        {% include "components/kripke_editor.html" with id="last" readonly=1 height="300px" elements_json=last_submission.elements_json %}
                     </div>
                     <div class="border-t border-border-primary px-4 py-4">
                         <div class="font-mono text-[14px] text-text-primary">{{ last_submission.formula }}</div>

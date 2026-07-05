@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from datetime import timedelta
 
@@ -277,11 +278,13 @@ def student_detail(student):
     last = attempts[0] if attempts else None
     last_submission = None
     if last is not None:
+        structure = last.exercise.kripke_structure
+        elements = structure.get("elements") if isinstance(structure, dict) else None
         last_submission = {
             "formula": last.formula_input or "",
             "verdict": "Property holds." if last.is_correct else "Property violated.",
             "holds": last.is_correct,
-            "kripke_structure": last.exercise.kripke_structure,
+            "elements_json": json.dumps(elements) if elements else "",
         }
     return {
         "id": student.id,
