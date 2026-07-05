@@ -244,64 +244,87 @@ def teacher_exercises(request):
     })
 
 
-# --- Manage tab (mock) -------------------------------------------------------
-# Mock module list for the Manage screen. No DB models yet — the real Topics/
-# Exercises tables carry no visibility/ordering/prerequisite columns (see the
-# teacher-pages plan's schema-gap notes), so visibility/unlocks are mock-only
-# and reset on reload.
+def _exercises(module_id, entries):
+    return [
+        {"id": module_id * 100 + i, "name": name, "difficulty": diff}
+        for i, (name, diff) in enumerate(entries, start=1)
+    ]
+
+
 MOCK_MODULES = [
     {
         "id": 1, "index": "01", "title": "Kripke Basics",
-        "exercise_count": 6, "unlocks_after": "None", "visible": True,
-        "exercises": [
-            {"id": 101, "name": "Basic Kripke Structure", "difficulty": "beginner"},
-            {"id": 102, "name": "Atomic Propositions", "difficulty": "beginner"},
-            {"id": 103, "name": "Labelling States", "difficulty": "beginner"},
-        ],
+        "unlocks_after": "None", "visible": True,
+        "exercises": _exercises(1, [
+            ("Basic Kripke Structure", "beginner"),
+            ("Atomic Propositions", "beginner"),
+            ("Labelling States", "beginner"),
+            ("Transition Relations", "beginner"),
+            ("Initial States", "beginner"),
+            ("Reachability", "beginner"),
+        ]),
     },
     {
         "id": 2, "index": "02", "title": "Kripke Structures",
-        "exercise_count": 8, "unlocks_after": "Kripke Basics", "visible": True,
-        "exercises": [
-            {"id": 201, "name": "Transition Relations", "difficulty": "beginner"},
-            {"id": 202, "name": "Next-State Reasoning", "difficulty": "intermediate"},
-        ],
+        "unlocks_after": "Kripke Basics", "visible": True,
+        "exercises": _exercises(2, [
+            ("Deadlock States", "beginner"),
+            ("Self Loops", "beginner"),
+            ("Deterministic Transitions", "intermediate"),
+            ("Nondeterminism", "intermediate"),
+            ("Next-State Reasoning", "intermediate"),
+            ("Path Enumeration", "intermediate"),
+            ("State Merging", "intermediate"),
+            ("Bisimulation", "advanced"),
+        ]),
     },
     {
         "id": 3, "index": "03", "title": "LTL Operators",
-        "exercise_count": 10, "unlocks_after": "Kripke Structures", "visible": True,
-        "exercises": [
-            {"id": 301, "name": "Always Eventually", "difficulty": "intermediate"},
-            {"id": 302, "name": "Until Operator", "difficulty": "intermediate"},
-            {"id": 303, "name": "Request-Grant Protocol", "difficulty": "intermediate"},
-        ],
+        "unlocks_after": "Kripke Structures", "visible": True,
+        "exercises": _exercises(3, [
+            ("Always", "intermediate"),
+            ("Eventually", "intermediate"),
+            ("Always Eventually", "intermediate"),
+            ("Next Operator", "intermediate"),
+            ("Until Operator", "intermediate"),
+            ("Weak Until", "intermediate"),
+            ("Release Operator", "intermediate"),
+            ("Request-Grant Protocol", "intermediate"),
+            ("Operator Precedence", "intermediate"),
+            ("Nested Temporal", "advanced"),
+        ]),
     },
     {
         "id": 4, "index": "04", "title": "CTL Semantics",
-        "exercise_count": 7, "unlocks_after": "LTL Operators", "visible": False,
-        "exercises": [
-            {"id": 401, "name": "Mutual Exclusion", "difficulty": "advanced"},
-            {"id": 402, "name": "Nested Modalities", "difficulty": "advanced"},
-        ],
+        "unlocks_after": "LTL Operators", "visible": False,
+        "exercises": _exercises(4, [
+            ("Mutual Exclusion", "advanced"),
+            ("Nested Modalities", "advanced"),
+            ("Path Quantifiers", "advanced"),
+            ("Existential Until", "advanced"),
+            ("Universal Next", "advanced"),
+            ("Fairness in CTL", "advanced"),
+            ("Branching Time", "advanced"),
+        ]),
     },
     {
         "id": 5, "index": "05", "title": "Fairness & Liveness",
-        "exercise_count": 5, "unlocks_after": "CTL Semantics", "visible": False,
-        "exercises": [
-            {"id": 501, "name": "Fairness Constraints", "difficulty": "advanced"},
-            {"id": 502, "name": "Liveness Properties", "difficulty": "advanced"},
-        ],
+        "unlocks_after": "CTL Semantics", "visible": False,
+        "exercises": _exercises(5, [
+            ("Fairness Constraints", "advanced"),
+            ("Strong Fairness", "advanced"),
+            ("Liveness Properties", "advanced"),
+            ("Starvation Freedom", "advanced"),
+            ("Progress", "advanced"),
+        ]),
     },
 ]
 
-# Operator palette shown in the builder. "Allowed operators" has no DB column yet
-# (schema-gap note in the plan) — mock/interactive only this phase.
 BUILDER_OPERATORS = ["G", "F", "X", "U", "¬", "∧", "∨", "→"]
 
 
 @teacher_required
 def manage(request):
-    """Teacher Manage tab — modules list with nested exercises (mock)."""
     return render(request, "manage/teacher_manage.html", {
         "modules": MOCK_MODULES,
     })
@@ -309,11 +332,6 @@ def manage(request):
 
 @teacher_required
 def exercise_builder(request, exercise_id=None):
-    """Create/edit an exercise (mock, GET only this phase).
-
-    Same view backs both /teacher/exercises/new/ and /.../<id>/edit/; when
-    editing we surface a mock prefill. Save Draft / Publish are inert until the
-    vertical/backend phase (blocked on schema gaps — see the plan)."""
     prefill = None
     if exercise_id is not None:
         prefill = {
@@ -324,8 +342,6 @@ def exercise_builder(request, exercise_id=None):
             "hints": ["Think about the implication operator.", "", ""],
             "target_formula": "G (req -> F grant)",
         }
-    # Pad/normalise the three hint slots so the template can loop without custom
-    # filters (Django ships none for list indexing).
     hint_values = (prefill["hints"] if prefill else [])[:3]
     hint_values += [""] * (3 - len(hint_values))
     return render(request, "exercises/teacher_exercise_builder.html", {
