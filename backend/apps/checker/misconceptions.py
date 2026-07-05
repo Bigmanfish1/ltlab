@@ -30,6 +30,24 @@ BUCKETS = (
 # Priority when more than one single-position edit reconciles S with T.
 _EDIT_ORDER = ("f_vs_x", "g_vs_f", "missing_global", "missing_eventually")
 
+# Operator kinds the rewrite search can safely reconstruct (LTL + boolean fragment).
+# SERE / rational operators (Concat, Fusion, Star, ...) must be excluded: rebuilding
+# one via binop/unop aborts SPOT natively (SIGILL) — an uncatchable crash that would
+# take down the worker. are_equivalent/Not handle them fine, so only the rewrite is gated.
+_SUPPORTED_KINDS = frozenset({
+    spot.op_tt, spot.op_ff, spot.op_ap,
+    spot.op_Not, spot.op_X, spot.op_F, spot.op_G,
+    spot.op_U, spot.op_R, spot.op_W, spot.op_M,
+    spot.op_And, spot.op_Or, spot.op_Implies, spot.op_Xor, spot.op_Equiv,
+}) if spot is not None else frozenset()
+
+
+def _supported(f):
+    """True iff every node in ``f`` is an LTL/boolean kind the rewrite can rebuild."""
+    if f.kind() not in _SUPPORTED_KINDS:
+        return False
+    return all(_supported(f[i]) for i in range(f.size()))
+
 
 def _rebuild(f, kids):
     """Reconstruct node ``f`` with new children, dispatching by operator category.
@@ -117,12 +135,14 @@ def classify_misconception(target, submitted):
         return "inverted"
 
     # Name the specific operator slip: does one single-position edit of S yield T?
-    # Highest-priority bucket wins; stop at the first equivalence match.
-    candidates = _slip_candidates(s)
-    for want in _EDIT_ORDER:
-        for bucket, variant in candidates:
-            if bucket == want and spot.are_equivalent(variant, t):
-                return want
+    # Highest-priority bucket wins; stop at the first equivalence match. Only the
+    # LTL/boolean fragment can be safely rewritten (see _supported).
+    if _supported(s):
+        candidates = _slip_candidates(s)
+        for want in _EDIT_ORDER:
+            for bucket, variant in candidates:
+                if bucket == want and spot.are_equivalent(variant, t):
+                    return want
 
     # No single operator slip explains it (strictly stronger/weaker, or unrelated)
     # — an English-to-LTL authoring error.

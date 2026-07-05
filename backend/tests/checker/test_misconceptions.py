@@ -38,6 +38,15 @@ class ClassifyMisconceptionTests(SimpleTestCase):
         for target, submitted in [("F b", "F b"), ("a & b", "b & a"), ("G a", "a & G a")]:
             self.assertIsNone(classify_misconception(target, submitted))
 
+    def test_sere_rational_operators_do_not_crash(self):
+        # SERE/rational operators (Concat {a;b}, Star {a[*]}, Fusion {a:b}) parse but
+        # cannot be safely rewritten — must fall through, never abort the process.
+        for submitted in ("{a;b}", "{a[*]}", "{a:b}", "{a;b;c}"):
+            self.assertEqual(
+                classify_misconception("G a", submitted), "mistranslation",
+                msg=f"SERE {submitted!r} should be handled, not crash",
+            )
+
     def test_empty_and_unparseable_are_excluded(self):
         # syntax errors are not LTL misconceptions; a malformed target is not the
         # student's fault — all excluded (None), not bucketed
