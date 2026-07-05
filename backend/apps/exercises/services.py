@@ -6,61 +6,27 @@ from datetime import timedelta
 from django.utils import timezone
 
 from apps.accounts.models import Profile
+from apps.checker.misconceptions import classify_misconception
 
 from .models import Attempt, Exercise, Topic
 
 MISCONCEPTION_LABELS = {
-    "gf_vs_fg": "GF vs FG confusion",
+    "g_vs_f": "G vs F confusion",
     "f_vs_x": "F vs X confusion",
-    "safety_vs_liveness": "Safety vs liveness",
     "missing_global": "Missing G (always)",
-    "nesting_precedence": "Nesting / precedence",
-    "english_to_ltl": "English to LTL translation",
+    "missing_eventually": "Missing F (eventually)",
+    "inverted": "Inverted property",
+    "mistranslation": "English to LTL translation",
 }
 
 MISCONCEPTION_DESCRIPTIONS = {
-    "gf_vs_fg": "used FG (settles) where GF (recurs infinitely) was required, or vice versa",
+    "g_vs_f": "swapped G (always) and F (eventually) — e.g. FG vs GF, or always vs eventually",
     "f_vs_x": "used X (next) where F (eventually) was required, or vice versa",
-    "safety_vs_liveness": "confused a safety property (G) with a liveness one (F)",
     "missing_global": "omitted the G (always) that the specification requires",
-    "nesting_precedence": "bracketed the nested operators incorrectly",
-    "english_to_ltl": "mistranslated the plain-English requirement into LTL",
+    "missing_eventually": "omitted the F (eventually) that the specification requires",
+    "inverted": "expressed the negation of the target property",
+    "mistranslation": "mistranslated the plain-English requirement into LTL",
 }
-
-
-def _normalize(formula):
-    if not formula:
-        return ""
-    f = formula
-    for a, b in (("¬", "!"), ("∧", "&"), ("∨", "|"), ("→", "->"), ("<->", "="), (" ", "")):
-        f = f.replace(a, b)
-    return f
-
-
-def classify_misconception(target, submitted):
-    t = _normalize(target)
-    s = _normalize(submitted)
-    if not s or s == t:
-        return None
-    t_ops = "".join(c for c in t if c in "GFXU")
-    s_ops = "".join(c for c in s if c in "GFXU")
-    if "GF" in t and "FG" in s:
-        return "gf_vs_fg"
-    if "FG" in t and "GF" in s:
-        return "gf_vs_fg"
-    if t.count("X") != s.count("X") and t.count("F") != s.count("F") and (
-        ("F" in t and "X" in s) or ("X" in t and "F" in s)
-    ):
-        return "f_vs_x"
-    if "G" in t and "G" not in s:
-        return "missing_global"
-    if ("G" in t_ops and "F" in s_ops and "G" not in s_ops) or (
-        "F" in t_ops and "G" in s_ops and "F" not in s_ops
-    ):
-        return "safety_vs_liveness"
-    if t.count("(") != s.count("(") or t.count(")") != s.count(")"):
-        return "nesting_precedence"
-    return "english_to_ltl"
 
 
 def enrolled_students():

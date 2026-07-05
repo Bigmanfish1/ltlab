@@ -5,26 +5,7 @@ from apps.exercises import services
 from apps.exercises.models import Attempt, Exercise, Topic
 
 
-class ClassifyMisconceptionTests(TestCase):
-    def test_identical_is_none(self):
-        self.assertIsNone(services.classify_misconception("G F p", "G F p"))
-
-    def test_gf_vs_fg(self):
-        self.assertEqual(services.classify_misconception("G F green", "F G green"), "gf_vs_fg")
-
-    def test_missing_global(self):
-        self.assertEqual(services.classify_misconception("G F green", "F green"), "missing_global")
-
-    def test_f_vs_x(self):
-        self.assertEqual(
-            services.classify_misconception("G (req -> F grant)", "G (req -> X grant)"), "f_vs_x"
-        )
-
-    def test_safety_vs_liveness(self):
-        self.assertEqual(services.classify_misconception("F grant", "G grant"), "safety_vs_liveness")
-
-    def test_fallthrough_english(self):
-        self.assertEqual(services.classify_misconception("G (a & b)", "G (a & c)"), "english_to_ltl")
+# Misconception classification is tested directly in tests/checker/test_misconceptions.py.
 
 
 class ReconciliationTests(TestCase):
@@ -63,5 +44,5 @@ class ReconciliationTests(TestCase):
 
     def test_misconception_breakdown_buckets_wrong_attempts(self):
         buckets = {m["key"] for m in services.misconception_breakdown()}
-        self.assertIn("gf_vs_fg", buckets)
+        self.assertIn("g_vs_f", buckets)
         self.assertIn("missing_global", buckets)
