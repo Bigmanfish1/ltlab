@@ -61,8 +61,8 @@ cat > "$CLEANUP_FILE" <<'JSON'
 [
   {"name": "delete-untagged-30d", "action": {"type": "Delete"},
    "condition": {"tagState": "untagged", "olderThan": "2592000s"}},
-  {"name": "keep-recent-10", "action": {"type": "Keep"},
-   "mostRecentVersions": {"keepCount": 10}}
+  {"name": "keep-recent-3", "action": {"type": "Keep"},
+   "mostRecentVersions": {"keepCount": 3}}
 ]
 JSON
 gcloud artifacts repositories set-cleanup-policies "$REPO" --location="$REGION" \
