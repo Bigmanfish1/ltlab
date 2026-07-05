@@ -192,9 +192,9 @@ lint → test → vulnerability-scan → deploy
 | Job | What it does | Triggers |
 |-----|-------------|---------|
 | `lint` | Runs Ruff to catch syntax and undefined variable errors | Push/PR to `main` or `develop` |
-| `test` | Runs Django migrations and test suite against Postgres + Redis | Push/PR to `main` or `develop` |
+| `test` | Runs Django migrations and test suite against Postgres | Push/PR to `main` or `develop` |
 | `vulnerability-scan` | Builds Docker image and runs Trivy (CRITICAL/HIGH CVEs only) | Push/PR to `main`, `workflow_dispatch` |
-| `deploy` | Triggers a Render deployment | Manual only (`main` branch) |
+| `deploy` | Builds the image, runs the `ltlab-migrate` Job, deploys to Cloud Run | Manual (`workflow_dispatch`, `main` or `develop`) |
 
 ### Running Lint Locally
  
@@ -216,7 +216,7 @@ Deployments are manual and can only be triggered from the `main` branch:
 4. Select `main` branch
 5. Click **Run workflow**
 
-The pipeline runs lint, test, and scan — if all three pass, the deploy job runs and triggers a Render deployment.
+The pipeline runs lint, test, and scan — if all three pass, the deploy job builds the image, runs the `ltlab-migrate` Job, and deploys to Cloud Run.
 
 ---
 
@@ -235,10 +235,13 @@ instances horizontally.
 - **`collectstatic`** runs at **Docker build time** (a `RUN` layer in the Dockerfile), baked
   into the image.
 
-**Required env vars** (set on the Cloud Run service, never committed): `DJANGO_SETTINGS_MODULE`,
-`DEBUG`, `ALLOWED_HOSTS`, `SECRET_KEY`, `DATABASE_URL` (Supabase transaction pooler, port 6543),
-`SUPABASE_URL`, `SUPABASE_ANON_KEY`. `REDIS_URL` is intentionally **not** set — cache falls back
-to per-process `LocMemCache`, correct on autoscaled instances.
+**Config** (never committed): plain env vars on the service — `DJANGO_SETTINGS_MODULE`, `DEBUG`,
+`ALLOWED_HOSTS`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`. `SECRET_KEY` and `DATABASE_URL` (Supabase
+transaction pooler, port 6543) live in **Secret Manager** (`ltlab-secret-key`, `ltlab-database-url`),
+mounted via `--set-secrets` version-pinned. The service and `ltlab-migrate` Job run as the
+dedicated **`ltlab-run`** runtime SA (only `secretmanager.secretAccessor` on those secrets).
+`REDIS_URL` is intentionally **not** set — cache falls back to per-process `LocMemCache`, correct
+on autoscaled instances.
 
 **To check it's working:**
 - `curl https://ltlab-87262955263.us-central1.run.app/api/health` → expect
@@ -247,9 +250,9 @@ to per-process `LocMemCache`, correct on autoscaled instances.
 **Cold start:** the service scales to zero when idle; the next request cold-starts the instance
 (a few seconds), then serves normally.
 
-> Deploy infra (deploy SA, Workload Identity Federation, Artifact Registry repo, Cloud Run
-> service, `ltlab-migrate` Job) is recreated idempotently by `infra/bootstrap.sh` — the source
-> of truth, no Terraform.
+> Deploy infra (deploy SA, `ltlab-run` runtime SA, Workload Identity Federation, Artifact Registry
+> repo + cleanup policy, Secret Manager secrets, Cloud Run service, `ltlab-migrate` Job) is
+> recreated idempotently by `infra/bootstrap.sh` — the source of truth, no Terraform.
 
 ---
 
