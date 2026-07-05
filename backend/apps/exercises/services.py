@@ -138,8 +138,7 @@ def topic_completion():
 def class_metrics():
     matrix = _attempt_matrix()
     enrolled_count = enrolled_students().count()
-    total = correct = 0
-    per_ex_attempts = []
+    total = correct = engaged_pairs = 0
     most_failed = None
     most_failed_rate = -1.0
     for ex in Exercise.objects.all():
@@ -148,8 +147,8 @@ def class_metrics():
         ex_correct = sum(1 for a in per_student.values() for x in a if x["correct"])
         total += ex_total
         correct += ex_correct
+        engaged_pairs += len(per_student)
         if ex_total:
-            per_ex_attempts.append(ex_total)
             fail_rate = (ex_total - ex_correct) / ex_total
             if fail_rate > most_failed_rate:
                 most_failed_rate = fail_rate
@@ -158,7 +157,7 @@ def class_metrics():
         "total_students": enrolled_count,
         "avg_accuracy": _pct(correct, total),
         "most_failed_exercise": most_failed or "—",
-        "avg_attempts_per_ex": round(sum(per_ex_attempts) / len(per_ex_attempts), 1) if per_ex_attempts else 0.0,
+        "avg_attempts_per_ex": round(total / engaged_pairs, 1) if engaged_pairs else 0.0,
     }
 
 
@@ -172,22 +171,24 @@ def struggled_exercises(limit=5):
 
 
 def misconception_breakdown():
-    enrolled_count = enrolled_students().count()
-    students_by_bucket = defaultdict(set)
+    counts = defaultdict(int)
+    total_wrong = 0
     rows = Attempt.objects.filter(is_correct=False).values_list(
-        "student_id", "formula_input", "exercise__target_formula"
+        "formula_input", "exercise__target_formula"
     )
-    for st_id, submitted, target in rows:
+    for submitted, target in rows:
         bucket = classify_misconception(target, submitted)
         if bucket:
-            students_by_bucket[bucket].add(st_id)
+            counts[bucket] += 1
+            total_wrong += 1
     out = []
-    for bucket, students in students_by_bucket.items():
+    for bucket, n in counts.items():
+        pct = _pct(n, total_wrong)
         out.append({
             "key": bucket,
             "label": MISCONCEPTION_LABELS[bucket],
-            "description": f"{_pct(len(students), enrolled_count)}% of students {MISCONCEPTION_DESCRIPTIONS[bucket]}",
-            "percentage": _pct(len(students), enrolled_count),
+            "description": f"{pct}% of incorrect submissions {MISCONCEPTION_DESCRIPTIONS[bucket]}",
+            "percentage": pct,
         })
     out.sort(key=lambda x: x["percentage"], reverse=True)
     return out
