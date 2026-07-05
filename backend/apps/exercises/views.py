@@ -1,11 +1,16 @@
 import json
 
+from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
+from apps.checker.tasks import run_ltl_check
+
+from .models import Exercise, Topic
+from .services import exercise_rows
 
 
 # Mock data for testing
@@ -237,118 +242,222 @@ MOCK_TEACHER_EXERCISES = [
     {"name": "Abstraction Mapping", "module": "Model Refinement", "difficulty": "advanced", "attempts": 33, "completion": 21, "avg_tries": 4.5},
 ]
 
+BUILDER_OPERATORS = ["G", "F", "X", "U", "¬", "∧", "∨", "→"]
+DIFFICULTIES = ["beginner", "intermediate", "advanced"]
+
+
 @teacher_required
 def teacher_exercises(request):
-    return render(request, 'exercises/teacher_exercises.html', {
-        'exercises': MOCK_TEACHER_EXERCISES,
+    return render(request, "exercises/teacher_exercises.html", {
+        "exercises": exercise_rows(),
     })
-
-
-def _exercises(module_id, entries):
-    return [
-        {"id": module_id * 100 + i, "name": name, "difficulty": diff}
-        for i, (name, diff) in enumerate(entries, start=1)
-    ]
-
-
-MOCK_MODULES = [
-    {
-        "id": 1, "index": "01", "title": "Kripke Basics",
-        "unlocks_after": "None", "visible": True,
-        "exercises": _exercises(1, [
-            ("Basic Kripke Structure", "beginner"),
-            ("Atomic Propositions", "beginner"),
-            ("Labelling States", "beginner"),
-            ("Transition Relations", "beginner"),
-            ("Initial States", "beginner"),
-            ("Reachability", "beginner"),
-        ]),
-    },
-    {
-        "id": 2, "index": "02", "title": "Kripke Structures",
-        "unlocks_after": "Kripke Basics", "visible": True,
-        "exercises": _exercises(2, [
-            ("Deadlock States", "beginner"),
-            ("Self Loops", "beginner"),
-            ("Deterministic Transitions", "intermediate"),
-            ("Nondeterminism", "intermediate"),
-            ("Next-State Reasoning", "intermediate"),
-            ("Path Enumeration", "intermediate"),
-            ("State Merging", "intermediate"),
-            ("Bisimulation", "advanced"),
-        ]),
-    },
-    {
-        "id": 3, "index": "03", "title": "LTL Operators",
-        "unlocks_after": "Kripke Structures", "visible": True,
-        "exercises": _exercises(3, [
-            ("Always", "intermediate"),
-            ("Eventually", "intermediate"),
-            ("Always Eventually", "intermediate"),
-            ("Next Operator", "intermediate"),
-            ("Until Operator", "intermediate"),
-            ("Weak Until", "intermediate"),
-            ("Release Operator", "intermediate"),
-            ("Request-Grant Protocol", "intermediate"),
-            ("Operator Precedence", "intermediate"),
-            ("Nested Temporal", "advanced"),
-        ]),
-    },
-    {
-        "id": 4, "index": "04", "title": "CTL Semantics",
-        "unlocks_after": "LTL Operators", "visible": False,
-        "exercises": _exercises(4, [
-            ("Mutual Exclusion", "advanced"),
-            ("Nested Modalities", "advanced"),
-            ("Path Quantifiers", "advanced"),
-            ("Existential Until", "advanced"),
-            ("Universal Next", "advanced"),
-            ("Fairness in CTL", "advanced"),
-            ("Branching Time", "advanced"),
-        ]),
-    },
-    {
-        "id": 5, "index": "05", "title": "Fairness & Liveness",
-        "unlocks_after": "CTL Semantics", "visible": False,
-        "exercises": _exercises(5, [
-            ("Fairness Constraints", "advanced"),
-            ("Strong Fairness", "advanced"),
-            ("Liveness Properties", "advanced"),
-            ("Starvation Freedom", "advanced"),
-            ("Progress", "advanced"),
-        ]),
-    },
-]
-
-BUILDER_OPERATORS = ["G", "F", "X", "U", "¬", "∧", "∨", "→"]
 
 
 @teacher_required
 def manage(request):
+    topics = list(Topic.objects.prefetch_related("exercises"))
+    modules = []
+    for i, t in enumerate(topics, start=1):
+        modules.append({
+            "id": t.id,
+            "index": f"{i:02d}",
+            "title": t.title,
+            "unlocks_after": t.unlocks_after.title if t.unlocks_after_id else "None",
+            "visible": t.visible,
+            "exercises": [
+                {"id": e.id, "name": e.title, "difficulty": e.difficulty}
+                for e in t.exercises.all()
+            ],
+        })
     return render(request, "manage/teacher_manage.html", {
-        "modules": MOCK_MODULES,
+        "modules": modules,
+        "topics": topics,
     })
+
+
+def _builder_context(exercise, form=None):
+    if form is not None:
+        hint_values = form["hints"]
+        allowed = form["allowed_operators"]
+        graph_json = form["graph_data"]
+        prefill = form
+    elif exercise is not None:
+        hints = list(exercise.hints or [])[:3]
+        hint_values = hints + [""] * (3 - len(hints))
+        allowed = exercise.allowed_operators or BUILDER_OPERATORS
+        graph_json = json.dumps(exercise.kripke_structure) if exercise.kripke_structure else ""
+        prefill = {
+            "title": exercise.title,
+            "description": exercise.description,
+            "difficulty": exercise.difficulty,
+            "module_id": exercise.topic_id,
+            "target_formula": exercise.target_formula,
+        }
+    else:
+        hint_values = ["", "", ""]
+        allowed = list(BUILDER_OPERATORS)
+        graph_json = ""
+        prefill = None
+    return {
+        "modules": list(Topic.objects.all()),
+        "operators": BUILDER_OPERATORS,
+        "difficulties": DIFFICULTIES,
+        "hint_values": hint_values,
+        "allowed_operators": allowed,
+        "graph_json": graph_json,
+        "prefill": prefill,
+        "is_edit": exercise is not None,
+        "exercise_id": exercise.id if exercise else None,
+    }
 
 
 @teacher_required
 def exercise_builder(request, exercise_id=None):
-    prefill = None
-    if exercise_id is not None:
-        prefill = {
-            "id": exercise_id,
-            "description": "Write a formula stating req eventually leads to grant.",
-            "difficulty": "intermediate",
-            "module_id": 3,
-            "hints": ["Think about the implication operator.", "", ""],
-            "target_formula": "G (req -> F grant)",
-        }
-    hint_values = (prefill["hints"] if prefill else [])[:3]
-    hint_values += [""] * (3 - len(hint_values))
-    return render(request, "exercises/teacher_exercise_builder.html", {
-        "modules": [{"id": m["id"], "title": m["title"]} for m in MOCK_MODULES],
-        "operators": BUILDER_OPERATORS,
-        "difficulties": ["beginner", "intermediate", "advanced"],
-        "hint_values": hint_values,
-        "prefill": prefill,
-        "is_edit": exercise_id is not None,
-    })
+    exercise = get_object_or_404(Exercise, pk=exercise_id) if exercise_id else None
+
+    if request.method == "POST":
+        return _save_exercise(request, exercise)
+
+    return render(request, "exercises/teacher_exercise_builder.html", _builder_context(exercise))
+
+
+def _save_exercise(request, exercise):
+    action = request.POST.get("action", "draft")
+    title = request.POST.get("title", "").strip()
+    description = request.POST.get("description", "").strip()
+    difficulty = request.POST.get("difficulty", "").strip()
+    topic_id = request.POST.get("topic", "").strip()
+    target_formula = request.POST.get("formula", "").strip()
+    graph_data = request.POST.get("graph_data", "").strip()
+    hints = [request.POST.get(f"hint_{i}", "").strip() for i in (1, 2, 3)]
+    try:
+        allowed = json.loads(request.POST.get("allowed_operators") or "[]")
+    except json.JSONDecodeError:
+        allowed = []
+
+    form = {
+        "title": title,
+        "description": description,
+        "difficulty": difficulty,
+        "module_id": int(topic_id) if topic_id.isdigit() else None,
+        "target_formula": target_formula,
+        "hints": hints,
+        "allowed_operators": allowed,
+        "graph_data": graph_data,
+    }
+
+    errors = []
+    if not title:
+        errors.append("Exercise title is required.")
+    if not description:
+        errors.append("Task description is required.")
+    if difficulty not in DIFFICULTIES:
+        errors.append("Select a difficulty.")
+    if not topic_id.isdigit() or not Topic.objects.filter(pk=topic_id).exists():
+        errors.append("Assign the exercise to a module.")
+    if not target_formula:
+        errors.append("Solution formula is required.")
+
+    publishing = action == "publish"
+    graph = None
+    if graph_data:
+        try:
+            graph = json.loads(graph_data)
+        except json.JSONDecodeError:
+            errors.append("The Kripke structure could not be read.")
+
+    if publishing and not errors:
+        if not graph:
+            errors.append("Publishing needs a memorandum Kripke structure.")
+        else:
+            try:
+                result = run_ltl_check(graph, target_formula)
+            except ValueError as exc:
+                errors.append(f"Formula check failed: {exc}")
+            else:
+                if result["result"] != "satisfied":
+                    errors.append("The solution formula does not hold on the memorandum structure.")
+
+    if errors:
+        for e in errors:
+            messages.error(request, e)
+        return render(request, "exercises/teacher_exercise_builder.html", _builder_context(exercise, form))
+
+    if exercise is None:
+        exercise = Exercise(topic_id=form["module_id"], created_at=timezone.now())
+    else:
+        exercise.topic_id = form["module_id"]
+    exercise.title = title
+    exercise.description = description
+    exercise.difficulty = difficulty
+    exercise.target_formula = target_formula
+    exercise.hints = hints
+    exercise.hint = next((h for h in hints if h), "")
+    exercise.allowed_operators = allowed
+    exercise.kripke_structure = graph
+    exercise.is_published = publishing
+    exercise.save()
+
+    messages.success(request, "Exercise published." if publishing else "Draft saved.")
+    return redirect("manage")
+
+
+@teacher_required
+@require_POST
+def topic_create(request):
+    title = request.POST.get("title", "").strip()
+    if not title:
+        messages.error(request, "Module title is required.")
+        return redirect("manage")
+    unlocks_id = request.POST.get("unlocks_after", "").strip()
+    unlocks = Topic.objects.filter(pk=unlocks_id).first() if unlocks_id.isdigit() else None
+    position = (Topic.objects.count())
+    Topic.objects.create(
+        title=title,
+        description=request.POST.get("description", "").strip(),
+        visible=request.POST.get("visible") == "1",
+        unlocks_after=unlocks,
+        position=position,
+        created_by=request.profile,
+    )
+    messages.success(request, "Module created.")
+    return redirect("manage")
+
+
+@teacher_required
+@require_POST
+def topic_delete(request, topic_id):
+    topic = get_object_or_404(Topic, pk=topic_id)
+    topic.delete()
+    messages.success(request, "Module deleted.")
+    return redirect("manage")
+
+
+@teacher_required
+@require_POST
+def topic_visibility(request, topic_id):
+    topic = get_object_or_404(Topic, pk=topic_id)
+    topic.visible = not topic.visible
+    topic.save(update_fields=["visible"])
+    return redirect("manage")
+
+
+@teacher_required
+@require_POST
+def exercise_delete(request, exercise_id):
+    exercise = get_object_or_404(Exercise, pk=exercise_id)
+    exercise.delete()
+    messages.success(request, "Exercise deleted.")
+    return redirect("manage")
+
+
+@teacher_required
+@require_POST
+def topic_reorder(request):
+    try:
+        order = json.loads(request.POST.get("order") or "[]")
+    except json.JSONDecodeError:
+        order = []
+    for pos, tid in enumerate(order):
+        Topic.objects.filter(pk=tid).update(position=pos)
+    return JsonResponse({"ok": True})
