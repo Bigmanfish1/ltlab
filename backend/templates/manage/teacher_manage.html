@@ -16,37 +16,51 @@
 
         <div class="space-y-3" id="module-list">
             {% for module in modules %}
-            <div class="module-card bg-bg-secondary border border-border-primary rounded overflow-hidden" data-module-id="{{ module.id }}">
+            <div class="module-card bg-bg-secondary border border-border-primary rounded overflow-hidden" data-topic-id="{{ module.id }}" draggable="true">
                 <div class="js-module-head flex items-center gap-4 px-5 py-5 cursor-pointer hover:bg-bg-tertiary transition-colors">
-                    <span class="text-text-secondary select-none" title="Drag to reorder">⠿</span>
+                    <span class="js-drag text-text-secondary select-none cursor-grab" title="Drag to reorder">⠿</span>
                     <span class="font-mono text-3xl font-bold text-border-secondary opacity-60 select-none w-12">{{ module.index }}</span>
                     <div class="flex-1">
                         <div class="text-[15px] text-text-primary font-semibold">{{ module.title }}</div>
                         <div class="text-[12px] text-text-secondary font-mono mt-0.5">{{ module.exercises|length }} exercises · Unlocks after: {{ module.unlocks_after }}</div>
                     </div>
-                    <button type="button"
-                        class="js-visibility font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded-full transition-colors
-                               {% if module.visible %}bg-accent-lime text-bg-primary{% else %}bg-bg-tertiary text-text-secondary{% endif %}"
-                        data-visible="{{ module.visible|yesno:'1,0' }}"
-                        title="Toggle visibility">
-                        {% if module.visible %}Visible to Students{% else %}Hidden{% endif %}
-                    </button>
+                    <form method="post" action="{% url 'topic_visibility' module.id %}">
+                        {% csrf_token %}
+                        <button type="submit"
+                            class="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded-full transition-colors
+                                   {% if module.visible %}bg-accent-lime text-bg-primary{% else %}bg-bg-tertiary text-text-secondary{% endif %}"
+                            title="Toggle visibility">
+                            {% if module.visible %}Visible to Students{% else %}Hidden{% endif %}
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'topic_delete' module.id %}" onsubmit="return confirm('Delete this module and all its exercises?');">
+                        {% csrf_token %}
+                        <button type="submit" class="text-text-secondary hover:text-accent-orange transition-colors" title="Delete module">🗑</button>
+                    </form>
                 </div>
 
                 <div class="js-module-body hidden border-t border-border-primary">
                     {% for ex in module.exercises %}
                     <div class="exercise-row flex items-center gap-3 px-5 py-3 border-b border-border-primary hover:bg-bg-tertiary transition-colors">
-                        <span class="text-text-secondary select-none" title="Drag to reorder">⠿</span>
                         <span class="flex-1 text-[13px] text-text-primary">{{ ex.name }}</span>
                         <span class="font-mono text-[10px] tracking-[0.12em] uppercase px-2 py-0.5 rounded bg-bg-tertiary text-text-secondary">{{ ex.difficulty }}</span>
                         <a href="{% url 'exercise_edit' ex.id %}" class="font-mono text-[11px] text-accent-orange hover:opacity-80 transition-opacity">Edit</a>
-                        <button type="button" class="js-remove-exercise text-text-secondary hover:text-accent-orange transition-colors" title="Remove from module">✕</button>
+                        <form method="post" action="{% url 'exercise_delete' ex.id %}" onsubmit="return confirm('Delete this exercise?');">
+                            {% csrf_token %}
+                            <button type="submit" class="text-text-secondary hover:text-accent-orange transition-colors" title="Delete exercise">✕</button>
+                        </form>
                     </div>
+                    {% empty %}
+                    <div class="px-5 py-3 text-[13px] text-text-secondary">No exercises yet.</div>
                     {% endfor %}
                     <a href="{% url 'exercise_builder' %}" class="flex items-center justify-center gap-2 px-5 py-3 text-[13px] text-text-secondary hover:text-text-primary transition-colors">
                         + Add Exercise to Module
                     </a>
                 </div>
+            </div>
+            {% empty %}
+            <div class="bg-bg-secondary border border-border-primary rounded px-5 py-10 text-center text-[13px] text-text-secondary">
+                No modules yet. Create your first module to get started.
             </div>
             {% endfor %}
         </div>
@@ -58,9 +72,10 @@
     </div>
 </div>
 
-<div id="module-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6" data-builder-url="{% url 'exercise_builder' %}">
-    <div class="js-modal-backdrop absolute inset-0 bg-black/70"></div>
-    <div class="relative w-full max-w-md bg-bg-secondary border border-border-secondary rounded-lg shadow-2xl">
+<div id="module-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div class="js-close-modal absolute inset-0 bg-black/70"></div>
+    <form method="post" action="{% url 'topic_create' %}" class="relative w-full max-w-md bg-bg-secondary border border-border-secondary rounded-lg shadow-2xl">
+        {% csrf_token %}
         <div class="flex items-center justify-between px-6 py-4 border-b border-border-primary">
             <h2 class="text-[16px] text-text-primary font-semibold">Create New Module</h2>
             <button type="button" class="js-close-modal text-text-secondary hover:text-text-primary text-xl leading-none">&times;</button>
@@ -68,26 +83,27 @@
         <div class="px-6 py-5 space-y-5">
             <div>
                 <label class="block text-[13px] text-text-primary mb-2">Module Title</label>
-                <input type="text" id="module-title" placeholder="e.g. Fairness & Liveness"
+                <input type="text" name="title" required placeholder="e.g. Fairness & Liveness"
                     class="w-full bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors" />
             </div>
             <div>
                 <label class="block text-[13px] text-text-primary mb-2">Description</label>
-                <textarea id="module-description" rows="3" placeholder="What this module covers..."
+                <textarea name="description" rows="3" placeholder="What this module covers..."
                     class="w-full bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors resize-none"></textarea>
             </div>
             <div>
                 <label class="block text-[13px] text-text-primary mb-2">Unlocks After</label>
-                <select id="module-unlocks"
+                <select name="unlocks_after"
                     class="w-full bg-bg-primary border border-border-primary text-text-primary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors">
-                    <option value="None">None</option>
-                    {% for module in modules %}
-                    <option value="{{ module.title }}">{{ module.title }}</option>
+                    <option value="">None</option>
+                    {% for topic in topics %}
+                    <option value="{{ topic.id }}">{{ topic.title }}</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="flex items-center justify-between">
                 <label class="text-[13px] text-text-primary">Visible to students</label>
+                <input type="hidden" name="visible" id="module-visible-input" value="1" />
                 <button type="button" id="module-visible" data-visible="1"
                     class="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded-full bg-accent-lime text-bg-primary transition-colors">
                     Visible
@@ -96,9 +112,9 @@
         </div>
         <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-border-primary">
             <button type="button" class="js-close-modal px-4 py-2 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-text-primary transition-colors">Cancel</button>
-            <button type="button" id="module-create" class="px-4 py-2 bg-accent-orange text-bg-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:opacity-90 transition-opacity">Create Module</button>
+            <button type="submit" class="px-4 py-2 bg-accent-orange text-bg-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:opacity-90 transition-opacity">Create Module</button>
         </div>
-    </div>
+    </form>
 </div>
 {% endblock %}
 
@@ -108,27 +124,7 @@
         const list = document.getElementById('module-list');
 
         list.addEventListener('click', function (e) {
-            const pill = e.target.closest('.js-visibility');
-            if (pill) {
-                e.stopPropagation();
-                const on = pill.dataset.visible === '1';
-                pill.dataset.visible = on ? '0' : '1';
-                pill.textContent = on ? 'Hidden' : 'Visible to Students';
-                pill.classList.toggle('bg-accent-lime', !on);
-                pill.classList.toggle('text-bg-primary', !on);
-                pill.classList.toggle('bg-bg-tertiary', on);
-                pill.classList.toggle('text-text-secondary', on);
-                return;
-            }
-
-            const rm = e.target.closest('.js-remove-exercise');
-            if (rm) {
-                rm.closest('.exercise-row').remove();
-                return;
-            }
-
-            if (e.target.closest('a')) return;
-
+            if (e.target.closest('a, form, button')) return;
             const head = e.target.closest('.js-module-head');
             if (head) {
                 const body = head.parentElement.querySelector('.js-module-body');
@@ -137,22 +133,13 @@
         });
 
         const modal = document.getElementById('module-modal');
-        const builderUrl = modal.dataset.builderUrl;
-        const titleInput = document.getElementById('module-title');
-        const descInput = document.getElementById('module-description');
-        const unlocksInput = document.getElementById('module-unlocks');
         const visibleBtn = document.getElementById('module-visible');
+        const visibleInput = document.getElementById('module-visible-input');
 
-        function openModal() {
-            titleInput.value = '';
-            descInput.value = '';
-            unlocksInput.selectedIndex = 0;
-            setVisible(true);
-            modal.classList.remove('hidden');
-            titleInput.focus();
-        }
+        function openModal() { modal.classList.remove('hidden'); }
         function closeModal() { modal.classList.add('hidden'); }
         function setVisible(on) {
+            visibleInput.value = on ? '1' : '0';
             visibleBtn.dataset.visible = on ? '1' : '0';
             visibleBtn.textContent = on ? 'Visible' : 'Hidden';
             visibleBtn.classList.toggle('bg-accent-lime', on);
@@ -161,53 +148,41 @@
             visibleBtn.classList.toggle('text-text-secondary', !on);
         }
 
-        function esc(s) {
-            const d = document.createElement('div');
-            d.textContent = s;
-            return d.innerHTML;
-        }
-
-        function addModuleCard(title, unlocks, visible) {
-            const index = String(list.querySelectorAll('.module-card').length + 1).padStart(2, '0');
-            const pill = visible
-                ? 'bg-accent-lime text-bg-primary'
-                : 'bg-bg-tertiary text-text-secondary';
-            const pillText = visible ? 'Visible to Students' : 'Hidden';
-            const card = document.createElement('div');
-            card.className = 'module-card bg-bg-secondary border border-border-primary rounded overflow-hidden';
-            card.innerHTML =
-                '<div class="js-module-head flex items-center gap-4 px-5 py-5 cursor-pointer hover:bg-bg-tertiary transition-colors">' +
-                    '<span class="text-text-secondary select-none">⠿</span>' +
-                    '<span class="font-mono text-3xl font-bold text-border-secondary opacity-60 select-none w-12">' + index + '</span>' +
-                    '<div class="flex-1">' +
-                        '<div class="text-[15px] text-text-primary font-semibold">' + esc(title) + '</div>' +
-                        '<div class="text-[12px] text-text-secondary font-mono mt-0.5">0 exercises · Unlocks after: ' + esc(unlocks) + '</div>' +
-                    '</div>' +
-                    '<button type="button" class="js-visibility font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded-full transition-colors ' + pill + '" data-visible="' + (visible ? '1' : '0') + '">' + pillText + '</button>' +
-                '</div>' +
-                '<div class="js-module-body hidden border-t border-border-primary">' +
-                    '<a href="' + builderUrl + '" class="flex items-center justify-center gap-2 px-5 py-3 text-[13px] text-text-secondary hover:text-text-primary transition-colors">+ Add Exercise to Module</a>' +
-                '</div>';
-            list.appendChild(card);
-        }
-
         document.querySelectorAll('.js-open-module-modal').forEach(function (b) {
             b.addEventListener('click', openModal);
         });
-        modal.querySelectorAll('.js-close-modal, .js-modal-backdrop').forEach(function (b) {
+        modal.querySelectorAll('.js-close-modal').forEach(function (b) {
             b.addEventListener('click', closeModal);
         });
-        visibleBtn.addEventListener('click', function () {
-            setVisible(visibleBtn.dataset.visible !== '1');
-        });
-        document.getElementById('module-create').addEventListener('click', function () {
-            const title = titleInput.value.trim();
-            if (!title) { titleInput.focus(); return; }
-            addModuleCard(title, unlocksInput.value, visibleBtn.dataset.visible === '1');
-            closeModal();
-        });
+        visibleBtn.addEventListener('click', function () { setVisible(visibleBtn.dataset.visible !== '1'); });
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+        });
+
+        let dragged = null;
+        list.addEventListener('dragstart', function (e) {
+            dragged = e.target.closest('.module-card');
+            if (dragged) dragged.classList.add('opacity-50');
+        });
+        list.addEventListener('dragend', function () {
+            if (dragged) dragged.classList.remove('opacity-50');
+            dragged = null;
+        });
+        list.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            const over = e.target.closest('.module-card');
+            if (!over || over === dragged || !dragged) return;
+            const rect = over.getBoundingClientRect();
+            const after = (e.clientY - rect.top) > rect.height / 2;
+            list.insertBefore(dragged, after ? over.nextSibling : over);
+        });
+        list.addEventListener('drop', function (e) {
+            e.preventDefault();
+            const order = Array.from(list.querySelectorAll('.module-card')).map(function (c) { return c.dataset.topicId; });
+            const body = new FormData();
+            body.append('order', JSON.stringify(order));
+            body.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+            fetch('{% url 'topic_reorder' %}', { method: 'POST', body: body });
         });
     })();
 </script>
