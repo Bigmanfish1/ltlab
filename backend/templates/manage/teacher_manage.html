@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Manage - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-bg-primary">
+    {% include "header.html" %}
+    <div class="max-w-[1280px] mx-auto px-12 py-10">
+
+        <div class="flex items-center justify-between mb-8">
+            <h1 class="text-[32px] text-text-primary font-semibold" style="letter-spacing: -0.02em;">Modules</h1>
+            <a href="{% url 'exercise_builder' %}" class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
+                New Module +
+            </a>
+        </div>
+
+        <!-- Module list -->
+        <div class="space-y-3" id="module-list">
+            {% for module in modules %}
+            <div class="module-card bg-bg-secondary border border-border-primary rounded overflow-hidden" data-module-id="{{ module.id }}">
+                <!-- Header row: click to expand/collapse -->
+                <div class="js-module-head flex items-center gap-4 px-5 py-5 cursor-pointer hover:bg-bg-tertiary transition-colors">
+                    <span class="text-text-secondary select-none" title="Drag to reorder (mock)">⠿</span>
+                    <span class="font-mono text-3xl font-bold text-border-secondary opacity-60 select-none w-12">{{ module.index }}</span>
+                    <div class="flex-1">
+                        <div class="text-[15px] text-text-primary font-semibold">{{ module.title }}</div>
+                        <div class="text-[12px] text-text-secondary font-mono mt-0.5">{{ module.exercise_count }} exercises · Unlocks after: {{ module.unlocks_after }}</div>
+                    </div>
+                    <button type="button"
+                        class="js-visibility font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded-full transition-colors
+                               {% if module.visible %}bg-accent-lime text-bg-primary{% else %}bg-bg-tertiary text-text-secondary{% endif %}"
+                        data-visible="{{ module.visible|yesno:'1,0' }}"
+                        title="Toggle visibility (mock, resets on reload)">
+                        {% if module.visible %}Visible to Students{% else %}Hidden{% endif %}
+                    </button>
+                    <a href="{% url 'exercise_edit' module.id %}" class="font-mono text-[11px] text-accent-orange hover:opacity-80 transition-opacity" onclick="event.stopPropagation();">Edit →</a>
+                </div>
+
+                <!-- Expandable body: nested exercises -->
+                <div class="js-module-body hidden border-t border-border-primary">
+                    {% for ex in module.exercises %}
+                    <div class="exercise-row flex items-center gap-3 px-5 py-3 border-b border-border-primary hover:bg-bg-tertiary transition-colors">
+                        <span class="text-text-secondary select-none" title="Drag to reorder (mock)">⠿</span>
+                        <span class="flex-1 text-[13px] text-text-primary">{{ ex.name }}</span>
+                        <span class="font-mono text-[10px] tracking-[0.12em] uppercase px-2 py-0.5 rounded bg-bg-tertiary text-text-secondary">{{ ex.difficulty }}</span>
+                        <button type="button" class="js-remove-exercise text-text-secondary hover:text-accent-orange transition-colors" title="Remove from module (mock)">✕</button>
+                    </div>
+                    {% endfor %}
+                    <a href="{% url 'exercise_builder' %}" class="flex items-center justify-center gap-2 px-5 py-3 text-[13px] text-text-secondary hover:text-text-primary transition-colors">
+                        + Add Exercise to Module
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Create new module (mock) -->
+        <a href="{% url 'exercise_builder' %}" class="mt-3 flex items-center justify-center gap-2 px-5 py-4 border border-dashed border-border-secondary rounded text-[13px] text-text-secondary hover:text-text-primary hover:border-accent-orange transition-colors">
+            + Create New Module
+        </a>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Manage screen interactivity — all client-side/ephemeral (no backend this
+    // phase). Expand/collapse modules, toggle visibility pill, remove nested
+    // exercise rows; everything resets on reload.
+    (function () {
+        const list = document.getElementById('module-list');
+
+        list.addEventListener('click', function (e) {
+            // Visibility pill toggle
+            const pill = e.target.closest('.js-visibility');
+            if (pill) {
+                e.stopPropagation();
+                const on = pill.dataset.visible === '1';
+                pill.dataset.visible = on ? '0' : '1';
+                pill.textContent = on ? 'Hidden' : 'Visible to Students';
+                pill.classList.toggle('bg-accent-lime', !on);
+                pill.classList.toggle('text-bg-primary', !on);
+                pill.classList.toggle('bg-bg-tertiary', on);
+                pill.classList.toggle('text-text-secondary', on);
+                return;
+            }
+
+            // Remove nested exercise row
+            const rm = e.target.closest('.js-remove-exercise');
+            if (rm) {
+                rm.closest('.exercise-row').remove();
+                return;
+            }
+
+            // Expand / collapse the module body
+            const head = e.target.closest('.js-module-head');
+            if (head) {
+                const body = head.parentElement.querySelector('.js-module-body');
+                if (body) body.classList.toggle('hidden');
+            }
+        });
+    })();
+</script>
+{% endblock %}
