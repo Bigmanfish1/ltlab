@@ -2,8 +2,16 @@ from django.contrib import admin
 from django.urls import include, path
 
 from apps.checker.views import counterexample, verify_ltl
-from apps.exercises.views import exercise_canvas, exercises, get_hint, submit_formula, teacher_exercises
-from apps.home.views import home, teacher_results
+from apps.exercises.views import (
+    exercise_builder,
+    exercise_canvas,
+    exercises,
+    get_hint,
+    manage,
+    submit_formula,
+    teacher_exercises,
+)
+from apps.home.views import home, teacher_results, teacher_student_detail
 from config.api import api
 from config.views import sandbox
 
@@ -18,7 +26,11 @@ urlpatterns = [
     path("sandbox/verify/", verify_ltl, name="sandbox_verify"),
     path("sandbox/counterexample/", counterexample, name="sandbox_counterexample"),
     path("teacher/exercises/", teacher_exercises, name="teacher_exercises"),
+    path("teacher/exercises/new/", exercise_builder, name="exercise_builder"),
+    path("teacher/exercises/<int:exercise_id>/edit/", exercise_builder, name="exercise_edit"),
+    path("teacher/manage/", manage, name="manage"),
     path("results/", teacher_results, name="results"),
+    path("results/student/<int:student_id>/", teacher_student_detail, name="teacher_student_detail"),
     path("admin/", admin.site.urls),
     path("api/", api.urls),
 ]
