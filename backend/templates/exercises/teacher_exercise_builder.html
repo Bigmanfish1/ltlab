@@ -2,12 +2,19 @@
 
 {% block title %}Exercise Builder - ModelCheck Edu{% endblock %}
 
+{% block extra_css %}
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<style>
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline-flex; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="min-h-screen bg-bg-primary">
     {% include "header.html" %}
     <div class="max-w-[1280px] mx-auto px-12 py-10">
 
-        <!-- Heading -->
         <div class="flex items-start justify-between mb-8">
             <div>
                 <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-2">
@@ -16,10 +23,10 @@
                 <h1 class="text-[32px] text-text-primary font-semibold" style="letter-spacing: -0.02em;">Exercise Builder</h1>
             </div>
             <div class="flex items-center gap-3">
-                <button type="button" class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors" title="Not wired yet (mock)">
+                <button type="button" id="save-draft-btn" class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
                     Save Draft
                 </button>
-                <button type="button" class="px-4 py-2 bg-accent-orange text-bg-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:opacity-90 transition-opacity" title="Not wired yet (mock)">
+                <button type="button" id="publish-btn" class="px-4 py-2 bg-accent-orange text-bg-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:opacity-90 transition-opacity">
                     Publish →
                 </button>
             </div>
@@ -27,12 +34,11 @@
 
         <div class="grid grid-cols-[38%_62%] gap-8">
 
-            <!-- LEFT: exercise details -->
             <div>
                 <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">EXERCISE DETAILS</div>
 
                 <label class="block text-[13px] text-text-primary mb-2">Task Description</label>
-                <textarea rows="4" placeholder="Write the plain-English prompt the student will see..."
+                <textarea id="task-description" rows="4" placeholder="Write the plain-English prompt the student will see..."
                     class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-3 rounded mb-6 focus:border-border-secondary focus:outline-none transition-colors resize-none">{% if prefill %}{{ prefill.description }}{% endif %}</textarea>
 
                 <label class="block text-[13px] text-text-primary mb-2">Difficulty</label>
@@ -74,7 +80,6 @@
                 </div>
             </div>
 
-            <!-- RIGHT: solution -->
             <div>
                 <div class="flex items-center justify-between mb-5">
                     <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">SOLUTION — KRIPKE STRUCTURE</div>
@@ -82,9 +87,12 @@
                 </div>
                 <div class="text-[12px] text-accent-orange mb-3">This is the memorandum. Students never see this.</div>
 
-                <!-- Reusable Kripke editor (editable). Loads its own Cytoscape assets. -->
-                <div class="bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-8" style="height: 420px;">
-                    {% include "components/kripke_editor.html" with id="memo" input_name="memo_graph" height="420px" %}
+                <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
+                    {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" %}
+                    <div id="result-drawer"
+                        class="absolute bottom-0 left-0 right-0 bg-bg-secondary border-t border-border-primary"
+                        style="min-height: 0; max-height: 140px; z-index: 10; overflow-y: auto;">
+                    </div>
                 </div>
 
                 <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-4">SOLUTION — LTL FORMULA</div>
@@ -96,10 +104,16 @@
                     </button>
                     {% endfor %}
                 </div>
-                <input type="text" id="formula-input" placeholder="Enter the solution formula..."
+                <input type="text" id="memo-formula" name="formula" placeholder="Enter the solution formula..."
                     class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[14px] px-4 py-3 rounded mb-3 focus:border-border-secondary focus:outline-none transition-colors"
                     value="{% if prefill %}{{ prefill.target_formula }}{% endif %}" />
-                <button type="button" class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors" title="Not wired yet (mock)">
+                <button
+                    id="validate-btn"
+                    hx-post="{% url 'sandbox_verify' %}"
+                    hx-target="#result-drawer"
+                    hx-swap="innerHTML"
+                    hx-include="#memo-formula, #memo-graph-data"
+                    class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
                     Validate Formula →
                 </button>
             </div>
@@ -107,18 +121,15 @@
         </div>
     </div>
 </div>
+
+<div id="builder-toast" class="hidden fixed bottom-6 right-6 z-50 px-4 py-3 rounded text-[13px] font-mono bg-accent-lime text-bg-primary shadow-lg"></div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    // Builder interactivity — client-side only (mock). Difficulty + allowed-
-    // operator toggles are visual state; formula operator buttons insert glyphs
-    // into the formula input. Save Draft / Publish / Validate are inert until the
-    // vertical/backend phase.
     (function () {
         const prefillDifficulty = "{% if prefill %}{{ prefill.difficulty }}{% endif %}";
 
-        // Difficulty: single-select toggle
         const diffBtns = Array.from(document.querySelectorAll('.difficulty-btn'));
         function setDifficulty(active) {
             diffBtns.forEach(function (b) {
@@ -135,7 +146,6 @@
             if (b.dataset.difficulty === prefillDifficulty) setDifficulty(b);
         });
 
-        // Allowed operators: multi-select toggle (default all enabled)
         document.querySelectorAll('.operator-btn').forEach(function (b) {
             function paint(on) {
                 b.classList.toggle('bg-accent-orange', on);
@@ -149,8 +159,7 @@
             b.addEventListener('click', function () { on = !on; paint(on); });
         });
 
-        // Formula operator buttons insert at cursor
-        const input = document.getElementById('formula-input');
+        const input = document.getElementById('memo-formula');
         document.querySelectorAll('.formula-op').forEach(function (b) {
             b.addEventListener('click', function () {
                 const op = b.dataset.op;
@@ -162,6 +171,66 @@
                 input.setSelectionRange(pos, pos);
             });
         });
+
+        function memoEditor() { return (window.KripkeEditors || {})['memo']; }
+
+        const drawer = document.getElementById('result-drawer');
+        function showResultBanner(msg) {
+            drawer.style.minHeight = '80px';
+            drawer.innerHTML =
+                '<div class="flex items-center justify-between px-4 py-3 font-mono text-[12px] text-text-secondary">' +
+                '<span>' + msg + '</span>' +
+                '<button class="js-close-result text-text-secondary hover:text-text-primary ml-4 text-lg leading-none">&times;</button>' +
+                '</div>';
+        }
+        drawer.addEventListener('click', function (e) {
+            if (e.target.closest('.js-close-result')) { drawer.innerHTML = ''; drawer.style.minHeight = '0'; }
+        });
+
+        document.addEventListener('kripke:warn', function (e) {
+            if (e.detail && e.detail.html) showResultBanner(e.detail.html);
+        });
+
+        const validateBtn = document.getElementById('validate-btn');
+        validateBtn.addEventListener('htmx:beforeRequest', function (e) {
+            const editor = memoEditor();
+            if (!editor) return;
+            const error = editor.validateStructure();
+            if (error) { e.preventDefault(); showResultBanner(error); }
+        });
+        document.body.addEventListener('htmx:afterSwap', function (e) {
+            if (e.detail.target.id === 'result-drawer' && drawer.innerHTML.trim()) {
+                drawer.style.minHeight = '80px';
+            }
+        });
+
+        const toast = document.getElementById('builder-toast');
+        let toastTimer = null;
+        function showToast(msg) {
+            toast.textContent = msg;
+            toast.classList.remove('hidden');
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(function () { toast.classList.add('hidden'); }, 3000);
+        }
+
+        function validateForm() {
+            const desc = document.getElementById('task-description').value.trim();
+            const formula = input.value.trim();
+            const diff = document.querySelector('.difficulty-btn.bg-accent-orange');
+            if (!desc) return 'Task description is required.';
+            if (!diff) return 'Select a difficulty.';
+            if (!formula) return 'Solution formula is required.';
+            return null;
+        }
+
+        function handleSave(label) {
+            const error = validateForm();
+            if (error) { showResultBanner(error); return; }
+            showToast(label + ' — pending backend');
+        }
+
+        document.getElementById('publish-btn').addEventListener('click', function () { handleSave('Published'); });
+        document.getElementById('save-draft-btn').addEventListener('click', function () { handleSave('Draft saved'); });
     })();
 </script>
 {% endblock %}
