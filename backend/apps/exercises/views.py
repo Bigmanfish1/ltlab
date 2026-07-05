@@ -391,9 +391,9 @@ def _save_exercise(request, exercise):
                     errors.append("The solution formula does not hold on the memorandum structure.")
 
     if errors:
-        for e in errors:
-            messages.error(request, e)
-        return render(request, "exercises/teacher_exercise_builder.html", _builder_context(exercise, form))
+        context = _builder_context(exercise, form)
+        context["form_errors"] = errors
+        return render(request, "exercises/teacher_exercise_builder.html", context)
 
     if exercise is None:
         exercise = Exercise(topic_id=form["module_id"], created_at=timezone.now())

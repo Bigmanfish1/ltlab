@@ -38,33 +38,45 @@
             <div>
                 <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">EXERCISE DETAILS</div>
 
-                <label class="block text-[13px] text-text-primary mb-2">Exercise Title</label>
-                <input type="text" name="title" placeholder="e.g. Request-Grant Protocol"
-                    class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-2.5 rounded mb-6 focus:border-border-secondary focus:outline-none transition-colors"
-                    value="{% if prefill %}{{ prefill.title }}{% endif %}" />
-
-                <label class="block text-[13px] text-text-primary mb-2">Task Description</label>
-                <textarea name="description" rows="4" placeholder="Write the plain-English prompt the student will see..."
-                    class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-3 rounded mb-6 focus:border-border-secondary focus:outline-none transition-colors resize-none">{% if prefill %}{{ prefill.description }}{% endif %}</textarea>
-
-                <label class="block text-[13px] text-text-primary mb-2">Difficulty</label>
-                <input type="hidden" name="difficulty" id="difficulty-input" value="{% if prefill %}{{ prefill.difficulty }}{% endif %}" />
-                <div class="flex gap-2 mb-6" id="difficulty-toggle">
-                    {% for level in difficulties %}
-                    <button type="button" data-difficulty="{{ level }}"
-                        class="difficulty-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">
-                        {{ level }}
-                    </button>
-                    {% endfor %}
+                <div class="mb-6">
+                    <label class="block text-[13px] text-text-primary mb-2">Exercise Title</label>
+                    <input type="text" name="title" data-field="title" placeholder="e.g. Request-Grant Protocol"
+                        class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors"
+                        value="{% if prefill %}{{ prefill.title }}{% endif %}" />
+                    <p class="field-error text-[11px] text-accent-orange mt-1 hidden" data-error-for="title"></p>
                 </div>
 
-                <label class="block text-[13px] text-text-primary mb-2">Module</label>
-                <select name="topic" class="w-full bg-bg-secondary border border-border-primary text-text-primary text-[13px] px-4 py-2.5 rounded mb-6 focus:border-border-secondary focus:outline-none transition-colors">
-                    <option value="">Assign to module...</option>
-                    {% for m in modules %}
-                    <option value="{{ m.id }}" {% if prefill and prefill.module_id == m.id %}selected{% endif %}>{{ m.title }}</option>
-                    {% endfor %}
-                </select>
+                <div class="mb-6">
+                    <label class="block text-[13px] text-text-primary mb-2">Task Description</label>
+                    <textarea name="description" data-field="description" rows="4" placeholder="Write the plain-English prompt the student will see..."
+                        class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-3 rounded focus:border-border-secondary focus:outline-none transition-colors resize-none">{% if prefill %}{{ prefill.description }}{% endif %}</textarea>
+                    <p class="field-error text-[11px] text-accent-orange mt-1 hidden" data-error-for="description"></p>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-[13px] text-text-primary mb-2">Difficulty</label>
+                    <input type="hidden" name="difficulty" id="difficulty-input" value="{% if prefill %}{{ prefill.difficulty }}{% endif %}" />
+                    <div class="flex gap-2" id="difficulty-toggle">
+                        {% for level in difficulties %}
+                        <button type="button" data-difficulty="{{ level }}"
+                            class="difficulty-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">
+                            {{ level }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <p class="field-error text-[11px] text-accent-orange mt-1 hidden" data-error-for="difficulty"></p>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-[13px] text-text-primary mb-2">Module</label>
+                    <select name="topic" data-field="topic" class="w-full bg-bg-secondary border border-border-primary text-text-primary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors">
+                        <option value="">Assign to module...</option>
+                        {% for m in modules %}
+                        <option value="{{ m.id }}" {% if prefill and prefill.module_id == m.id %}selected{% endif %}>{{ m.title }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="field-error text-[11px] text-accent-orange mt-1 hidden" data-error-for="topic"></p>
+                </div>
 
                 <label class="block text-[13px] text-text-primary mb-2">Allowed Operators</label>
                 <input type="hidden" name="allowed_operators" id="allowed-input" value="" />
@@ -130,6 +142,17 @@
         </div>
     </form>
 </div>
+
+{% if form_errors %}
+<div id="server-errors" class="fixed bottom-6 right-6 z-50 space-y-2 max-w-sm">
+    {% for error in form_errors %}
+    <div class="server-error flex items-start gap-3 bg-accent-orange text-bg-primary text-[13px] font-mono px-4 py-3 rounded shadow-lg">
+        <span class="flex-1">{{ error }}</span>
+        <button type="button" class="js-dismiss leading-none text-lg">&times;</button>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -217,6 +240,59 @@
                 drawer.style.minHeight = '80px';
             }
         });
+
+        const form = document.querySelector('form');
+        const REQUIRED = [
+            ['title', 'Exercise title is required.', function () { return form.title.value.trim(); }],
+            ['description', 'Task description is required.', function () { return form.description.value.trim(); }],
+            ['difficulty', 'Select a difficulty.', function () { return diffInput.value; }],
+            ['topic', 'Assign the exercise to a module.', function () { return form.topic.value; }],
+        ];
+        function errorEl(name) { return document.querySelector('.field-error[data-error-for="' + name + '"]'); }
+        function fieldEl(name) { return document.querySelector('[data-field="' + name + '"]'); }
+        function showFieldError(name, msg) {
+            const p = errorEl(name);
+            if (p) { p.textContent = msg; p.classList.remove('hidden'); }
+            const f = fieldEl(name);
+            if (f) { f.classList.add('border-accent-orange'); f.classList.remove('border-border-primary'); }
+        }
+        function clearFieldError(name) {
+            const p = errorEl(name);
+            if (p) p.classList.add('hidden');
+            const f = fieldEl(name);
+            if (f) { f.classList.remove('border-accent-orange'); f.classList.add('border-border-primary'); }
+        }
+        REQUIRED.forEach(function (r) {
+            const f = fieldEl(r[0]);
+            if (f) f.addEventListener('input', function () { clearFieldError(r[0]); });
+        });
+        diffBtns.forEach(function (b) { b.addEventListener('click', function () { clearFieldError('difficulty'); }); });
+
+        form.addEventListener('submit', function (e) {
+            let firstBad = null;
+            REQUIRED.forEach(function (r) {
+                if (!r[2]()) { showFieldError(r[0], r[1]); if (!firstBad) firstBad = r[0]; }
+                else clearFieldError(r[0]);
+            });
+            if (firstBad) {
+                e.preventDefault();
+                const target = fieldEl(firstBad) || errorEl(firstBad);
+                if (target) { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+                const focusable = fieldEl(firstBad);
+                if (focusable && focusable.focus) focusable.focus();
+            }
+        });
+
+        const serverErrors = document.getElementById('server-errors');
+        if (serverErrors) {
+            serverErrors.addEventListener('click', function (e) {
+                const el = e.target.closest('.js-dismiss');
+                if (el) el.closest('.server-error').remove();
+            });
+            setTimeout(function () {
+                serverErrors.querySelectorAll('.server-error').forEach(function (el) { el.remove(); });
+            }, 6000);
+        }
     })();
 </script>
 {% endblock %}
