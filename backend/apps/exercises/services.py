@@ -158,9 +158,10 @@ def struggled_exercises(limit=5):
 def misconception_breakdown():
     counts = defaultdict(int)
     total_wrong = 0
-    rows = Attempt.objects.filter(is_correct=False).values_list(
-        "formula_input", "exercise__target_formula"
-    )
+    enrolled_ids = enrolled_students().values_list("id", flat=True)
+    rows = Attempt.objects.filter(
+        is_correct=False, student_id__in=enrolled_ids
+    ).values_list("formula_input", "exercise__target_formula")
     for submitted, target in rows:
         bucket = classify_misconception(target, submitted)
         if bucket:
@@ -247,7 +248,12 @@ def dashboard_stats():
 
 def recent_activity(limit=6):
     out = []
-    rows = Attempt.objects.select_related("student", "exercise", "exercise__topic").order_by("-created_at")[:limit]
+    enrolled_ids = enrolled_students().values_list("id", flat=True)
+    rows = (
+        Attempt.objects.filter(student_id__in=enrolled_ids)
+        .select_related("student", "exercise", "exercise__topic")
+        .order_by("-created_at")[:limit]
+    )
     for a in rows:
         name = a.student.name or a.student.email
         initials = "".join(p[0] for p in name.split()[:2]).upper() or "?"
