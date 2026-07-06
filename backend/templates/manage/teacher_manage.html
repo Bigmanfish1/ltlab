@@ -24,7 +24,7 @@
                         <div class="text-[15px] text-text-primary font-semibold">{{ module.title }}</div>
                         <div class="text-[12px] text-text-secondary font-mono mt-0.5">{{ module.exercises|length }} exercises · Unlocks after: {{ module.unlocks_after }}</div>
                     </div>
-                    <form method="post" action="{% url 'topic_visibility' module.id %}">
+                    <form method="post" action="{% url 'topic_visibility' module.id %}" class="js-visibility-form">
                         {% csrf_token %}
                         <button type="submit"
                             class="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded-full transition-colors
@@ -180,12 +180,29 @@
         function closeConfirm() { confirmModal.classList.add('hidden'); pendingForm = null; }
 
         list.addEventListener('submit', function (e) {
-            const form = e.target.closest('.js-delete-form');
-            if (!form) return;
-            e.preventDefault();
-            pendingForm = form;
-            confirmMessage.textContent = form.dataset.confirm || 'Are you sure?';
-            confirmModal.classList.remove('hidden');
+            const del = e.target.closest('.js-delete-form');
+            if (del) {
+                e.preventDefault();
+                pendingForm = del;
+                confirmMessage.textContent = del.dataset.confirm || 'Are you sure?';
+                confirmModal.classList.remove('hidden');
+                return;
+            }
+            const vis = e.target.closest('.js-visibility-form');
+            if (vis) {
+                e.preventDefault();
+                const btn = vis.querySelector('button');
+                fetch(vis.action, { method: 'POST', body: new FormData(vis) })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        const on = d.visible;
+                        btn.textContent = on ? 'Visible to Students' : 'Hidden';
+                        btn.classList.toggle('bg-accent-lime', on);
+                        btn.classList.toggle('text-bg-primary', on);
+                        btn.classList.toggle('bg-bg-tertiary', !on);
+                        btn.classList.toggle('text-text-secondary', !on);
+                    });
+            }
         });
         confirmModal.querySelectorAll('.js-confirm-cancel').forEach(function (b) {
             b.addEventListener('click', closeConfirm);

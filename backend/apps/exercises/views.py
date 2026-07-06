@@ -451,7 +451,7 @@ def topic_visibility(request, topic_id):
     topic = get_object_or_404(Topic, pk=topic_id)
     topic.visible = not topic.visible
     topic.save(update_fields=["visible"])
-    return redirect("manage")
+    return JsonResponse({"visible": topic.visible})
 
 
 @teacher_required
