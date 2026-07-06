@@ -331,48 +331,41 @@ def exercise_builder(request, exercise_id=None):
     return render(request, "exercises/teacher_exercise_builder.html", context)
 
 
-def _save_exercise(request, exercise):
-    action = request.POST.get("action", "draft")
-    title = request.POST.get("title", "").strip()
-    description = request.POST.get("description", "").strip()
-    difficulty = request.POST.get("difficulty", "").strip()
+def _parse_exercise_form(request):
     topic_id = request.POST.get("topic", "").strip()
-    target_formula = request.POST.get("formula", "").strip()
-    graph_data = request.POST.get("graph_data", "").strip()
-    hints = [request.POST.get(f"hint_{i}", "").strip() for i in (1, 2, 3)]
     try:
         allowed = json.loads(request.POST.get("allowed_operators") or "[]")
     except json.JSONDecodeError:
         allowed = []
-
-    form = {
-        "title": title,
-        "description": description,
-        "difficulty": difficulty,
+    return {
+        "title": request.POST.get("title", "").strip(),
+        "description": request.POST.get("description", "").strip(),
+        "difficulty": request.POST.get("difficulty", "").strip(),
         "module_id": int(topic_id) if topic_id.isdigit() else None,
-        "target_formula": target_formula,
-        "hints": hints,
+        "target_formula": request.POST.get("formula", "").strip(),
+        "hints": [request.POST.get(f"hint_{i}", "").strip() for i in (1, 2, 3)],
         "allowed_operators": allowed,
-        "graph_data": graph_data,
+        "graph_data": request.POST.get("graph_data", "").strip(),
     }
 
+
+def _validate_exercise_form(form, exercise, publishing):
     errors = []
-    if not title:
+    if not form["title"]:
         errors.append("Exercise title is required.")
-    if not description:
+    if not form["description"]:
         errors.append("Task description is required.")
-    if difficulty not in DIFFICULTIES:
+    if form["difficulty"] not in DIFFICULTIES:
         errors.append("Select a difficulty.")
-    if not topic_id.isdigit() or not Topic.objects.filter(pk=topic_id).exists():
+    if form["module_id"] is None or not Topic.objects.filter(pk=form["module_id"]).exists():
         errors.append("Assign the exercise to a module.")
-    if not target_formula:
+    if not form["target_formula"]:
         errors.append("Solution formula is required.")
 
-    publishing = action == "publish"
     graph = None
-    if graph_data:
+    if form["graph_data"]:
         try:
-            graph = json.loads(graph_data)
+            graph = json.loads(form["graph_data"])
         except json.JSONDecodeError:
             errors.append("The Kripke structure could not be read.")
     elif exercise is not None:
@@ -383,33 +376,42 @@ def _save_exercise(request, exercise):
             errors.append("Publishing needs a memorandum Kripke structure.")
         else:
             try:
-                result = run_ltl_check(graph, target_formula)
+                result = run_ltl_check(graph, form["target_formula"])
             except ValueError as exc:
                 errors.append(f"Formula check failed: {exc}")
             else:
                 if result["result"] != "satisfied":
                     errors.append("The solution formula does not hold on the memorandum structure.")
+    return errors, graph
 
+
+def _persist_exercise(exercise, form, graph, publishing):
+    if exercise is None:
+        exercise = Exercise(topic_id=form["module_id"], created_at=timezone.now())
+    else:
+        exercise.topic_id = form["module_id"]
+    exercise.title = form["title"]
+    exercise.description = form["description"]
+    exercise.difficulty = form["difficulty"]
+    exercise.target_formula = form["target_formula"]
+    exercise.hints = form["hints"]
+    exercise.hint = next((h for h in form["hints"] if h), "")
+    exercise.allowed_operators = form["allowed_operators"]
+    exercise.kripke_structure = graph
+    exercise.is_published = publishing
+    exercise.save()
+
+
+def _save_exercise(request, exercise):
+    publishing = request.POST.get("action", "draft") == "publish"
+    form = _parse_exercise_form(request)
+    errors, graph = _validate_exercise_form(form, exercise, publishing)
     if errors:
         context = _builder_context(exercise, form)
         context["form_errors"] = errors
         return render(request, "exercises/teacher_exercise_builder.html", context)
 
-    if exercise is None:
-        exercise = Exercise(topic_id=form["module_id"], created_at=timezone.now())
-    else:
-        exercise.topic_id = form["module_id"]
-    exercise.title = title
-    exercise.description = description
-    exercise.difficulty = difficulty
-    exercise.target_formula = target_formula
-    exercise.hints = hints
-    exercise.hint = next((h for h in hints if h), "")
-    exercise.allowed_operators = allowed
-    exercise.kripke_structure = graph
-    exercise.is_published = publishing
-    exercise.save()
-
+    _persist_exercise(exercise, form, graph, publishing)
     messages.success(request, "Exercise published." if publishing else "Draft saved.")
     return redirect("manage")
 
