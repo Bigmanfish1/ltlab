@@ -79,7 +79,8 @@ def teacher_dashboard(request):
 
 @teacher_required
 def teacher_results(request):
-    metrics = services.class_metrics()
+    data = services.results_data()
+    metrics = data["metrics"]
     context = {
         "metrics": [
             {"label": "TOTAL STUDENTS", "value": str(metrics["total_students"])},
@@ -87,10 +88,10 @@ def teacher_results(request):
             {"label": "MOST FAILED EXERCISE", "value": metrics["most_failed_exercise"], "compact": True},
             {"label": "AVG ATTEMPTS / EX", "value": str(metrics["avg_attempts_per_ex"])},
         ],
-        "module_completion": services.topic_completion(),
-        "struggled_exercises": services.struggled_exercises(),
-        "misconceptions": services.misconception_breakdown(),
-        "students": services.students_roster(),
+        "module_completion": data["module_completion"],
+        "struggled_exercises": data["struggled_exercises"],
+        "misconceptions": data["misconceptions"],
+        "students": data["students"],
     }
     return render(request, "results/teacher_results.html", context)
 

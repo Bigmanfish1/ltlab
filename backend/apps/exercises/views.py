@@ -11,7 +11,7 @@ from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.tasks import run_ltl_check
 
 from .models import Exercise, Topic
-from .services import exercise_rows
+from .services import _elements_json, exercise_rows
 
 
 # Mock data for testing
@@ -314,14 +314,6 @@ def _builder_context(exercise, form=None):
         "is_edit": exercise is not None,
         "exercise_id": exercise.id if exercise else None,
     }
-
-
-def _elements_json(structure):
-    if not structure or not isinstance(structure, dict):
-        return ""
-    elements = structure.get("elements") or {}
-    array = (elements.get("nodes") or []) + (elements.get("edges") or [])
-    return json.dumps(array) if array else ""
 
 
 @teacher_required

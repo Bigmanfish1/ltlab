@@ -30,19 +30,26 @@ MISCONCEPTION_DESCRIPTIONS = {
 
 
 def enrolled_students():
-    return Profile.objects.filter(role=Profile.ROLE_STUDENT)
+    return Profile.objects.filter(role=Profile.ROLE_STUDENT).order_by("name", "id")
+
+
+def enrolled_ids():
+    return enrolled_students().values_list("id", flat=True)
+
+
+def _round_half_up(x):
+    # Python's round() is half-to-even; we want half-up. x is non-negative here.
+    return math.floor(x + 0.5)
 
 
 def _pct(n, d):
-    # round half up; n, d are non-negative counts here so floor(x+0.5) is exact
-    return math.floor(100 * n / d + 0.5) if d else 0
+    return _round_half_up(100 * n / d) if d else 0
 
 
 def _attempt_matrix():
     # numerator population must match the enrolled denominator, else completion can exceed 100%
-    enrolled_ids = enrolled_students().values_list("id", flat=True)
     matrix = defaultdict(lambda: defaultdict(list))
-    rows = Attempt.objects.filter(student_id__in=enrolled_ids).values_list(
+    rows = Attempt.objects.filter(student_id__in=enrolled_ids()).values_list(
         "exercise_id", "student_id", "is_correct", "created_at", "formula_input", "hints_used"
     ).order_by("created_at")
     for ex_id, st_id, correct, created, formula, hints in rows:
@@ -81,8 +88,8 @@ def _exercise_metrics(exercise, per_student, enrolled_count):
     }
 
 
-def exercise_rows():
-    matrix = _attempt_matrix()
+def exercise_rows(matrix=None):
+    matrix = matrix if matrix is not None else _attempt_matrix()
     enrolled_count = enrolled_students().count()
     rows = []
     for ex in Exercise.objects.select_related("topic"):
@@ -101,8 +108,8 @@ def exercise_rows():
     return rows
 
 
-def topic_completion():
-    rows = exercise_rows()
+def topic_completion(rows=None):
+    rows = rows if rows is not None else exercise_rows()
     by_topic = defaultdict(list)
     for r in rows:
         by_topic[r["module"]].append(r["completion_raw"])
@@ -110,12 +117,13 @@ def topic_completion():
     for topic in Topic.objects.all():
         comps = by_topic.get(topic.title, [])
         # average the raw rates, round once (avoids compounding per-exercise rounding)
-        out.append({"name": topic.title, "completion": round(sum(comps) / len(comps)) if comps else 0})
+        out.append({"name": topic.title,
+                    "completion": _round_half_up(sum(comps) / len(comps)) if comps else 0})
     return out
 
 
-def class_metrics():
-    matrix = _attempt_matrix()
+def class_metrics(matrix=None):
+    matrix = matrix if matrix is not None else _attempt_matrix()
     enrolled_count = enrolled_students().count()
     total = correct = exercises_with_attempts = 0
     most_failed = None
@@ -140,8 +148,9 @@ def class_metrics():
     }
 
 
-def struggled_exercises(limit=5):
-    rows = [r for r in exercise_rows() if r["attempts"]]
+def struggled_exercises(rows=None, limit=5):
+    rows = rows if rows is not None else exercise_rows()
+    rows = [r for r in rows if r["attempts"]]
     rows.sort(key=lambda r: r["struggle"], reverse=True)
     out = []
     for i, r in enumerate(rows[:limit], start=1):
@@ -158,9 +167,8 @@ def struggled_exercises(limit=5):
 def misconception_breakdown():
     counts = defaultdict(int)
     total_wrong = 0
-    enrolled_ids = enrolled_students().values_list("id", flat=True)
     rows = Attempt.objects.filter(
-        is_correct=False, student_id__in=enrolled_ids
+        is_correct=False, student_id__in=enrolled_ids()
     ).values_list("formula_input", "exercise__target_formula")
     for submitted, target in rows:
         bucket = classify_misconception(target, submitted)
@@ -174,7 +182,7 @@ def misconception_breakdown():
         out.append({
             "key": bucket,
             "label": MISCONCEPTION_LABELS[bucket],
-            "description": f"{pct}% of incorrect submissions {MISCONCEPTION_DESCRIPTIONS[bucket]}",
+            "description": f"{pct}% of classified errors {MISCONCEPTION_DESCRIPTIONS[bucket]}",
             "percentage": pct,
         })
     out.sort(key=lambda x: x["percentage"], reverse=True)
@@ -193,8 +201,8 @@ def _largest_remainder(counts, total):
     return floors
 
 
-def students_roster():
-    matrix = _attempt_matrix()
+def students_roster(matrix=None):
+    matrix = matrix if matrix is not None else _attempt_matrix()
     per_student = defaultdict(lambda: {"total": 0, "correct": 0, "solved": set(), "last": None})
     for ex_id, students in matrix.items():
         for st_id, attempts in students.items():
@@ -229,13 +237,27 @@ def students_roster():
     return out
 
 
+def results_data():
+    # Build the attempt matrix and exercise rows once, then feed every panel of
+    # the Results page from them (was 4 matrix scans + 2 exercise_rows per load).
+    matrix = _attempt_matrix()
+    rows = exercise_rows(matrix)
+    return {
+        "metrics": class_metrics(matrix),
+        "module_completion": topic_completion(rows),
+        "struggled_exercises": struggled_exercises(rows),
+        "misconceptions": misconception_breakdown(),
+        "students": students_roster(matrix),
+    }
+
+
 def dashboard_stats():
-    roster = students_roster()
-    metrics = class_metrics()
+    matrix = _attempt_matrix()
+    roster = students_roster(matrix)
+    metrics = class_metrics(matrix)
     week_ago = timezone.now() - timedelta(days=7)
-    enrolled_ids = enrolled_students().values_list("id", flat=True)
     active = (
-        Attempt.objects.filter(created_at__gte=week_ago, student_id__in=enrolled_ids)
+        Attempt.objects.filter(created_at__gte=week_ago, student_id__in=enrolled_ids())
         .values("student_id").distinct().count()
     )
     return {
@@ -248,11 +270,10 @@ def dashboard_stats():
 
 def recent_activity(limit=6):
     out = []
-    enrolled_ids = enrolled_students().values_list("id", flat=True)
     rows = (
-        Attempt.objects.filter(student_id__in=enrolled_ids)
+        Attempt.objects.filter(student_id__in=enrolled_ids())
         .select_related("student", "exercise", "exercise__topic")
-        .order_by("-created_at")[:limit]
+        .order_by("-created_at", "-id")[:limit]
     )
     for a in rows:
         name = a.student.name or a.student.email
@@ -288,14 +309,11 @@ def student_detail(student):
     last = attempts[0] if attempts else None
     last_submission = None
     if last is not None:
-        structure = last.exercise.kripke_structure
-        elements = structure.get("elements") if isinstance(structure, dict) else {}
-        array = (elements.get("nodes") or []) + (elements.get("edges") or []) if elements else []
         last_submission = {
             "formula": last.formula_input or "",
             "verdict": "Property holds." if last.is_correct else "Property violated.",
             "holds": last.is_correct,
-            "elements_json": json.dumps(array) if array else "",
+            "elements_json": _elements_json(last.exercise.kripke_structure),
         }
     return {
         "id": student.id,
@@ -325,3 +343,12 @@ def _humanize(dt):
 
 def _short_date(dt):
     return dt.strftime("%d %b") if dt else ""
+
+
+def _elements_json(structure):
+    """Flatten a stored Kripke structure's nodes+edges into a Cytoscape JSON array."""
+    if not structure or not isinstance(structure, dict):
+        return ""
+    elements = structure.get("elements") or {}
+    array = (elements.get("nodes") or []) + (elements.get("edges") or [])
+    return json.dumps(array) if array else ""
