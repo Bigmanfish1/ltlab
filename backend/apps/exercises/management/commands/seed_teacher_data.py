@@ -117,12 +117,15 @@ def _wrong_variants(target):
     if "FG" in compact:
         out.append(target.replace("F G", "G F"))
     if target.startswith("G "):
-        out.append(target[2:])
+        out.append(target[2:])          # drop outer G -> missing_global
+    if target.startswith("F "):
+        out.append(target[2:])          # drop outer F -> missing_eventually
     if "F" in target:
         out.append(target.replace("F", "X", 1))
+    out.append("!(" + target + ")")     # negation -> inverted
     if "(" in target:
         out.append(target.replace("(", "", 1))
-    out.append("p U q")
+    out.append("p U q")                 # unrelated -> mistranslation
     return [w for w in dict.fromkeys(out) if w and w != target]
 
 
@@ -136,16 +139,17 @@ class Command(BaseCommand):
         rng = random.Random(42)
         now = timezone.now()
 
-        Attempt.objects.all().delete()
-        Exercise.objects.all().delete()
-        Topic.objects.all().delete()
+        # Scoped to seed-owned rows only (see SEED_DOMAIN) so locally-authored
+        # non-seed content survives a re-run. Deleting the seed topics cascades
+        # their exercises; deleting seed students cascades their attempts.
+        Attempt.objects.filter(student__email__endswith=SEED_DOMAIN).delete()
+        Topic.objects.filter(created_by__email__endswith=SEED_DOMAIN).delete()
         Profile.objects.filter(email__endswith=SEED_DOMAIN).delete()
 
-        teacher = Profile.objects.filter(role=Profile.ROLE_TEACHER).first()
-        if teacher is None:
-            teacher = Profile.objects.create(
-                email=f"teacher@{SEED_DOMAIN}", name="Dr Timm", role=Profile.ROLE_TEACHER
-            )
+        # Dedicated seed teacher so its topics are seed-owned (and thus scoped above).
+        teacher = Profile.objects.create(
+            email=f"teacher@{SEED_DOMAIN}", name="Dr Timm", role=Profile.ROLE_TEACHER
+        )
 
         students = []
         used = set()
@@ -198,7 +202,7 @@ class Command(BaseCommand):
         exercises[-1].is_published = False
         exercises[-1].save(update_fields=["is_published"])
 
-        rotation = ["missing_global", "f_vs_x", "gf_vs_fg", "nesting_precedence", "safety_vs_liveness"]
+        rotation = ["missing_global", "f_vs_x", "g_vs_f", "missing_eventually", "inverted", "mistranslation"]
         ex_wrong = {}
         for idx, ex in enumerate(exercises):
             variants = _wrong_variants(ex.target_formula)
