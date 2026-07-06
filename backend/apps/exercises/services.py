@@ -325,7 +325,8 @@ def _humanize(dt):
 
 
 def _short_date(dt):
-    return dt.strftime("%d %b") if dt else ""
+    # dt is UTC-aware from the DB; localize to the configured tz before formatting
+    return timezone.localtime(dt).strftime("%d %b") if dt else ""
 
 
 def _elements_json(structure):
