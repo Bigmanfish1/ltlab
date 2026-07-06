@@ -8,25 +8,8 @@ from django.utils import timezone
 from apps.accounts.models import Profile
 from apps.checker.misconceptions import classify_misconception
 
+from .constants import MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
 from .models import Attempt, Exercise, Topic
-
-MISCONCEPTION_LABELS = {
-    "g_vs_f": "G vs F confusion",
-    "f_vs_x": "F vs X confusion",
-    "missing_global": "Missing G (always)",
-    "missing_eventually": "Missing F (eventually)",
-    "inverted": "Inverted property",
-    "mistranslation": "English to LTL translation",
-}
-
-MISCONCEPTION_DESCRIPTIONS = {
-    "g_vs_f": "swapped G (always) and F (eventually) — e.g. FG vs GF, or always vs eventually",
-    "f_vs_x": "used X (next) where F (eventually) was required, or vice versa",
-    "missing_global": "omitted the G (always) that the specification requires",
-    "missing_eventually": "omitted the F (eventually) that the specification requires",
-    "inverted": "expressed the negation of the target property",
-    "mistranslation": "mistranslated the plain-English requirement into LTL",
-}
 
 
 def enrolled_students():
