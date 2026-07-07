@@ -192,7 +192,7 @@ lint → test → vulnerability-scan → deploy
 | Job | What it does | Triggers |
 |-----|-------------|---------|
 | `lint` | Runs Ruff to catch syntax and undefined variable errors | Push/PR to `main` or `develop` |
-| `test` | Runs Django migrations and test suite against Postgres | Push/PR to `main` or `develop` |
+| `test` | Checks for missing migrations (`makemigrations --check`), lints new migrations for backward-incompatible changes (`django-migration-linter`), then runs migrations + test suite against Postgres | Push/PR to `main` or `develop` |
 | `vulnerability-scan` | Builds Docker image and runs Trivy (CRITICAL/HIGH CVEs only) | Push/PR to `main`, `workflow_dispatch` |
 | `deploy` | Builds the image, runs the `ltlab-migrate` Job, deploys to Cloud Run | Manual (`workflow_dispatch`, `main` or `develop`) |
 
@@ -238,7 +238,9 @@ instances horizontally.
 **Config** (never committed): plain env vars on the service — `DJANGO_SETTINGS_MODULE`, `DEBUG`,
 `ALLOWED_HOSTS`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`. `SECRET_KEY` and `DATABASE_URL` (Supabase
 transaction pooler, port 6543) live in **Secret Manager** (`ltlab-secret-key`, `ltlab-database-url`),
-mounted via `--set-secrets` version-pinned. The service and `ltlab-migrate` Job run as the
+mounted via `--set-secrets` version-pinned. The **`ltlab-migrate` Job** instead mounts
+`ltlab-migrate-database-url` (Supabase **session pooler**, port 5432) as its `DATABASE_URL` —
+migrations need session affinity the transaction pooler lacks. The service and Job run as the
 dedicated **`ltlab-run`** runtime SA (only `secretmanager.secretAccessor` on those secrets).
 `REDIS_URL` is intentionally **not** set — cache falls back to per-process `LocMemCache`, correct
 on autoscaled instances.
