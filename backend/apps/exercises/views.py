@@ -1,6 +1,7 @@
 import json
 
 from django.contrib import messages
+from django.db.models import Max
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -355,7 +356,8 @@ def topic_create(request):
         return redirect("manage")
     unlocks_id = request.POST.get("unlocks_after", "").strip()
     unlocks = Topic.objects.filter(pk=unlocks_id).first() if unlocks_id.isdigit() else None
-    position = (Topic.objects.count())
+    highest = Topic.objects.aggregate(m=Max("position"))["m"]
+    position = (highest if highest is not None else -1) + 1
     Topic.objects.create(
         title=title,
         description=request.POST.get("description", "").strip(),
