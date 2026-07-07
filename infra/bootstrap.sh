@@ -13,10 +13,8 @@
 #       export SUPABASE_URL=...
 #       export SUPABASE_ANON_KEY=...
 #     optional:
-#       export MIGRATE_DATABASE_URL=... # Supabase SESSION pooler URI, port 5432 (migrate Job).
-#                                       # Migrations need session affinity / prepared statements,
-#                                       # which the transaction pooler (6543) lacks. Defaults to
-#                                       # DATABASE_URL if unset (i.e. no change until you set it).
+#       export MIGRATE_DATABASE_URL=... # Supabase session pooler URI, port 5432 (migrate Job DDL);
+#                                       # defaults to DATABASE_URL if unset.
 #
 # Usage:  PROJECT_ID=... REGION=... ./infra/bootstrap.sh
 #
@@ -141,8 +139,7 @@ ensure_secret() {  # $1 name, $2 value: create first version if absent, grant RU
 }
 ensure_secret ltlab-secret-key   "$SECRET_KEY"
 ensure_secret ltlab-database-url "$DATABASE_URL"
-# Separate DB URL for the migrate Job — session pooler (5432), not the 6543
-# transaction pooler the app runs on. Falls back to DATABASE_URL if unset.
+# migrate Job uses the session pooler (5432), not the app's txn pooler (6543).
 ensure_secret ltlab-migrate-database-url "${MIGRATE_DATABASE_URL:-$DATABASE_URL}"
 # Pin to a version, not :latest — env-mounted secrets resolve at instance start.
 latest_ver() { gcloud secrets versions list "$1" --filter="state=ENABLED" --sort-by="~name" --limit=1 --format="value(name)"; }
@@ -150,7 +147,6 @@ SK_VER="$(latest_ver ltlab-secret-key)"
 DU_VER="$(latest_ver ltlab-database-url)"
 MDU_VER="$(latest_ver ltlab-migrate-database-url)"
 SECRETS_FLAG="SECRET_KEY=ltlab-secret-key:${SK_VER},DATABASE_URL=ltlab-database-url:${DU_VER}"
-# The migrate Job mounts the session-pooler URL as DATABASE_URL; the service keeps 6543.
 JOB_SECRETS_FLAG="SECRET_KEY=ltlab-secret-key:${SK_VER},DATABASE_URL=ltlab-migrate-database-url:${MDU_VER}"
 
 # Non-secret runtime env for service + Job. YAML file (not --set-env-vars, which

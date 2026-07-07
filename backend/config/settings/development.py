@@ -3,9 +3,7 @@ from .base import *  # noqa: F401, F403
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
 
-# Dev/CI only — provides the `lintmigrations` management command. Kept out of
-# production settings so it never ships in the deployed image. Guarded so dev
-# still boots on an image built before the dependency was added (rebuild to lint).
+# Guarded so dev still boots on an image built before the dep was added.
 try:
     import django_migration_linter  # noqa: F401
     INSTALLED_APPS += ["django_migration_linter"]  # noqa: F405
