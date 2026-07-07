@@ -84,6 +84,7 @@ def exercise_rows(matrix=None):
             "module": ex.topic.title,
             "module_id": ex.topic_id,
             "difficulty": ex.difficulty,
+            "is_published": ex.is_published,
             "attempts": m["attempts"],
             "completion": m["completion"],
             "completion_raw": m["completion_raw"],

@@ -50,7 +50,14 @@
                         data-name="{{ ex.name|lower }}"
                         data-module="{{ ex.module|lower }}"
                         data-id="{{ ex.id }}">
-                        <td class="px-5 py-4 text-[13px] text-text-primary">{{ ex.name }}</td>
+                        <td class="px-5 py-4 text-[13px] text-text-primary">
+                            <span class="inline-flex items-center gap-2">
+                                {{ ex.name }}
+                                {% if not ex.is_published %}
+                                <span class="font-mono text-[9px] tracking-[0.12em] uppercase px-1.5 py-0.5 rounded border border-accent-orange text-accent-orange">Draft</span>
+                                {% endif %}
+                            </span>
+                        </td>
                         <td class="px-5 py-4 text-[13px] text-text-secondary font-mono">{{ ex.module }}</td>
                         <td class="px-5 py-4 text-[13px] text-text-secondary">{{ ex.attempts }}</td>
                         <td class="px-5 py-4">
