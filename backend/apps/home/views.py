@@ -98,5 +98,5 @@ def teacher_results(request):
 
 @teacher_required
 def teacher_student_detail(request, student_id):
-    student = get_object_or_404(Profile, pk=student_id)
+    student = get_object_or_404(Profile, pk=student_id, role=Profile.ROLE_STUDENT)
     return render(request, "results/teacher_student_detail.html", services.student_detail(student))
