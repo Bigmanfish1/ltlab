@@ -21,15 +21,6 @@
         margin-top: .25rem;
         transform: translateY(0);
     }
-    .server-error {
-        animation: toast-in .25s ease both;
-        transition: opacity .25s ease, transform .25s ease;
-    }
-    .server-error.hide { opacity: 0; transform: translateX(24px); }
-    @keyframes toast-in {
-        from { opacity: 0; transform: translateX(24px); }
-        to { opacity: 1; transform: translateX(0); }
-    }
 </style>
 {% endblock %}
 
@@ -165,17 +156,6 @@
         </div>
     </form>
 </div>
-
-{% if form_errors %}
-<div id="server-errors" class="fixed bottom-6 right-6 z-50 space-y-2 max-w-sm">
-    {% for error in form_errors %}
-    <div class="server-error flex items-start gap-3 bg-accent-orange text-bg-primary text-[13px] font-mono px-4 py-3 rounded shadow-lg">
-        <span class="flex-1">{{ error }}</span>
-        <button type="button" class="js-dismiss leading-none text-lg">&times;</button>
-    </div>
-    {% endfor %}
-</div>
-{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -305,21 +285,6 @@
                 if (focusable && focusable.focus) focusable.focus();
             }
         });
-
-        const serverErrors = document.getElementById('server-errors');
-        if (serverErrors) {
-            function dismissToast(el) {
-                el.classList.add('hide');
-                setTimeout(function () { el.remove(); }, 250);
-            }
-            serverErrors.addEventListener('click', function (e) {
-                const el = e.target.closest('.js-dismiss');
-                if (el) dismissToast(el.closest('.server-error'));
-            });
-            setTimeout(function () {
-                serverErrors.querySelectorAll('.server-error').forEach(dismissToast);
-            }, 6000);
-        }
     })();
 </script>
 {% endblock %}

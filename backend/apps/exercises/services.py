@@ -7,8 +7,9 @@ from django.utils import timezone
 
 from apps.accounts.models import Profile
 from apps.checker.misconceptions import classify_misconception
+from apps.checker.tasks import run_ltl_check
 
-from .constants import MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
+from .constants import DIFFICULTIES, MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
 from .models import Attempt, Exercise, Topic
 
 
@@ -336,3 +337,76 @@ def _elements_json(structure):
     elements = structure.get("elements") or {}
     array = (elements.get("nodes") or []) + (elements.get("edges") or [])
     return json.dumps(array) if array else ""
+
+
+def parse_exercise_form(request):
+    topic_id = request.POST.get("topic", "").strip()
+    try:
+        allowed = json.loads(request.POST.get("allowed_operators") or "[]")
+    except json.JSONDecodeError:
+        allowed = []
+    return {
+        "title": request.POST.get("title", "").strip(),
+        "description": request.POST.get("description", "").strip(),
+        "difficulty": request.POST.get("difficulty", "").strip(),
+        "module_id": int(topic_id) if topic_id.isdigit() else None,
+        "target_formula": request.POST.get("formula", "").strip(),
+        "hints": [request.POST.get(f"hint_{i}", "").strip() for i in (1, 2, 3)],
+        "allowed_operators": allowed,
+        "graph_data": request.POST.get("graph_data", "").strip(),
+    }
+
+
+def validate_exercise_form(form, exercise, publishing):
+    errors = []
+    if not form["title"]:
+        errors.append("Exercise title is required.")
+    if not form["description"]:
+        errors.append("Task description is required.")
+    if form["difficulty"] not in DIFFICULTIES:
+        errors.append("Select a difficulty.")
+    if form["module_id"] is None or not Topic.objects.filter(pk=form["module_id"]).exists():
+        errors.append("Assign the exercise to a module.")
+    if not form["target_formula"]:
+        errors.append("Solution formula is required.")
+
+    graph = None
+    if form["graph_data"]:
+        try:
+            graph = json.loads(form["graph_data"])
+        except json.JSONDecodeError:
+            errors.append("The Kripke structure could not be read.")
+    elif exercise is not None:
+        graph = exercise.kripke_structure
+
+    if publishing and not errors:
+        if not graph:
+            errors.append("Publishing needs a memorandum Kripke structure.")
+        else:
+            try:
+                result = run_ltl_check(graph, form["target_formula"])
+            except ValueError as exc:
+                errors.append(f"Formula check failed: {exc}")
+            except Exception:
+                errors.append("Formula check failed — check the structure and try again.")
+            else:
+                if result["result"] != "satisfied":
+                    errors.append("The solution formula does not hold on the memorandum structure.")
+    return errors, graph
+
+
+def persist_exercise(exercise, form, graph, publishing):
+    if exercise is None:
+        exercise = Exercise(topic_id=form["module_id"], created_at=timezone.now())
+    else:
+        exercise.topic_id = form["module_id"]
+    exercise.title = form["title"]
+    exercise.description = form["description"]
+    exercise.difficulty = form["difficulty"]
+    exercise.target_formula = form["target_formula"]
+    exercise.hints = form["hints"]
+    exercise.hint = next((h for h in form["hints"] if h), "")
+    exercise.allowed_operators = form["allowed_operators"]
+    exercise.kripke_structure = graph
+    exercise.is_published = publishing
+    exercise.save()

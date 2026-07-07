@@ -5,6 +5,9 @@ apps.checker.misconceptions.classify_misconception. Keys must match that
 module's BUCKETS.
 """
 
+BUILDER_OPERATORS = ["G", "F", "X", "U", "¬", "∧", "∨", "→"]
+DIFFICULTIES = ["beginner", "intermediate", "advanced"]
+
 MISCONCEPTION_LABELS = {
     "g_vs_f": "G vs F confusion",
     "f_vs_x": "F vs X confusion",

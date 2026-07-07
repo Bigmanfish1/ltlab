@@ -3,15 +3,20 @@ import json
 from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
-from apps.checker.tasks import run_ltl_check
 
+from .constants import BUILDER_OPERATORS, DIFFICULTIES
 from .models import Exercise, Topic
-from .services import _elements_json, exercise_rows
+from .services import (
+    _elements_json,
+    exercise_rows,
+    parse_exercise_form,
+    persist_exercise,
+    validate_exercise_form,
+)
 
 
 # Mock data for testing
@@ -243,10 +248,6 @@ MOCK_TEACHER_EXERCISES = [
     {"name": "Abstraction Mapping", "module": "Model Refinement", "difficulty": "advanced", "attempts": 33, "completion": 21, "avg_tries": 4.5},
 ]
 
-BUILDER_OPERATORS = ["G", "F", "X", "U", "¬", "∧", "∨", "→"]
-DIFFICULTIES = ["beginner", "intermediate", "advanced"]
-
-
 @teacher_required
 def teacher_exercises(request):
     return render(request, "exercises/teacher_exercises.html", {
@@ -331,87 +332,16 @@ def exercise_builder(request, exercise_id=None):
     return render(request, "exercises/teacher_exercise_builder.html", context)
 
 
-def _parse_exercise_form(request):
-    topic_id = request.POST.get("topic", "").strip()
-    try:
-        allowed = json.loads(request.POST.get("allowed_operators") or "[]")
-    except json.JSONDecodeError:
-        allowed = []
-    return {
-        "title": request.POST.get("title", "").strip(),
-        "description": request.POST.get("description", "").strip(),
-        "difficulty": request.POST.get("difficulty", "").strip(),
-        "module_id": int(topic_id) if topic_id.isdigit() else None,
-        "target_formula": request.POST.get("formula", "").strip(),
-        "hints": [request.POST.get(f"hint_{i}", "").strip() for i in (1, 2, 3)],
-        "allowed_operators": allowed,
-        "graph_data": request.POST.get("graph_data", "").strip(),
-    }
-
-
-def _validate_exercise_form(form, exercise, publishing):
-    errors = []
-    if not form["title"]:
-        errors.append("Exercise title is required.")
-    if not form["description"]:
-        errors.append("Task description is required.")
-    if form["difficulty"] not in DIFFICULTIES:
-        errors.append("Select a difficulty.")
-    if form["module_id"] is None or not Topic.objects.filter(pk=form["module_id"]).exists():
-        errors.append("Assign the exercise to a module.")
-    if not form["target_formula"]:
-        errors.append("Solution formula is required.")
-
-    graph = None
-    if form["graph_data"]:
-        try:
-            graph = json.loads(form["graph_data"])
-        except json.JSONDecodeError:
-            errors.append("The Kripke structure could not be read.")
-    elif exercise is not None:
-        graph = exercise.kripke_structure
-
-    if publishing and not errors:
-        if not graph:
-            errors.append("Publishing needs a memorandum Kripke structure.")
-        else:
-            try:
-                result = run_ltl_check(graph, form["target_formula"])
-            except ValueError as exc:
-                errors.append(f"Formula check failed: {exc}")
-            else:
-                if result["result"] != "satisfied":
-                    errors.append("The solution formula does not hold on the memorandum structure.")
-    return errors, graph
-
-
-def _persist_exercise(exercise, form, graph, publishing):
-    if exercise is None:
-        exercise = Exercise(topic_id=form["module_id"], created_at=timezone.now())
-    else:
-        exercise.topic_id = form["module_id"]
-    exercise.title = form["title"]
-    exercise.description = form["description"]
-    exercise.difficulty = form["difficulty"]
-    exercise.target_formula = form["target_formula"]
-    exercise.hints = form["hints"]
-    exercise.hint = next((h for h in form["hints"] if h), "")
-    exercise.allowed_operators = form["allowed_operators"]
-    exercise.kripke_structure = graph
-    exercise.is_published = publishing
-    exercise.save()
-
-
 def _save_exercise(request, exercise):
     publishing = request.POST.get("action", "draft") == "publish"
-    form = _parse_exercise_form(request)
-    errors, graph = _validate_exercise_form(form, exercise, publishing)
+    form = parse_exercise_form(request)
+    errors, graph = validate_exercise_form(form, exercise, publishing)
     if errors:
-        context = _builder_context(exercise, form)
-        context["form_errors"] = errors
-        return render(request, "exercises/teacher_exercise_builder.html", context)
+        for error in errors:
+            messages.error(request, error)
+        return render(request, "exercises/teacher_exercise_builder.html", _builder_context(exercise, form))
 
-    _persist_exercise(exercise, form, graph, publishing)
+    persist_exercise(exercise, form, graph, publishing)
     messages.success(request, "Exercise published." if publishing else "Draft saved.")
     return redirect("manage")
 
