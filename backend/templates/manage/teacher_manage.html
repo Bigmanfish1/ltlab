@@ -43,6 +43,9 @@
                     {% for ex in module.exercises %}
                     <div class="exercise-row flex items-center gap-3 px-5 py-3 border-b border-border-primary hover:bg-bg-tertiary transition-colors">
                         <span class="flex-1 text-[13px] text-text-primary">{{ ex.name }}</span>
+                        {% if not ex.is_published %}
+                        <span class="font-mono text-[9px] tracking-[0.12em] uppercase px-1.5 py-0.5 rounded border border-accent-orange text-accent-orange">Draft</span>
+                        {% endif %}
                         <span class="font-mono text-[10px] tracking-[0.12em] uppercase px-2 py-0.5 rounded bg-bg-tertiary text-text-secondary">{{ ex.difficulty }}</span>
                         <a href="{% url 'exercise_edit' ex.id %}" class="font-mono text-[11px] text-accent-orange hover:opacity-80 transition-opacity">Edit</a>
                         <form method="post" action="{% url 'exercise_delete' ex.id %}" class="js-delete-form" data-confirm="Delete the exercise “{{ ex.name }}”? This cannot be undone.">

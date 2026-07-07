@@ -246,7 +246,7 @@ def manage(request):
             "unlocks_after": t.unlocks_after.title if t.unlocks_after_id else "None",
             "visible": t.visible,
             "exercises": [
-                {"id": e.id, "name": e.title, "difficulty": e.difficulty}
+                {"id": e.id, "name": e.title, "difficulty": e.difficulty, "is_published": e.is_published}
                 for e in t.exercises.all()
             ],
         })
