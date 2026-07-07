@@ -243,7 +243,9 @@ def manage(request):
             "id": t.id,
             "index": f"{i:02d}",
             "title": t.title,
+            "description": t.description or "",
             "unlocks_after": t.unlocks_after.title if t.unlocks_after_id else "None",
+            "unlocks_after_id": t.unlocks_after_id or "",
             "visible": t.visible,
             "exercises": [
                 {"id": e.id, "name": e.title, "difficulty": e.difficulty, "is_published": e.is_published}
@@ -350,6 +352,32 @@ def topic_create(request):
         messages.error(request, "A module with that name already exists.")
         return redirect("manage")
     messages.success(request, "Module created.")
+    return redirect("manage")
+
+
+@teacher_required
+@require_POST
+def topic_update(request, topic_id):
+    topic = get_object_or_404(Topic, pk=topic_id)
+    title = request.POST.get("title", "").strip()
+    if not title:
+        messages.error(request, "Module title is required.")
+        return redirect("manage")
+    unlocks_id = request.POST.get("unlocks_after", "").strip()
+    unlocks = Topic.objects.filter(pk=unlocks_id).first() if unlocks_id.isdigit() else None
+    if unlocks and unlocks.id == topic.id:
+        unlocks = None
+    topic.title = title
+    topic.description = request.POST.get("description", "").strip()
+    topic.visible = request.POST.get("visible") == "1"
+    topic.unlocks_after = unlocks
+    try:
+        with transaction.atomic():
+            topic.save()
+    except IntegrityError:
+        messages.error(request, "A module with that name already exists.")
+        return redirect("manage")
+    messages.success(request, "Module updated.")
     return redirect("manage")
 
 

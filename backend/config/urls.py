@@ -14,6 +14,7 @@ from apps.exercises.views import (
     topic_create,
     topic_delete,
     topic_reorder,
+    topic_update,
     topic_visibility,
 )
 from apps.home.views import home, teacher_results, teacher_student_detail
@@ -35,6 +36,7 @@ urlpatterns = [
     path("teacher/exercises/<int:exercise_id>/edit/", exercise_builder, name="exercise_edit"),
     path("teacher/manage/", manage, name="manage"),
     path("teacher/manage/topics/new/", topic_create, name="topic_create"),
+    path("teacher/manage/topics/<int:topic_id>/edit/", topic_update, name="topic_update"),
     path("teacher/manage/topics/<int:topic_id>/delete/", topic_delete, name="topic_delete"),
     path("teacher/manage/topics/<int:topic_id>/visibility/", topic_visibility, name="topic_visibility"),
     path("teacher/manage/topics/reorder/", topic_reorder, name="topic_reorder"),

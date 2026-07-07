@@ -116,6 +116,22 @@ class CrudTests(TeacherViewTestCase):
         views.topic_create(self._req("post", self.teacher, {"title": "ltl", "visible": "1"}))
         self.assertEqual(Topic.objects.count(), before)
 
+    def test_topic_update_edits_fields(self):
+        topic = Topic.objects.create(title="Old", created_by=self.teacher, visible=True)
+        views.topic_update(
+            self._req("post", self.teacher, {"title": "New", "description": "d", "visible": "0"}),
+            topic.id,
+        )
+        topic.refresh_from_db()
+        self.assertEqual(topic.title, "New")
+        self.assertFalse(topic.visible)
+
+    def test_topic_update_rejects_duplicate_title(self):
+        topic = Topic.objects.create(title="Other", created_by=self.teacher)
+        views.topic_update(self._req("post", self.teacher, {"title": "ltl", "visible": "1"}), topic.id)
+        topic.refresh_from_db()
+        self.assertEqual(topic.title, "Other")
+
     def test_topic_visibility_toggles(self):
         topic = Topic.objects.create(title="V", created_by=self.teacher, visible=True)
         views.topic_visibility(self._req("post", self.teacher), topic.id)
