@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models.functions import Lower
 
 from apps.accounts.models import Profile
 
@@ -25,6 +26,9 @@ class Topic(models.Model):
     class Meta:
         db_table = "Topics"
         ordering = ["position", "id"]
+        constraints = [
+            models.UniqueConstraint(Lower("title"), name="uniq_topic_title_ci"),
+        ]
 
     def __str__(self):
         return self.title

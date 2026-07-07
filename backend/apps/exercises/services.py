@@ -82,6 +82,7 @@ def exercise_rows(matrix=None):
             "id": ex.id,
             "name": ex.title,
             "module": ex.topic.title,
+            "module_id": ex.topic_id,
             "difficulty": ex.difficulty,
             "attempts": m["attempts"],
             "completion": m["completion"],
@@ -96,10 +97,10 @@ def topic_completion(rows=None):
     rows = rows if rows is not None else exercise_rows()
     by_topic = defaultdict(list)
     for r in rows:
-        by_topic[r["module"]].append(r["completion_raw"])
+        by_topic[r["module_id"]].append(r["completion_raw"])
     out = []
     for topic in Topic.objects.all():
-        comps = by_topic.get(topic.title, [])
+        comps = by_topic.get(topic.id, [])
         # average the raw rates, round once (avoids compounding per-exercise rounding)
         out.append({"name": topic.title,
                     "completion": _round_half_up(sum(comps) / len(comps)) if comps else 0})
