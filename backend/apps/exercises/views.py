@@ -1,7 +1,7 @@
 import json
 
 from django.contrib import messages
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Max
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -337,14 +337,15 @@ def topic_create(request):
     highest = Topic.objects.aggregate(m=Max("position"))["m"]
     position = (highest if highest is not None else -1) + 1
     try:
-        Topic.objects.create(
-            title=title,
-            description=request.POST.get("description", "").strip(),
-            visible=request.POST.get("visible") == "1",
-            unlocks_after=unlocks,
-            position=position,
-            created_by=request.profile,
-        )
+        with transaction.atomic():
+            Topic.objects.create(
+                title=title,
+                description=request.POST.get("description", "").strip(),
+                visible=request.POST.get("visible") == "1",
+                unlocks_after=unlocks,
+                position=position,
+                created_by=request.profile,
+            )
     except IntegrityError:
         messages.error(request, "A module with that name already exists.")
         return redirect("manage")

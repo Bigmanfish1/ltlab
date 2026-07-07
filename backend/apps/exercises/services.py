@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 from collections import defaultdict
 from datetime import timedelta
@@ -11,6 +12,8 @@ from apps.checker.tasks import run_ltl_check
 
 from .constants import DIFFICULTIES, MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
 from .models import Attempt, Exercise, Topic
+
+logger = logging.getLogger(__name__)
 
 
 def enrolled_students():
@@ -390,6 +393,7 @@ def validate_exercise_form(form, exercise, publishing):
             except ValueError as exc:
                 errors.append(f"Formula check failed: {exc}")
             except Exception:
+                logger.exception("run_ltl_check failed during publish validation")
                 errors.append("Formula check failed — check the structure and try again.")
             else:
                 if result["result"] != "satisfied":

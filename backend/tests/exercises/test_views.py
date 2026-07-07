@@ -106,6 +106,16 @@ class CrudTests(TeacherViewTestCase):
         views.topic_delete(self._req("post", self.teacher), topic.id)
         self.assertFalse(Topic.objects.filter(title="M").exists())
 
+    def test_topic_create_positions_after_max(self):
+        Topic.objects.create(title="High", created_by=self.teacher, position=5)
+        views.topic_create(self._req("post", self.teacher, {"title": "M", "visible": "1"}))
+        self.assertEqual(Topic.objects.get(title="M").position, 6)
+
+    def test_duplicate_title_rejected_case_insensitively(self):
+        before = Topic.objects.count()
+        views.topic_create(self._req("post", self.teacher, {"title": "ltl", "visible": "1"}))
+        self.assertEqual(Topic.objects.count(), before)
+
     def test_topic_visibility_toggles(self):
         topic = Topic.objects.create(title="V", created_by=self.teacher, visible=True)
         views.topic_visibility(self._req("post", self.teacher), topic.id)
