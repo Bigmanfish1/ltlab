@@ -101,8 +101,13 @@
                 </thead>
                 <tbody id="student-rows">
                     {% for student in students %}
-                    <tr class="student-row border-b border-border-primary hover:bg-bg-tertiary transition-colors" data-name="{{ student.name|lower }}">
-                        <td class="px-2 py-4 text-[13px] text-text-primary">{{ student.name }}</td>
+                    <tr class="student-row border-b border-border-primary hover:bg-bg-tertiary transition-colors" data-name="{{ student.name|lower }} {{ student.email|lower }}">
+                        <td class="px-2 py-4">
+                            <div class="text-[13px] text-text-primary">{{ student.name }}</div>
+                            {% if student.email != student.name %}
+                            <div class="font-mono text-[11px] text-text-secondary">{{ student.email }}</div>
+                            {% endif %}
+                        </td>
                         <td class="px-2 py-4 text-[13px] text-text-secondary">{{ student.exercises_done }}</td>
                         <td class="px-2 py-4 font-mono text-[13px] text-text-primary">{{ student.accuracy }}%</td>
                         <td class="px-2 py-4 font-mono text-[11px] text-text-secondary">{{ student.last_active }}</td>

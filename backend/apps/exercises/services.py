@@ -210,6 +210,7 @@ def students_roster(matrix=None):
             out.append({
                 "id": student.id,
                 "name": student.name or student.email,
+                "email": student.email,
                 "exercises_done": len(acc["solved"]),
                 "accuracy": _pct(acc["correct"], acc["total"]),
                 "last_active": _humanize(acc["last"]),
@@ -218,6 +219,7 @@ def students_roster(matrix=None):
             out.append({
                 "id": student.id,
                 "name": student.name or student.email,
+                "email": student.email,
                 "exercises_done": 0,
                 "accuracy": 0,
                 "last_active": "never",
