@@ -165,8 +165,8 @@ def misconception_breakdown():
         pct = pcts.get(bucket, 0)
         out.append({
             "key": bucket,
-            "label": MISCONCEPTION_LABELS[bucket],
-            "description": f"{pct}% of classified errors {MISCONCEPTION_DESCRIPTIONS[bucket]}",
+            "label": MISCONCEPTION_LABELS.get(bucket, bucket),
+            "description": f"{pct}% of classified errors {MISCONCEPTION_DESCRIPTIONS.get(bucket, '')}",
             "percentage": pct,
         })
     out.sort(key=lambda x: x["percentage"], reverse=True)
