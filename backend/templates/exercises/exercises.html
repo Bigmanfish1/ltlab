@@ -21,7 +21,7 @@
                     <div class="flex-1">
                         <div class="flex items-center gap-3 mb-2">
                             <h3 class="text-lg text-text-primary font-medium group-hover:text-white transition-colors">
-                                Exercise {{ forloop.counter }} · {{ item.exercise.title }}{{ item.exercise.title }}
+                                {{ item.exercise.title }}
                             </h3>
                             {% if item.is_completed %}
                             <span class="font-mono text-[11px] px-2 py-0.5 bg-accent-lime text-bg-primary rounded">
@@ -34,7 +34,7 @@
                         </p>
                         <div class="flex items-center gap-4 text-xs font-mono text-text-secondary">
                             <span>•</span>
-                            <span>{{ item.exercise.difficulty}}</span>
+                            <span>{{ item.exercise.hints|length }} hints available</span>
                             {% if item.attempt_count > 0 %}
                             <span>•</span>
                             <span>{{ item.attempt_count }} attempt{{ item.attempt_count|pluralize }}</span>

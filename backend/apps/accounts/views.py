@@ -68,10 +68,7 @@ def _get_or_create_profile(user) -> Profile:
         with transaction.atomic():
             profile, _ = Profile.objects.get_or_create(
                 email=user.email,
-                defaults={
-                    "id": user.id,
-                    "name": name,
-                },
+                defaults={"name": name},
             )
     except IntegrityError:
         # Concurrent first login created the row first — fetch theirs.

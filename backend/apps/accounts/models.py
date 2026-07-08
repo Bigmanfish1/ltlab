@@ -9,7 +9,6 @@ class Profile(models.Model):
         (ROLE_TEACHER, "Teacher"),
     ]
 
-    id =  models.UUIDField(primary_key=True)
     email = models.EmailField(unique=True)
     name = models.CharField(max_length=255, blank=True, default="")
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_STUDENT)
