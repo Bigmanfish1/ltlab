@@ -11,7 +11,7 @@
             <div class="flex items-center justify-between mb-2">
                 <div>
                     <h1 class="text-2xl text-text-primary font-semibold tracking-tight">
-                       Exercise {{ exercise_number }} · {{ exercise.title }}
+                        {{ exercise.title }}
                     </h1>
                     <div class="flex items-center mt-2">
                         {% if is_completed %}
@@ -137,11 +137,11 @@
                                     {% if attempt.is_correct %}✓ CORRECT{% else %}✗ INCORRECT{% endif %}
                                 </span>
                                 <span class="font-mono text-xs text-text-secondary">
-                                    {{ attempt.timestamp|date:"M d, Y H:i" }}
+                                    12 hours ago
                                 </span>
                             </div>
                             <div class="font-mono text-sm text-text-primary bg-bg-tertiary rounded px-2 py-1">
-                                {{ attempt.formula_input }}
+                                {{ attempt.submitted_formula }}
                             </div>
                         </div>
                         {% endfor %}

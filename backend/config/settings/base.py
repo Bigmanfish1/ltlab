@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import environ
@@ -68,15 +67,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
-"default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "postgres",
-        "USER": "[DB_USER]",
-        'PASSWORD': '[DB_PASSWORD]',
-        "HOST": "aws-1-eu-central-1.pooler.supabase.com",
-        "PORT": "5432",
-        'OPTIONS': {'sslmode': 'require'},
-    }
+    "default": env.db("DATABASE_URL"),
 }
 
 LANGUAGE_CODE = "en-us"
