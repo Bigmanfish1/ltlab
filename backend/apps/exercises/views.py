@@ -1,101 +1,13 @@
 import json
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from .models import Exercise, Attempt
 
-
-
-# Mock data for testing
-MOCK_KRIPKE_MODEL = {
-    'id': 1,
-    'description': 'A basic traffic light system',
-    'states': [
-        {'id': 's0', 'label': 'Green', 'props': ['green']},
-        {'id': 's1', 'label': 'Yellow', 'props': ['yellow']},
-        {'id': 's2', 'label': 'Red', 'props': ['red']}
-    ],
-    'transitions': [
-        {'source': 's0', 'target': 's1'},
-        {'source': 's1', 'target': 's2'},
-        {'source': 's2', 'target': 's0'}
-    ],
-    'initial_state': 's0'
-}
-
-MOCK_EXERCISES = [
-    {
-        'id': 1,
-        'title': 'Exercise 01 · Always Eventually Green',
-        'description': 'Write a formula that states the traffic light will always eventually turn green.',
-        'correct_formula': 'G F green',
-        'hints': [
-            'Think about the "always" operator (G)',
-            'Combine it with the "eventually" operator (F)',
-            'The complete formula is: G F green'
-        ],
-        'kripke_model': MOCK_KRIPKE_MODEL
-    },
-    {
-        'id': 2,
-        'title': 'Exercise 02 · Never Red and Green',
-        'description': 'Write a formula stating that red and green can never be true at the same time.',
-        'correct_formula': 'G !(red & green)',
-        'hints': [
-            'Use the negation operator (!)',
-            'Use the "always" operator (G)',
-            'Think about when both propositions are true together'
-        ],
-        'kripke_model': MOCK_KRIPKE_MODEL
-    },
-    {
-        'id': 3,
-        'title': 'Exercise 03 · Yellow Leads to Red',
-        'description': 'Write a formula stating that whenever yellow is true, red must eventually follow.',
-        'correct_formula': 'G (yellow -> F red)',
-        'hints': [
-            'Use the implication operator (->)',
-            'Combine with the eventually operator (F)',
-            'Wrap everything in always (G)'
-        ],
-        'kripke_model': MOCK_KRIPKE_MODEL
-    },
-    {
-        'id': 4,
-        'title': 'Exercise 04 · Next State Property',
-        'description': 'Write a formula using the next operator.',
-        'correct_formula': 'X green',
-        'hints': ['Use the X (next) operator'],
-        'kripke_model': MOCK_KRIPKE_MODEL
-    }
-]
-
-MOCK_ATTEMPTS = [
-    {
-        'id': 1,
-        'submitted_formula': 'F G green',
-        'is_correct': False,
-        'submitted_at': '2 hours ago',
-    },
-    {
-        'id': 2,
-        'submitted_formula': 'G green',
-        'is_correct': False,
-        'submitted_at': '1 hour ago',
-    },
-    {
-        'id': 3,
-        'submitted_formula': 'G F green',
-        'is_correct': True,
-        'submitted_at': '30 minutes ago',
-    }
-]
-
-
-def get_mock_exercise(exercise_id):
+def get_exercise(exercise_id):
     exercise = Exercise.objects.filter(id=exercise_id).first()
     return exercise
 
@@ -122,7 +34,7 @@ def exercises(request):
 @supabase_login_required
 def exercise_canvas(request, exercise_id):
     """Exercise canvas with Kripke model, formula input, and submission"""
-    exercise = get_mock_exercise(exercise_id)
+    exercise = get_exercise(exercise_id)
 
     if not exercise:
         return render(request, '404.html', status=404)
@@ -198,7 +110,7 @@ def submit_formula(request, exercise_id):
 @supabase_login_required
 def get_hint(request, exercise_id):
     """Get next hint for exercise"""
-    exercise = get_mock_exercise(exercise_id)
+    exercise = get_exercise(exercise_id)
 
     if exercise.hint != "":
         return JsonResponse({
