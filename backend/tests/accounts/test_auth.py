@@ -1,4 +1,5 @@
 import time
+import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -29,19 +30,25 @@ from apps.accounts.models import Profile
 from apps.accounts.views import _get_or_create_profile, logout_view
 
 
-def fake_user(email="alice@uni.edu", name="Alice Example", uid="uuid-123"):
-    """Stand-in for a Supabase gotrue User object (refresh path)."""
+def fake_user(
+    email="alice@uni.edu",
+    name="Alice Example",
+    uid=None,
+):
     return SimpleNamespace(
-        id=uid,
+        id=uid or uuid.uuid4(),
         email=email,
         user_metadata={"full_name": name} if name else {},
     )
 
-
-def fake_claims(email="alice@uni.edu", name="Alice Example", sub="uuid-123", session_id="sess-1"):
-    """Stand-in for verified Supabase JWT claims."""
+def fake_claims(
+    email="alice@uni.edu",
+    name="Alice Example",
+    sub=None,
+    session_id="sess-1",
+):
     return {
-        "sub": sub,
+        "sub": sub or str(uuid.uuid4()),
         "email": email,
         "user_metadata": {"full_name": name} if name else {},
         "session_id": session_id,
@@ -53,12 +60,12 @@ class ProfileModelTests(TestCase):
         self.assertEqual(Profile._meta.db_table, "Users")
 
     def test_email_is_unique(self):
-        Profile.objects.create(email="a@uni.edu")
+        Profile.objects.create(email="a@uni.edu", id=uuid.uuid4())
         with self.assertRaises(IntegrityError):
-            Profile.objects.create(email="a@uni.edu")
+            Profile.objects.create(email="a@uni.edu", id=uuid.uuid4())
 
     def test_role_defaults_to_student(self):
-        p = Profile.objects.create(email="a@uni.edu")
+        p = Profile.objects.create(email="a@uni.edu", id=uuid.uuid4())
         self.assertEqual(p.role, Profile.ROLE_STUDENT)
 
 
@@ -83,7 +90,7 @@ class GetOrCreateProfileTests(TestCase):
 
     def test_concurrent_race_falls_back_to_fetch(self):
         # Pre-create the row the "winning" request would have made.
-        existing = Profile.objects.create(email="alice@uni.edu")
+        existing = Profile.objects.create(email="alice@uni.edu", id=uuid.uuid4())
         with patch.object(
             Profile.objects, "get_or_create", side_effect=IntegrityError
         ):
@@ -109,7 +116,7 @@ class DecoratorTests(TestCase):
     def test_login_required_allows_authenticated_with_profile(self):
         request = self.factory.get("/protected/")
         request.supabase_user = fake_user()
-        request.profile = Profile.objects.create(email="alice@uni.edu")
+        request.profile = Profile.objects.create(email="alice@uni.edu", id=uuid.uuid4())
         self.assertEqual(supabase_login_required(self._view())(request), "OK")
 
     def test_login_required_bounces_authenticated_without_profile(self):
@@ -144,7 +151,7 @@ class DecoratorTests(TestCase):
         request = self.factory.get("/teacher/")
         request.supabase_user = fake_user()
         request.profile = Profile.objects.create(
-            email="s@uni.edu", role=Profile.ROLE_STUDENT
+            email="s@uni.edu", role=Profile.ROLE_STUDENT, id=uuid.uuid4()
         )
         response = teacher_required(self._view())(request)
         self.assertEqual(response.status_code, 302)
@@ -154,7 +161,7 @@ class DecoratorTests(TestCase):
         request = self.factory.get("/teacher/")
         request.supabase_user = fake_user()
         request.profile = Profile.objects.create(
-            email="t@uni.edu", role=Profile.ROLE_TEACHER
+            email="t@uni.edu", role=Profile.ROLE_TEACHER, id=uuid.uuid4()
         )
         self.assertEqual(teacher_required(self._view())(request), "OK")
 
@@ -167,8 +174,9 @@ class JwtAuthTests(TestCase):
         _denylist.clear()
 
     def test_supabase_user_reads_claims(self):
-        u = SupabaseUser(fake_claims())
-        self.assertEqual(u.id, "uuid-123")
+        user_id = str(uuid.uuid4())
+        u = SupabaseUser(fake_claims(sub=user_id))
+        self.assertEqual(u.id, user_id)
         self.assertEqual(u.email, "alice@uni.edu")
         self.assertEqual(u.user_metadata["full_name"], "Alice Example")
         self.assertEqual(u.session_id, "sess-1")
@@ -278,7 +286,7 @@ class SupabaseAuthMiddlewareTests(TestCase):
 
     @patch("apps.accounts.middleware.verify_token")
     def test_valid_token_attaches_profile_by_email(self, mock_verify):
-        profile = Profile.objects.create(email="alice@uni.edu")
+        profile = Profile.objects.create(email="alice@uni.edu", id=uuid.uuid4())
         mock_verify.return_value = fake_claims()
 
         request = self.factory.get("/")
@@ -301,7 +309,7 @@ class SupabaseAuthMiddlewareTests(TestCase):
 
     @patch("apps.accounts.middleware.verify_token")
     def test_revoked_session_is_anonymous(self, mock_verify):
-        Profile.objects.create(email="alice@uni.edu")
+        Profile.objects.create(email="alice@uni.edu", id=uuid.uuid4())
         mock_verify.return_value = fake_claims(session_id="sess-x")
         revoke_session("sess-x", time.time() + 100)
 
@@ -315,7 +323,7 @@ class SupabaseAuthMiddlewareTests(TestCase):
     @patch("apps.accounts.middleware.create_client")
     @patch("apps.accounts.middleware.verify_token")
     def test_expired_token_triggers_refresh(self, mock_verify, mock_create):
-        profile = Profile.objects.create(email="alice@uni.edu")
+        profile = Profile.objects.create(email="alice@uni.edu", id=uuid.uuid4())
         mock_verify.side_effect = jwt.ExpiredSignatureError()
         new_session = SimpleNamespace(access_token="new-a", refresh_token="new-r")
         mock_create.return_value.auth.refresh_session.return_value = SimpleNamespace(
@@ -484,7 +492,7 @@ class LogoutViewTests(TestCase):
 
 class SetRoleCommandTests(TestCase):
     def test_promotes_existing_profile(self):
-        Profile.objects.create(email="t@uni.edu", role=Profile.ROLE_STUDENT)
+        Profile.objects.create(email="t@uni.edu", role=Profile.ROLE_STUDENT, id=uuid.uuid4())
         call_command("set_role", "t@uni.edu", "teacher")
         self.assertEqual(
             Profile.objects.get(email="t@uni.edu").role, Profile.ROLE_TEACHER
