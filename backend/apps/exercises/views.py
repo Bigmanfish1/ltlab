@@ -154,38 +154,39 @@ def exercise_canvas(request, exercise_id):
 @require_POST
 def submit_formula(request, exercise_id):
     """Handle formula submission and check correctness"""
-    exercise = get_mock_exercise(exercise_id)
-
-    if not exercise:
-        return JsonResponse({'error': 'Exercise not found'}, status=404)
+    exercise = get_object_or_404(Exercise, id=exercise_id)
+    student = request.profile  # confirm this matches your middleware's attribute name
 
     try:
         data = json.loads(request.body)
         submitted_formula = data.get('formula', '').strip()
-        time_spent = data.get('time_spent', 0)
-        hints_used = data.get('hints_used', 0)
 
         if not submitted_formula:
             return JsonResponse({'error': 'Formula cannot be empty'}, status=400)
 
-        # Check if formula is correct (submitted_formula already stripped above)
-        is_correct = submitted_formula == exercise['correct_formula'].strip()
+        is_correct = submitted_formula == exercise.target_formula.strip()
 
-        # Generate counterexample if incorrect
         counterexample = None
         if not is_correct:
             counterexample = {
                 'path': ['s0', 's1', 's2', 's0'],
-                'reason': f'The formula "{submitted_formula}" does not hold on this path. Expected: {exercise["correct_formula"]}',
-                'violated_at': 's1'
+                'reason': f'The formula "{submitted_formula}" does not hold on this path. Expected: {exercise.target_formula}',
+                'violated_at': 's1',
             }
+
+        attempt = Attempt.objects.create(
+            exercise=exercise,
+            student=student,
+            formula_input=submitted_formula,
+            is_correct=is_correct,
+        )
 
         return JsonResponse({
             'success': True,
             'is_correct': is_correct,
             'counterexample': counterexample,
             'message': 'Correct! Well done. 🎉' if is_correct else 'Incorrect. Check the counterexample and try again.',
-            'attempt_id': 999  # Mock ID
+            'attempt_id': str(attempt.id),
         })
 
     except json.JSONDecodeError:
