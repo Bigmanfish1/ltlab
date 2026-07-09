@@ -276,6 +276,9 @@ docker exec -it ltlab-web python manage.py createsuperuser
 # Open a Django shell
 docker exec -it ltlab-web python manage.py shell
 
+# Seed data
+docker compose exec web python manage.py seed_data 
+
 # Open a bash shell inside the container
 docker exec -it ltlab-web bash
 ```
