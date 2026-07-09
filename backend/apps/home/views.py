@@ -1,7 +1,12 @@
-from django.shortcuts import render
+from collections import Counter
+from datetime import timedelta
 
+from django.db.models import Count, Q
+from django.shortcuts import render
+from django.utils import timezone
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.accounts.models import Profile
+from apps.exercises.models import Attempt, Exercise, Topic
 
 
 @supabase_login_required
@@ -18,46 +23,87 @@ def home(request):
     return student_dashboard(request)
 
 
+def topic_display_difficulty(topic):
+    """Most common difficulty among a topic's exercises."""
+    values = list(topic.Exercises.values_list('difficulty', flat=True))
+    if not values:
+        return None
+    return Counter(values).most_common(1)[0][0]
+
+def get_day_streak(student):
+    dates = list(
+        Attempt.objects.filter(student=student)
+        .dates('created_at', 'day')
+        .order_by('-created_at')
+    )
+    if not dates:
+        return 0
+
+    streak = 0
+    expected_date = timezone.now().date()
+
+    for d in dates:
+        if d == expected_date:
+            streak += 1
+            expected_date -= timedelta(days=1)
+        else:
+            break
+
+    return streak
+
 @supabase_login_required
 def student_dashboard(request):
+    student = Profile.objects.get(id=request.supabase_user.id)
+
+    topics = Topic.objects.annotate(
+        total_exercises=Count('Exercises', distinct=True),
+        completed_exercises=Count(
+            'Exercises',
+            filter=Q(Exercises__Attempts__student=student, Exercises__Attempts__is_correct=True),
+            distinct=True,
+        ),
+    ).order_by('id')
+
+    modules = []
+    for topic in topics:
+        completion = (
+            round((topic.completed_exercises / topic.total_exercises) * 100)
+            if topic.total_exercises else 0
+        )
+        if completion == 100:
+            status = "complete"
+        elif completion > 0:
+            status = "in-progress"
+        else:
+            status = "locked"
+
+        modules.append({
+            "id": topic.id,
+            "name": topic.title,
+            "difficulty": topic_display_difficulty(topic),
+            "completion": completion,
+            "status": status,
+        })
+
+    total_exercises = Exercise.objects.count()
+    exercises_done = Exercise.objects.filter(
+        Attempts__student=student, Attempts__is_correct=True
+    ).distinct().count()
+    overall_progress = round((exercises_done / total_exercises) * 100) if total_exercises else 0
+
+    attempts = Attempt.objects.filter(student=student)
+    total_attempts = attempts.count()
+    correct_attempts = attempts.filter(is_correct=True).count()
+    accuracy = round((correct_attempts / total_attempts) * 100) if total_attempts else 0
+
     context = {
-        "modules": [
-            {
-                "id": 1,
-                "name": "Kripke Structures",
-                "difficulty": "beginner",
-                "completion": 100,
-                "status": "complete",
-            },
-            {
-                "id": 2,
-                "name": "LTL Operators",
-                "difficulty": "intermediate",
-                "completion": 64,
-                "status": "in-progress",
-            },
-            {
-                "id": 3,
-                "name": "CTL Semantics",
-                "difficulty": "advanced",
-                "completion": 22,
-                "status": "in-progress",
-            },
-            {
-                "id": 4,
-                "name": "Fairness & Liveness",
-                "difficulty": "advanced",
-                "completion": 0,
-                "status": "locked",
-            },
-        ],
-        "overall_progress": 47,
-        "exercises_done": 24,
-        "accuracy": 91,
-        "day_streak": 6,
+        "modules": modules,
+        "overall_progress": overall_progress,
+        "exercises_done": exercises_done,
+        "accuracy": accuracy,
+        "day_streak": get_day_streak(student),
     }
     return render(request, "dashboard/student_dashboard.html", context)
-
 
 @teacher_required
 def teacher_dashboard(request):

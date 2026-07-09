@@ -1,11 +1,12 @@
 import json
-
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
+from .models import Exercise, Attempt
+
 
 
 # Mock data for testing
@@ -95,20 +96,20 @@ MOCK_ATTEMPTS = [
 
 
 def get_mock_exercise(exercise_id):
-    """Get mock exercise by ID"""
-    for exercise in MOCK_EXERCISES:
-        if exercise['id'] == exercise_id:
-            return exercise
-    return None
+    exercise = Exercise.objects.filter(id=exercise_id).first()
+    return exercise
 
 @supabase_login_required
 def exercises(request):
     exercises_data = []
-    for exercise in MOCK_EXERCISES:
+    data = Exercise.objects.all()
+    for exercise in data:
+        attempt_count = Attempt.objects.filter(exercise=exercise, student=request.supabase_user.id).count()
+        is_completed = Attempt.objects.filter(exercise=exercise, student=request.supabase_user.id, is_correct=True).exists()
         exercises_data.append({
             'exercise': exercise,
-            'is_completed': exercise['id'] == 1,  # Mock: only exercise with ID 1 is completed
-            'attempt_count': exercise['id'],  # Mock: attempt count = exercise ID
+            'is_completed': is_completed,
+            'attempt_count': attempt_count,
             'best_attempt': None,
         })
 
@@ -126,22 +127,21 @@ def exercise_canvas(request, exercise_id):
     if not exercise:
         return render(request, '404.html', status=404)
 
-    # Get mock attempts for this exercise
-    attempts = MOCK_ATTEMPTS if exercise_id == 1 else []
+    attempts = Attempt.objects.filter(exercise=exercise, student=request.supabase_user.id)
+    is_completed = Attempt.objects.filter(exercise=exercise, student=request.supabase_user.id, is_correct=True).exists()
 
-    # Mock completion status
-    is_completed = any(a['is_correct'] for a in attempts)
 
     # Find previous and next exercises
-    all_exercises = MOCK_EXERCISES
+    all_exercises = Exercise.objects.all()
 
-    current_index = next((i for i, ex in enumerate(all_exercises) if ex['id'] == exercise_id), 0)
+    current_index = next((i for i, ex in enumerate(all_exercises) if ex.id == exercise_id), 0)
     prev_exercise = all_exercises[current_index - 1] if current_index > 0 else None
     next_exercise = all_exercises[current_index + 1] if current_index < len(all_exercises) - 1 else None
 
     context = {
         'exercise': exercise,
-        'kripke_model': exercise['kripke_model'],
+        'exercise_number': current_index + 1,
+        'kripke_model': "",
         'attempts': attempts,
         'is_completed': is_completed,
         'prev_exercise': prev_exercise,
@@ -154,38 +154,39 @@ def exercise_canvas(request, exercise_id):
 @require_POST
 def submit_formula(request, exercise_id):
     """Handle formula submission and check correctness"""
-    exercise = get_mock_exercise(exercise_id)
-
-    if not exercise:
-        return JsonResponse({'error': 'Exercise not found'}, status=404)
+    exercise = get_object_or_404(Exercise, id=exercise_id)
+    student = request.profile  # confirm this matches your middleware's attribute name
 
     try:
         data = json.loads(request.body)
         submitted_formula = data.get('formula', '').strip()
-        time_spent = data.get('time_spent', 0)
-        hints_used = data.get('hints_used', 0)
 
         if not submitted_formula:
             return JsonResponse({'error': 'Formula cannot be empty'}, status=400)
 
-        # Check if formula is correct (submitted_formula already stripped above)
-        is_correct = submitted_formula == exercise['correct_formula'].strip()
+        is_correct = submitted_formula == exercise.target_formula.strip()
 
-        # Generate counterexample if incorrect
         counterexample = None
         if not is_correct:
             counterexample = {
                 'path': ['s0', 's1', 's2', 's0'],
-                'reason': f'The formula "{submitted_formula}" does not hold on this path. Expected: {exercise["correct_formula"]}',
-                'violated_at': 's1'
+                'reason': f'The formula "{submitted_formula}" does not hold on this path. Expected: {exercise.target_formula}',
+                'violated_at': 's1',
             }
+
+        attempt = Attempt.objects.create(
+            exercise=exercise,
+            student=student,
+            formula_input=submitted_formula,
+            is_correct=is_correct,
+        )
 
         return JsonResponse({
             'success': True,
             'is_correct': is_correct,
             'counterexample': counterexample,
             'message': 'Correct! Well done. 🎉' if is_correct else 'Incorrect. Check the counterexample and try again.',
-            'attempt_id': 999  # Mock ID
+            'attempt_id': str(attempt.id),
         })
 
     except json.JSONDecodeError:
@@ -199,19 +200,12 @@ def get_hint(request, exercise_id):
     """Get next hint for exercise"""
     exercise = get_mock_exercise(exercise_id)
 
-    if not exercise:
-        return JsonResponse({'error': 'Exercise not found'}, status=404)
-
-    hint_index = int(request.GET.get('index', 0))
-
-    if hint_index < len(exercise['hints']):
+    if exercise.hint != "":
         return JsonResponse({
-            'hint': exercise['hints'][hint_index],
-            'hint_index': hint_index,
-            'total_hints': len(exercise['hints'])
+            'hint': exercise.hint
         })
     else:
-        return JsonResponse({'error': 'No more hints available'}, status=404)
+        return JsonResponse({'error': 'No hint available'}, status=404)
 
 
 MOCK_TEACHER_EXERCISES = [
