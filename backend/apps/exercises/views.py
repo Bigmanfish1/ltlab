@@ -34,9 +34,9 @@ def get_exercise(exercise_id):
 def exercises(request):
     exercises_data = []
     for exercise in Exercise.objects.all():
-        attempt_count = Attempt.objects.filter(exercise=exercise, student=request.supabase_user.id).count()
+        attempt_count = Attempt.objects.filter(exercise=exercise, student=request.profile).count()
         is_completed = Attempt.objects.filter(
-            exercise=exercise, student=request.supabase_user.id, is_correct=True
+            exercise=exercise, student=request.profile, is_correct=True
         ).exists()
         exercises_data.append({
             'exercise': exercise,
@@ -56,12 +56,12 @@ def exercise_canvas(request, exercise_id):
     if not exercise:
         return render(request, '404.html', status=404)
 
-    attempts = Attempt.objects.filter(exercise=exercise, student=request.supabase_user.id)
+    attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
-        exercise=exercise, student=request.supabase_user.id, is_correct=True
+        exercise=exercise, student=request.profile, is_correct=True
     ).exists()
 
-    all_exercises = Exercise.objects.all()
+    all_exercises = list(Exercise.objects.order_by('position', 'id'))
     current_index = next((i for i, ex in enumerate(all_exercises) if ex.id == exercise_id), 0)
     prev_exercise = all_exercises[current_index - 1] if current_index > 0 else None
     next_exercise = all_exercises[current_index + 1] if current_index < len(all_exercises) - 1 else None

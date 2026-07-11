@@ -62,7 +62,7 @@ def get_day_streak(student):
 
 @supabase_login_required
 def student_dashboard(request):
-    student = Profile.objects.get(id=request.supabase_user.id)
+    student = request.profile
 
     topics = Topic.objects.annotate(
         total_exercises=Count('exercises', distinct=True),
@@ -71,7 +71,7 @@ def student_dashboard(request):
             filter=Q(exercises__attempts__student=student, exercises__attempts__is_correct=True),
             distinct=True,
         ),
-    ).order_by('id')
+    ).order_by('position', 'id')
 
     modules = []
     for topic in topics:
