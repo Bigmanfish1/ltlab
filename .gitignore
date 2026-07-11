@@ -30,9 +30,6 @@ backend/mediafiles/
 *.swp
 *.swo
 
-# Handover docs (local only, never committed)
-handover/
-
 # Claude Code
 CLAUDE.md
 .claude/
