@@ -270,7 +270,11 @@ def _builder_context(exercise, form=None):
     elif exercise is not None:
         hints = list(exercise.hints or [])[:3]
         hint_values = hints + [""] * (3 - len(hints))
-        allowed = exercise.allowed_operators or BUILDER_OPERATORS
+        allowed = (
+            exercise.allowed_operators
+            if exercise.allowed_operators is not None
+            else BUILDER_OPERATORS
+        )
         elements_json = _elements_json(exercise.kripke_structure)
         prefill = {
             "title": exercise.title,

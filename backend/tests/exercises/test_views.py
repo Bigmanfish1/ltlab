@@ -145,3 +145,14 @@ class CrudTests(TeacherViewTestCase):
         )
         views.exercise_delete(self._req("post", self.teacher), ex.id)
         self.assertFalse(Exercise.objects.filter(pk=ex.id).exists())
+
+
+class BuilderContextTests(TeacherViewTestCase):
+    def test_empty_allow_list_is_preserved_on_edit(self):
+        # teacher who disabled every operator stored [] — must not re-enable all
+        ex = Exercise.objects.create(
+            topic=self.topic, title="Locked", description="d", difficulty="beginner",
+            hint="h", target_formula="G p", allowed_operators=[],
+        )
+        context = views._builder_context(ex)
+        self.assertEqual(context["allowed_operators"], [])
