@@ -56,3 +56,13 @@ class ReconciliationTests(TestCase):
         buckets = {m["key"] for m in services.misconception_breakdown()}
         self.assertIn("g_vs_f", buckets)
         self.assertIn("missing_global", buckets)
+
+    def test_breakdown_backfills_and_is_idempotent(self):
+        services.misconception_breakdown()
+        # every wrong attempt now carries a stored bucket (NULL only means unclassified)
+        self.assertFalse(
+            Attempt.objects.filter(is_correct=False, misconception__isnull=True).exists()
+        )
+        # a second load classifies nothing new — same result, no pending rows
+        first = services.misconception_breakdown()
+        self.assertEqual(first, services.misconception_breakdown())

@@ -64,6 +64,8 @@ class Attempt(models.Model):
     is_correct = models.BooleanField()
     created_at = models.DateTimeField(auto_now_add=True)
     hints_used = models.IntegerField(default=0)
+    # NULL = not yet classified; "" = classified, no misconception; else a bucket key
+    misconception = models.CharField(max_length=32, null=True, blank=True)
 
     class Meta:
         db_table = "Attempts"

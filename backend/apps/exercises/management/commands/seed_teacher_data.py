@@ -204,11 +204,13 @@ class Command(BaseCommand):
 
         rotation = ["missing_global", "f_vs_x", "g_vs_f", "missing_eventually", "inverted", "mistranslation"]
         ex_wrong = {}
+        ex_bucket = {}
         for idx, ex in enumerate(exercises):
             variants = _wrong_variants(ex.target_formula)
             want = rotation[idx % len(rotation)]
             match = next((v for v in variants if classify_misconception(ex.target_formula, v) == want), None)
             ex_wrong[ex.id] = match or variants[0]
+            ex_bucket[ex.id] = classify_misconception(ex.target_formula, ex_wrong[ex.id]) or ""
 
         stamps = []
         for si, student in enumerate(students):
@@ -222,10 +224,10 @@ class Command(BaseCommand):
                 day_span = rng.randint(0, 6) if active_recent else rng.randint(8, 40)
                 base = now - timedelta(days=day_span, hours=rng.randint(0, 20))
                 for k in range(tries):
-                    stamps.append(_mk(ex, student, False, wrong,
+                    stamps.append(_mk(ex, student, False, wrong, ex_bucket[ex.id],
                                       rng.randint(0, 2), base + timedelta(minutes=k * 7)))
                 if solves:
-                    stamps.append(_mk(ex, student, True, ex.target_formula,
+                    stamps.append(_mk(ex, student, True, ex.target_formula, "",
                                       rng.randint(0, 1), base + timedelta(minutes=tries * 7)))
 
         created = Attempt.objects.bulk_create([a for a, _ in stamps])
@@ -238,12 +240,13 @@ class Command(BaseCommand):
         ))
 
 
-def _mk(exercise, student, correct, formula, hints_used, dt):
+def _mk(exercise, student, correct, formula, misconception, hints_used, dt):
     attempt = Attempt(
         exercise=exercise,
         student=student,
         is_correct=correct,
         formula_input=formula,
         hints_used=hints_used,
+        misconception=misconception,
     )
     return attempt, dt

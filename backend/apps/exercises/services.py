@@ -4,6 +4,7 @@ import math
 from collections import defaultdict
 from datetime import timedelta
 
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.accounts.models import Profile
@@ -153,17 +154,34 @@ def struggled_exercises(rows=None, limit=5):
     return out
 
 
+def _backfill_misconceptions():
+    """Classify wrong attempts that have no stored bucket yet, one time each.
+
+    Classification needs SPOT (Django-only); prod attempts written by the external
+    system arrive with misconception NULL and get classified on first Results view.
+    NULL vs "" (classified, no misconception) keeps this idempotent.
+    """
+    pending = (
+        Attempt.objects.filter(is_correct=False, misconception__isnull=True)
+        .values_list("id", "formula_input", "exercise__target_formula")
+    )
+    by_bucket = defaultdict(list)
+    for aid, submitted, target in pending:
+        by_bucket[classify_misconception(target, submitted) or ""].append(aid)
+    for bucket, ids in by_bucket.items():
+        Attempt.objects.filter(pk__in=ids).update(misconception=bucket)
+
+
 def misconception_breakdown():
-    counts = defaultdict(int)
-    total_wrong = 0
-    rows = Attempt.objects.filter(
-        is_correct=False, student_id__in=enrolled_ids()
-    ).values_list("formula_input", "exercise__target_formula")
-    for submitted, target in rows:
-        bucket = classify_misconception(target, submitted)
-        if bucket:
-            counts[bucket] += 1
-            total_wrong += 1
+    _backfill_misconceptions()
+    counts = dict(
+        Attempt.objects.filter(is_correct=False, student_id__in=enrolled_ids())
+        .exclude(misconception__isnull=True)
+        .exclude(misconception="")
+        .values_list("misconception")
+        .annotate(n=Count("id"))
+    )
+    total_wrong = sum(counts.values())
     pcts = _largest_remainder(counts, total_wrong)
     out = []
     for bucket, n in counts.items():
