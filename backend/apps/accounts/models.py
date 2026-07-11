@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 
@@ -9,6 +11,9 @@ class Profile(models.Model):
         (ROLE_TEACHER, "Teacher"),
     ]
 
+    # Set to the Supabase auth uuid (sub) at the OAuth callback; a random uuid
+    # default lets seed/tests/admin create profiles without a live auth session.
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
     name = models.CharField(max_length=255, blank=True, default="")
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_STUDENT)

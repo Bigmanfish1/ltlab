@@ -4,6 +4,7 @@ import math
 from collections import defaultdict
 from datetime import timedelta
 
+from django.core.exceptions import ValidationError
 from django.db.models import Count
 from django.utils import timezone
 
@@ -367,6 +368,16 @@ def _elements_json(structure):
     return json.dumps(array) if array else ""
 
 
+def _topic_exists(pk):
+    """Existence check that tolerates empty/malformed UUID input from forms."""
+    if not pk:
+        return False
+    try:
+        return Topic.objects.filter(pk=pk).exists()
+    except (ValueError, ValidationError):
+        return False
+
+
 def parse_exercise_form(request):
     topic_id = request.POST.get("topic", "").strip()
     try:
@@ -377,7 +388,7 @@ def parse_exercise_form(request):
         "title": request.POST.get("title", "").strip(),
         "description": request.POST.get("description", "").strip(),
         "difficulty": request.POST.get("difficulty", "").strip(),
-        "module_id": int(topic_id) if topic_id.isdigit() else None,
+        "module_id": topic_id or None,
         "target_formula": request.POST.get("formula", "").strip(),
         "hints": [request.POST.get(f"hint_{i}", "").strip() for i in (1, 2, 3)],
         "allowed_operators": allowed,
@@ -393,7 +404,7 @@ def validate_exercise_form(form, exercise, publishing):
         errors.append("Task description is required.")
     if form["difficulty"] not in DIFFICULTIES:
         errors.append("Select a difficulty.")
-    if form["module_id"] is None or not Topic.objects.filter(pk=form["module_id"]).exists():
+    if not _topic_exists(form["module_id"]):
         errors.append("Assign the exercise to a module.")
     if not form["target_formula"]:
         errors.append("Solution formula is required.")

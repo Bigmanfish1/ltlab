@@ -11,7 +11,7 @@
             <div class="flex items-center justify-between mb-2">
                 <div>
                     <h1 class="text-2xl text-text-primary font-semibold tracking-tight">
-                        {{ exercise.title }}
+                       Exercise {{ exercise_number }} · {{ exercise.title }}
                     </h1>
                     <div class="flex items-center mt-2">
                         {% if is_completed %}
@@ -53,35 +53,50 @@
                 <!-- Kripke Model Visualization -->
                 <div class="mb-6">
                     <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE MODEL</h2>
-                    <div class="bg-bg-secondary border border-border-primary rounded p-8 min-h-[400px]">
-                        <div id="kripke-canvas" class="w-full h-full flex items-center justify-center">
-                            <!-- Kripke Model will be rendered here with JavaScript/SVG -->
-                            <svg id="kripke-svg" width="100%" height="400" class="text-text-primary">
-                                <!-- Dynamic SVG rendering -->
-                            </svg>
+                    <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
+                        {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json %}
+                        <div id="result-drawer"
+                            class="absolute bottom-0 left-0 right-0 bg-bg-secondary border-t border-border-primary"
+                            style="min-height: 0; max-height: 140px; z-index: 10; overflow-y: auto;">
                         </div>
-                    </div>
-                    <div class="mt-3 text-xs text-text-secondary font-mono">
-                        • States: {{ kripke_model.states|length }} • Initial: {{ kripke_model.initial_state }}
                     </div>
                 </div>
 
                 <!-- Formula Input Bar -->
                 <div class="mb-6">
                     <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR FORMULA</h2>
-                    <div class="bg-bg-secondary border-2 border-border-primary focus-within:border-accent-orange transition-colors rounded p-4">
-                        <input 
-                            type="text" 
-                            id="formula-input"
-                            placeholder="Enter your formula (e.g., AG p, EF q)"
-                            class="w-full bg-transparent text-text-primary font-mono text-lg outline-none"
-                            autocomplete="off"
-                        />
-                    </div>
-                    <div class="flex items-center justify-between mt-3">
-                        <div class="text-xs text-text-secondary font-mono">
-                            Time spent: <span id="time-display">0:00</span>
+                    <div class="bg-bg-secondary border-2 border-border-primary rounded p-4">
+                        <div class="flex items-center gap-1 pb-3 mb-3 flex-wrap">
+                            <button type="button" onclick="insertOp('G')" title="Always"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">G</button>
+                            <button type="button" onclick="insertOp('F')" title="Eventually"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">F</button>
+                            <button type="button" onclick="insertOp('X')" title="Next"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">X</button>
+                            <button type="button" onclick="insertOp('U')" title="Until"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">U</button>
+                            <button type="button" onclick="insertOp('¬')" title="Not"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">¬</button>
+                            <button type="button" onclick="insertOp('∧')" title="And"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">∧</button>
+                            <button type="button" onclick="insertOp('∨')" title="Or"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">∨</button>
+                            <button type="button" onclick="insertOp('→')" title="Implies"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">→</button>
+                            <button type="button" onclick="insertParens()" title="Parentheses"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">()</button>
                         </div>
+                        <div class="bg-bg-primary border border-border-secondary focus-within:border-accent-orange transition-colors rounded px-3 py-2">
+                            <input 
+                                type="text" 
+                                id="formula-input"
+                                placeholder="Enter your formula (e.g., GF q)"
+                                class="w-full bg-transparent text-text-primary font-mono text-lg outline-none"
+                                autocomplete="off"
+                            />
+                        </div>
+                    </div>
+                    <div class="flex items-center mt-3">
                         <div class="flex gap-2">
                             <button 
                                 id="hint-btn"
@@ -115,12 +130,12 @@
 
             <!-- Right Column: Hints & Attempts -->
             <div>
-                <!-- Hints Panel -->
+               <!-- Hint Panel -->
                 <div class="mb-6">
-                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">HINTS</h2>
+                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">HINT</h2>
                     <div id="hints-container" class="space-y-2">
                         <div class="text-sm text-text-secondary">
-                            Click "Get Hint" to reveal hints one at a time.
+                            Click "Get Hint" to reveal a hint for this exercise.
                         </div>
                     </div>
                 </div>
@@ -137,11 +152,11 @@
                                     {% if attempt.is_correct %}✓ CORRECT{% else %}✗ INCORRECT{% endif %}
                                 </span>
                                 <span class="font-mono text-xs text-text-secondary">
-                                    12 hours ago
+                                    {{ attempt.timestamp|date:"M d, Y H:i" }}
                                 </span>
                             </div>
                             <div class="font-mono text-sm text-text-primary bg-bg-tertiary rounded px-2 py-1">
-                                {{ attempt.submitted_formula }}
+                                {{ attempt.formula_input }}
                             </div>
                         </div>
                         {% endfor %}
@@ -173,171 +188,106 @@
 </div>
 
 <script>
-// Store exercise data
-const exerciseData = {
-    id: {{ exercise.id }},
-    kripkeModel: {{ kripke_model.states|safe }},
-    transitions: {{ kripke_model.transitions|safe }},
-    initialState: "{{ kripke_model.initial_state }}",
-    hints: {{ exercise.hints|safe }},
-};
 
-let startTime = Date.now();
-let hintsRevealed = 0;
+function insertOp(op) {
+    const input = document.getElementById('formula-input');
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const text = input.value;
 
-// Timer
-setInterval(() => {
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    const mins = Math.floor(elapsed / 60);
-    const secs = elapsed % 60;
-    document.getElementById('time-display').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-}, 1000);
+    input.value = text.slice(0, start) + op + text.slice(end);
 
-// Render Kripke Model
-function renderKripkeModel() {
-    const svg = document.getElementById('kripke-svg');
-    const states = exerciseData.kripkeModel;
-    const transitions = exerciseData.transitions;
-    
-    // Simple grid layout
-    const width = svg.clientWidth || 600;
-    const height = 400;
-    const nodeRadius = 30;
-    
-    // Position states in a circle
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const radius = Math.min(width, height) / 3;
-    
-    let svgContent = '';
-    const positions = {};
-    
-    // Calculate positions
-    states.forEach((state, i) => {
-        const angle = (i * 2 * Math.PI) / states.length - Math.PI / 2;
-        const x = centerX + radius * Math.cos(angle);
-        const y = centerY + radius * Math.sin(angle);
-        positions[state.id] = { x, y };
-    });
-    
-    // Draw transitions
-    transitions.forEach(trans => {
-        const from = positions[trans.source];
-        const to = positions[trans.target];
-        svgContent += `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" 
-                       stroke="#6B6B6B" stroke-width="2" marker-end="url(#arrowhead)"/>`;
-    });
-    
-    // Draw states
-    states.forEach(state => {
-        const pos = positions[state.id];
-        const isInitial = state.id === exerciseData.initialState;
-        const color = isInitial ? '#FF4D00' : '#1F1F1F';
-        const borderColor = isInitial ? '#FF4D00' : '#6B6B6B';
-        
-        svgContent += `
-            <circle cx="${pos.x}" cy="${pos.y}" r="${nodeRadius}" 
-                    fill="${color}" stroke="${borderColor}" stroke-width="2"/>
-            <text x="${pos.x}" y="${pos.y - 5}" text-anchor="middle" 
-                  fill="#FAFAFA" font-size="14" font-weight="600">${state.label}</text>
-            <text x="${pos.x}" y="${pos.y + 10}" text-anchor="middle" 
-                  fill="#AEFC00" font-size="11" font-family="JetBrains Mono">
-                  {${state.props.join(',')}}
-            </text>
-        `;
-    });
-    
-    // Arrow marker
-    const defs = `<defs><marker id="arrowhead" markerWidth="10" markerHeight="10" 
-                  refX="9" refY="3" orient="auto"><polygon points="0 0, 10 3, 0 6" fill="#6B6B6B"/></marker></defs>`;
-    
-    svg.innerHTML = defs + svgContent;
+    const newPos = start + op.length;
+    input.focus();
+    input.setSelectionRange(newPos, newPos);
 }
 
-// Submit formula
-document.getElementById('submit-btn').addEventListener('click', async () => {
-    const formula = document.getElementById('formula-input').value.trim();
-    if (!formula) {
-        alert('Please enter a formula');
-        return;
-    }
-    
-    const timeSpent = Math.floor((Date.now() - startTime) / 1000);
-    
-    const response = await fetch(`/exercises/{{ exercise.id }}/submit/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token }}',
-        },
-        body: JSON.stringify({
-            formula: formula,
-            time_spent: timeSpent,
-            hints_used: hintsRevealed,
-        }),
-    });
-    
-    const result = await response.json();
-    
-    // Display result
-    const resultDiv = document.getElementById('result-display');
-    const resultContent = document.getElementById('result-content');
-    
-    if (result.is_correct) {
-        resultContent.className = 'p-4 rounded bg-accent-lime text-bg-primary';
-        resultContent.innerHTML = `<div class="font-semibold mb-1">✓ Correct!</div><div class="text-sm">${result.message}</div>`;
-        document.getElementById('counterexample-display').classList.add('hidden');
-    } else {
-        resultContent.className = 'p-4 rounded bg-accent-orange text-bg-primary';
-        resultContent.innerHTML = `<div class="font-semibold mb-1">✗ Incorrect</div><div class="text-sm">${result.message}</div>`;
-        
-        // Show counterexample
-        if (result.counterexample) {
-            document.getElementById('counterexample-display').classList.remove('hidden');
-            document.getElementById('counterexample-content').innerHTML = `
-                <div>Path: ${result.counterexample.path.join(' → ')}</div>
-                <div class="mt-2">Violated at: ${result.counterexample.violated_at}</div>
-                <div class="mt-1 text-text-secondary">${result.counterexample.reason}</div>
-            `;
-        }
-    }
-    
-    resultDiv.classList.remove('hidden');
-    
-    // Reload page after 2 seconds if correct
-    if (result.is_correct) {
-        setTimeout(() => location.reload(), 2000);
-    }
-});
+function insertParens() {
+    const input = document.getElementById('formula-input');
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const text = input.value;
+    const selected = text.slice(start, end);
 
-// Get hint
-document.getElementById('hint-btn').addEventListener('click', async () => {
-    const response = await fetch(`/exercises/{{ exercise.id }}/hint/?index=${hintsRevealed}`);
-    const data = await response.json();
-    
-    if (data.hint) {
+    input.value = text.slice(0, start) + '(' + selected + ')' + text.slice(end);
+
+    const newPos = selected ? start + selected.length + 2 : start + 1;
+    input.focus();
+    input.setSelectionRange(newPos, newPos);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const exerciseData = {
+        id: "{{ exercise.id }}",
+        hint: "{{ exercise.hint|escapejs }}",
+    };
+
+    let hintsRevealed = 0;
+
+    document.getElementById('submit-btn').addEventListener('click', async () => {
+        const formula = document.getElementById('formula-input').value.trim();
+        if (!formula) {
+            alert('Please enter a formula');
+            return;
+        }
+
+        const response = await fetch(`/exercises/{{ exercise.id }}/submit/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: JSON.stringify({ formula: formula }),
+        });
+
+        const result = await response.json();
+
+        const resultDiv = document.getElementById('result-display');
+        const resultContent = document.getElementById('result-content');
+
+        if (result.is_correct) {
+            resultContent.className = 'p-4 rounded bg-accent-lime text-bg-primary';
+            resultContent.innerHTML = `<div class="font-semibold mb-1">✓ Correct!</div><div class="text-sm">${result.message}</div>`;
+            document.getElementById('counterexample-display').classList.add('hidden');
+        } else {
+            resultContent.className = 'p-4 rounded bg-accent-orange text-bg-primary';
+            resultContent.innerHTML = `<div class="font-semibold mb-1">✗ Incorrect</div><div class="text-sm">${result.message}</div>`;
+
+            if (result.counterexample) {
+                document.getElementById('counterexample-display').classList.remove('hidden');
+                document.getElementById('counterexample-content').innerHTML = `
+                    <div>Path: ${result.counterexample.path.join(' → ')}</div>
+                    <div class="mt-2">Violated at: ${result.counterexample.violated_at}</div>
+                    <div class="mt-1 text-text-secondary">${result.counterexample.reason}</div>
+                `;
+            }
+        }
+
+        resultDiv.classList.remove('hidden');
+
+        if (result.is_correct) {
+            setTimeout(() => location.reload(), 2000);
+        }
+    });
+
+    document.getElementById('hint-btn').addEventListener('click', () => {
         const hintsContainer = document.getElementById('hints-container');
         const hintDiv = document.createElement('div');
         hintDiv.className = 'bg-bg-secondary border border-border-primary rounded p-3 text-sm text-text-primary';
-        hintDiv.innerHTML = `<span class="font-mono text-xs text-accent-orange">HINT ${hintsRevealed + 1}:</span> ${data.hint}`;
+        hintDiv.innerHTML = `<span class="font-mono text-xs text-accent-orange">HINT:</span> ${exerciseData.hint}`;
         hintsContainer.appendChild(hintDiv);
-        hintsRevealed++;
-        
-        if (hintsRevealed >= data.total_hints) {
-            document.getElementById('hint-btn').disabled = true;
-            document.getElementById('hint-btn').classList.add('opacity-50', 'cursor-not-allowed');
+        hintsRevealed = 1;
+
+        document.getElementById('hint-btn').disabled = true;
+        document.getElementById('hint-btn').classList.add('opacity-50', 'cursor-not-allowed');
+    });
+
+    document.getElementById('formula-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('submit-btn').click();
         }
-    }
+    });
 });
 
-// Render on load
-renderKripkeModel();
-
-// Enter key to submit
-document.getElementById('formula-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        document.getElementById('submit-btn').click();
-    }
-});
 </script>
 {% endblock %}

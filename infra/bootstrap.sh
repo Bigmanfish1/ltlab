@@ -9,9 +9,12 @@
 #   - export the runtime secrets first (used to seed Secret Manager on a fresh
 #     project; on re-run existing secret versions are kept, not overwritten):
 #       export SECRET_KEY=...           # python -c "import secrets; print(secrets.token_urlsafe(50))"
-#       export DATABASE_URL=...         # Supabase transaction pooler URI, port 6543
+#       export DATABASE_URL=...         # Supabase transaction pooler URI, port 6543 (app runtime)
 #       export SUPABASE_URL=...
 #       export SUPABASE_ANON_KEY=...
+#     optional:
+#       export MIGRATE_DATABASE_URL=... # Supabase session pooler URI, port 5432 (migrate Job DDL);
+#                                       # defaults to DATABASE_URL if unset.
 #
 # Usage:  PROJECT_ID=... REGION=... ./infra/bootstrap.sh
 #
@@ -136,11 +139,15 @@ ensure_secret() {  # $1 name, $2 value: create first version if absent, grant RU
 }
 ensure_secret ltlab-secret-key   "$SECRET_KEY"
 ensure_secret ltlab-database-url "$DATABASE_URL"
+# migrate Job uses the session pooler (5432), not the app's txn pooler (6543).
+ensure_secret ltlab-migrate-database-url "${MIGRATE_DATABASE_URL:-$DATABASE_URL}"
 # Pin to a version, not :latest — env-mounted secrets resolve at instance start.
 latest_ver() { gcloud secrets versions list "$1" --filter="state=ENABLED" --sort-by="~name" --limit=1 --format="value(name)"; }
 SK_VER="$(latest_ver ltlab-secret-key)"
 DU_VER="$(latest_ver ltlab-database-url)"
+MDU_VER="$(latest_ver ltlab-migrate-database-url)"
 SECRETS_FLAG="SECRET_KEY=ltlab-secret-key:${SK_VER},DATABASE_URL=ltlab-database-url:${DU_VER}"
+JOB_SECRETS_FLAG="SECRET_KEY=ltlab-secret-key:${SK_VER},DATABASE_URL=ltlab-migrate-database-url:${MDU_VER}"
 
 # Non-secret runtime env for service + Job. YAML file (not --set-env-vars, which
 # splits on ',' and would corrupt comma-bearing values). SECRET_KEY/DATABASE_URL
@@ -161,10 +168,10 @@ PLACEHOLDER="us-docker.pkg.dev/cloudrun/container/hello"
 echo "==> Migrate Job: $MIGRATE_JOB"
 if gcloud run jobs describe "$MIGRATE_JOB" --region="$REGION" >/dev/null 2>&1; then
   gcloud run jobs update "$MIGRATE_JOB" --region="$REGION" \
-    --service-account="$RUN_SA" --env-vars-file="$ENV_FILE" --set-secrets="$SECRETS_FLAG"
+    --service-account="$RUN_SA" --env-vars-file="$ENV_FILE" --set-secrets="$JOB_SECRETS_FLAG"
 else
   gcloud run jobs create "$MIGRATE_JOB" --region="$REGION" --image="$PLACEHOLDER" \
-    --service-account="$RUN_SA" --env-vars-file="$ENV_FILE" --set-secrets="$SECRETS_FLAG" \
+    --service-account="$RUN_SA" --env-vars-file="$ENV_FILE" --set-secrets="$JOB_SECRETS_FLAG" \
     --command=python --args=manage.py,migrate,--fake-initial,--noinput
 fi
 

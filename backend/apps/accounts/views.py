@@ -56,8 +56,9 @@ def _pop_pkce_verifier(supabase) -> str | None:
 
 
 def _get_or_create_profile(user) -> Profile:
-    # The Supabase auth id is a UUID; the Users table keys on an int8 identity
-    # column, so email (unique on both sides, verified by Google) is the join key.
+    # We store the Supabase auth UUID as the Users.id (see defaults below), but
+    # still join on email (unique on both sides, verified by Google): an existing
+    # row may pre-date auth or have been seeded, so email is the stable key.
     # Caveat: email is the *only* link, so if a user's Supabase email changes the
     # old row is orphaned and a fresh one is created here (role/history reset).
     # Callers must guarantee user.email is set (the OAuth callback checks this).
@@ -68,7 +69,10 @@ def _get_or_create_profile(user) -> Profile:
         with transaction.atomic():
             profile, _ = Profile.objects.get_or_create(
                 email=user.email,
-                defaults={"name": name},
+                defaults={
+                    "id": user.id,
+                    "name": name,
+                },
             )
     except IntegrityError:
         # Concurrent first login created the row first — fetch theirs.

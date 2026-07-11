@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.db.models.functions import Lower
 
@@ -11,6 +13,7 @@ DIFFICULTY_CHOICES = [
 
 
 class Topic(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.TextField()
     description = models.TextField(null=True, blank=True)
     created_by = models.ForeignKey(
@@ -35,6 +38,7 @@ class Topic(models.Model):
 
 
 class Exercise(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name="exercises")
     title = models.TextField()
     description = models.TextField()
@@ -58,6 +62,7 @@ class Exercise(models.Model):
 
 
 class Attempt(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE, related_name="attempts")
     student = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="attempts")
     formula_input = models.TextField(null=True, blank=True)
