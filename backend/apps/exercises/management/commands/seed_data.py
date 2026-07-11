@@ -1,165 +1,136 @@
-# apps/exercises/management/commands/seed_data.py
+"""Minimal local seed: one teacher, a few students, two modules, a handful of
+attempts — enough for both the teacher pages and the student pages to render.
 
-import random
+Kept deliberately small (ASCII LTL formulas, get_or_create everywhere) so it is
+idempotent and low-risk. Run:  python manage.py seed_data
+"""
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 
-from apps.exercises.models import Topic, Exercise, Attempt, Difficulty
 from apps.accounts.models import Profile
+from apps.exercises.models import Attempt, Exercise, Topic
+
+SEED_DOMAIN = "seed.ltlab"
+
+STUDENTS = ["Amara Dlamini", "Sipho Ndlovu", "Jamie Kim"]
+
+MODULES = [
+    {
+        "title": "Kripke Structures",
+        "description": "Modelling systems as state-transition graphs.",
+        "exercises": [
+            {
+                "title": "Always eventually green",
+                "description": "The light is always eventually green.",
+                "difficulty": "beginner",
+                "target_formula": "G F green",
+                "hint": "Combine G (globally) with F (eventually).",
+            },
+            {
+                "title": "Never red and green",
+                "description": "Red and green are never true together.",
+                "difficulty": "beginner",
+                "target_formula": "G !(red & green)",
+                "hint": "Use G with a negated conjunction.",
+            },
+        ],
+    },
+    {
+        "title": "LTL Operators",
+        "description": "Globally, Finally, Next and Until.",
+        "exercises": [
+            {
+                "title": "Yellow leads to red",
+                "description": "Whenever yellow holds, red eventually follows.",
+                "difficulty": "intermediate",
+                "target_formula": "G (yellow -> F red)",
+                "hint": "G over an implication whose right side is F red.",
+            },
+            {
+                "title": "Next is green",
+                "description": "Green holds in the next state.",
+                "difficulty": "intermediate",
+                "target_formula": "X green",
+                "hint": "X refers only to the immediately following state.",
+            },
+        ],
+    },
+]
+
+# (exercise title, submitted formula, is_correct) per student.
+# Wrong formulas are deliberate misconception variants so the teacher
+# breakdown has something to classify.
+ATTEMPTS = [
+    # Amara — strong, solves all
+    (0, [("Always eventually green", "G F green", True),
+         ("Never red and green", "G !(red & green)", True),
+         ("Yellow leads to red", "G (yellow -> F red)", True),
+         ("Next is green", "X green", True)]),
+    # Sipho — partial, one misconception then a solve
+    (1, [("Always eventually green", "F green", False),      # dropped G
+         ("Always eventually green", "G F green", True),
+         ("Next is green", "F green", False)]),               # X vs F
+    # Jamie — early, one wrong
+    (2, [("Yellow leads to red", "yellow -> F red", False)]), # missing global
+]
 
 
 class Command(BaseCommand):
-    help = "Seeds the database with sample topics, exercises, and attempts for local development"
+    help = "Seed a minimal dataset for local development (teacher, students, modules, attempts)."
 
     def handle(self, *args, **options):
-        profile = Profile.objects.first()
-        student = Profile.objects.filter(role=Profile.ROLE_STUDENT).first()
-        if not student:
-            raise CommandError(
-                "No student Profile found. Sign up at least one student via "
-                "Supabase Auth first, then re-run this command."
+        teacher, _ = Profile.objects.get_or_create(
+            email=f"teacher@{SEED_DOMAIN}",
+            defaults={"name": "Dr Timm", "role": Profile.ROLE_TEACHER},
+        )
+
+        students = []
+        for full_name in STUDENTS:
+            handle = full_name.split()[0].lower()
+            student, _ = Profile.objects.get_or_create(
+                email=f"{handle}@{SEED_DOMAIN}",
+                defaults={"name": full_name, "role": Profile.ROLE_STUDENT},
             )
-        self.stdout.write(self.style.SUCCESS(f"Using student: {student.email}"))
+            students.append(student)
 
-        topics_data = [
-            {
-                "title": "Kripke Structures",
-                "description": "Modeling systems as state-transition graphs.",
-                "exercises": [
-                    {
-                        "title": "Identify states and transitions",
-                        "description": "Given a description, draw the Kripke structure.",
-                        "difficulty": Difficulty.BEGINNER,
-                        "target_formula": "",
-                        "hint": "A Kripke structure is a set of states, transitions, and labeling.",
-                    },
-                    {
-                        "title": "Label states with atomic propositions",
-                        "description": "Assign propositions to each state correctly.",
-                        "difficulty": Difficulty.BEGINNER,
-                        "target_formula": "",
-                        "hint": "Each state gets the set of propositions true in it.",
-                    },
-                ],
-            },
-            {
-                "title": "LTL Operators",
-                "description": "Globally, Finally, Next, and Until operators.",
-                "exercises": [
-                    {
-                        "title": "Mutual exclusion: red and green",
-                        "description": "Write a formula stating red and green can never both be true.",
-                        "difficulty": Difficulty.BEGINNER,
-                        "target_formula": "G ¬(red ∧ green)",
-                        "hint": "Use G (Globally) with negation.",
-                    },
-                    {
-                        "title": "Eventually green after red",
-                        "description": "Write a formula: whenever red holds, green eventually follows.",
-                        "difficulty": Difficulty.INTERMEDIATE,
-                        "target_formula": "G (red → F green)",
-                        "hint": "Combine G with F (Finally/Eventually).",
-                    },
-                    {
-                        "title": "Until operator practice",
-                        "description": "Write a formula: red holds until green becomes true.",
-                        "difficulty": Difficulty.INTERMEDIATE,
-                        "target_formula": "red U green",
-                        "hint": "U (Until) takes two operands: left U right.",
-                    },
-                    {
-                        "title": "Next operator practice",
-                        "description": "Write a formula stating that green holds in the very next state.",
-                        "difficulty": Difficulty.INTERMEDIATE,
-                        "target_formula": "X green",
-                        "hint": "X (Next) refers only to the immediately following state.",
-                    },
-                ],
-            },
-            {
-                "title": "Fairness & Liveness",
-                "description": "Ensuring progress: something good eventually happens infinitely often.",
-                "exercises": [
-                    {
-                        "title": "Strong fairness formula",
-                        "description": "Write a formula requiring a process runs infinitely often if enabled infinitely often.",
-                        "difficulty": Difficulty.ADVANCED,
-                        "target_formula": "G F enabled → G F runs",
-                        "hint": "Combine G F (infinitely often) on both sides of an implication.",
-                    },
-                    {
-                        "title": "No starvation",
-                        "description": "Write a liveness formula ensuring a waiting process is eventually scheduled.",
-                        "difficulty": Difficulty.ADVANCED,
-                        "target_formula": "G (waiting → F scheduled)",
-                        "hint": "G + F, similar structure to earlier 'eventually' exercises.",
-                    },
-                ],
-            },
-        ]
-
-        for topic_data in topics_data:
-            topic, created = Topic.objects.get_or_create(
-                title=topic_data["title"],
-                defaults={"description": topic_data["description"], "created_by": profile},
+        exercises = {}
+        for position, mod in enumerate(MODULES):
+            topic, _ = Topic.objects.get_or_create(
+                title=mod["title"],
+                defaults={
+                    "description": mod["description"],
+                    "created_by": teacher,
+                    "position": position,
+                },
             )
-            self.stdout.write(self.style.SUCCESS(
-                f"Topic: {topic.title} ({'created' if created else 'exists'})"
-            ))
-
-            for ex_data in topic_data["exercises"]:
-                exercise, created = Exercise.objects.get_or_create(
-                    title=ex_data["title"],
+            for ex_pos, ex in enumerate(mod["exercises"]):
+                exercise, _ = Exercise.objects.get_or_create(
+                    title=ex["title"],
                     topic=topic,
                     defaults={
-                        "description": ex_data["description"],
-                        "difficulty": ex_data["difficulty"],
-                        "target_formula": ex_data["target_formula"],
-                        "hint": ex_data["hint"],
+                        "description": ex["description"],
+                        "difficulty": ex["difficulty"],
+                        "target_formula": ex["target_formula"],
+                        "hint": ex["hint"],
+                        "is_published": True,
+                        "position": ex_pos,
                     },
                 )
-                self.stdout.write(self.style.SUCCESS(
-                    f"  Exercise: {exercise.title} ({'created' if created else 'exists'})"
-                ))
+                exercises[ex["title"]] = exercise
 
-        # --- Seed attempts: vary completion per topic for a realistic dashboard
-        completion_plan = {
-            "Kripke Structures": 1.0,     # fully complete
-            "LTL Operators": 0.5,         # halfway complete
-            "Fairness & Liveness": 0.0,   # untouched
-        }
-
-        for topic_title, fraction_correct in completion_plan.items():
-            topic = Topic.objects.get(title=topic_title)
-            exercises = list(topic.Exercises.all())  # swap to topic.Exercises if not renamed
-            random.shuffle(exercises)
-
-            if fraction_correct == 0.0:
-                self.stdout.write(self.style.SUCCESS(f"Skipping attempts for {topic_title} (untouched)"))
-                continue
-
-            num_correct = round(len(exercises) * fraction_correct)
-
-            for i, exercise in enumerate(exercises):
-                should_be_correct = i < num_correct
-
-                if should_be_correct and random.random() < 0.4:
-                    Attempt.objects.get_or_create(
-                        exercise=exercise,
-                        student=student,
-                        formula_input="G ¬(wrong ∧ attempt)",
-                        defaults={"is_correct": False},
-                    )
-
-                Attempt.objects.get_or_create(
-                    exercise=exercise,
+        created = 0
+        for student_idx, rows in ATTEMPTS:
+            student = students[student_idx]
+            for title, formula, is_correct in rows:
+                _, made = Attempt.objects.get_or_create(
+                    exercise=exercises[title],
                     student=student,
-                    formula_input=exercise.target_formula or "sample_input",
-                    defaults={"is_correct": should_be_correct},
+                    formula_input=formula,
+                    defaults={"is_correct": is_correct},
                 )
+                created += int(made)
 
-            self.stdout.write(self.style.SUCCESS(
-                f"Attempts seeded for {topic_title}: {num_correct}/{len(exercises)} correct"
-            ))
-
-        self.stdout.write(self.style.SUCCESS("Seeding complete."))
+        self.stdout.write(self.style.SUCCESS(
+            f"Seeded {Profile.objects.count()} profiles, {Exercise.objects.count()} exercises, "
+            f"{created} new attempts."
+        ))

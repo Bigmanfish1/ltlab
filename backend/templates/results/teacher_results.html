@@ -70,7 +70,7 @@
                         <div class="absolute top-3 right-4 font-mono text-3xl font-bold text-border-secondary opacity-60 select-none">{{ ex.rank }}</div>
                         <div class="text-[14px] text-text-primary font-medium mb-1">{{ ex.name }}</div>
                         <div class="text-[12px] text-text-secondary">{{ ex.module }}</div>
-                        <div class="absolute bottom-4 right-4 font-mono text-[14px] text-accent-orange font-bold">{{ ex.score }}</div>
+                        <div class="absolute bottom-4 right-4 font-mono text-[12px] font-bold"><span class="text-accent-orange">avg {{ ex.tries }} tries</span> <span class="text-text-secondary">· {{ ex.solved }}% solved</span></div>
                     </div>
                     {% endfor %}
                 </div>
@@ -79,7 +79,7 @@
         </div>
 
         <!-- Students table (open layout, no outer box) -->
-        <div>
+        <div id="roster" class="scroll-mt-24">
             <div class="flex items-center justify-between mb-5">
                 <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">STUDENTS</div>
                 <input
@@ -101,13 +101,18 @@
                 </thead>
                 <tbody id="student-rows">
                     {% for student in students %}
-                    <tr class="student-row border-b border-border-primary hover:bg-bg-tertiary transition-colors" data-name="{{ student.name|lower }}">
-                        <td class="px-2 py-4 text-[13px] text-text-primary">{{ student.name }}</td>
+                    <tr class="student-row border-b border-border-primary hover:bg-bg-tertiary transition-colors" data-name="{{ student.name|lower }} {{ student.email|lower }}">
+                        <td class="px-2 py-4">
+                            <div class="text-[13px] text-text-primary">{{ student.name }}</div>
+                            {% if student.email != student.name %}
+                            <div class="font-mono text-[11px] text-text-secondary">{{ student.email }}</div>
+                            {% endif %}
+                        </td>
                         <td class="px-2 py-4 text-[13px] text-text-secondary">{{ student.exercises_done }}</td>
                         <td class="px-2 py-4 font-mono text-[13px] text-text-primary">{{ student.accuracy }}%</td>
                         <td class="px-2 py-4 font-mono text-[11px] text-text-secondary">{{ student.last_active }}</td>
                         <td class="px-2 py-4">
-                            <a href="#" class="font-mono text-[11px] text-accent-orange hover:opacity-80 transition-opacity">View →</a>
+                            <a href="{% url 'teacher_student_detail' student.id %}" class="font-mono text-[11px] text-accent-orange hover:opacity-80 transition-opacity">View →</a>
                         </td>
                     </tr>
                     {% endfor %}
@@ -138,6 +143,16 @@
                 if (match) visible++;
             });
             empty.classList.toggle('hidden', visible !== 0);
+        });
+    })();
+
+    (function () {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('section') !== 'roster') return;
+        const target = document.getElementById('roster');
+        if (!target) return;
+        requestAnimationFrame(function () {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     })();
 </script>

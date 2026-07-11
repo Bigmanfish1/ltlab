@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}{{ name }} - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-bg-primary">
+    {% include "header.html" %}
+    <div class="max-w-[1280px] mx-auto px-12 py-10">
+
+        <!-- Heading -->
+        <a href="{% url 'results' %}" class="font-mono text-[11px] tracking-[0.12em] text-text-secondary hover:text-text-primary transition-colors">← All Students</a>
+        <h1 class="text-[32px] text-text-primary font-semibold mt-3 mb-8" style="letter-spacing: -0.02em;">{{ name }}</h1>
+
+        <!-- Metric cards -->
+        <div class="grid grid-cols-3 gap-4 mb-12">
+            <div class="bg-bg-secondary border border-border-primary rounded p-6">
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-3">EXERCISES DONE</div>
+                <div class="text-3xl text-text-primary font-bold leading-none" style="letter-spacing: -0.02em;">{{ exercises_done }}</div>
+            </div>
+            <div class="bg-bg-secondary border border-border-primary rounded p-6">
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-3">ACCURACY</div>
+                <div class="text-3xl text-text-primary font-bold leading-none" style="letter-spacing: -0.02em;">{{ accuracy }}%</div>
+            </div>
+            <div class="bg-bg-secondary border border-border-primary rounded p-6">
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-3">HINTS USED</div>
+                <div class="text-3xl text-text-primary font-bold leading-none" style="letter-spacing: -0.02em;">{{ hints_used }}</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-[55%_45%] gap-8">
+
+            <!-- LEFT: exercise history -->
+            <div>
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">EXERCISE HISTORY</div>
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b border-border-primary">
+                            <th class="text-left px-2 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Exercise</th>
+                            <th class="text-left px-2 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Formula</th>
+                            <th class="text-left px-2 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Result</th>
+                            <th class="text-left px-2 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Hints</th>
+                            <th class="text-left px-2 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in history %}
+                        <tr class="border-b border-border-primary hover:bg-bg-tertiary transition-colors">
+                            <td class="px-2 py-4 text-[13px] text-text-primary">{{ row.exercise }}</td>
+                            <td class="px-2 py-4 font-mono text-[13px] text-text-secondary">{{ row.formula }}</td>
+                            <td class="px-2 py-4 font-mono text-[11px] tracking-[0.12em] {% if row.result %}text-accent-lime{% else %}text-accent-orange{% endif %}">{% if row.result %}PASS{% else %}FAIL{% endif %}</td>
+                            <td class="px-2 py-4 text-[13px] text-text-secondary">{{ row.hints }}</td>
+                            <td class="px-2 py-4 font-mono text-[11px] text-text-secondary">{{ row.date }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="px-2 py-8 text-center text-[13px] text-text-secondary">No submissions yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- RIGHT: last submission -->
+            <div>
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">LAST SUBMISSION</div>
+                {% if last_submission %}
+                <div class="bg-bg-secondary border border-border-primary rounded overflow-hidden">
+                    <div class="flex" style="height: 300px;">
+                        {% include "components/kripke_editor.html" with id="last" readonly=1 height="300px" elements_json=last_submission.elements_json %}
+                    </div>
+                    <div class="border-t border-border-primary px-4 py-4">
+                        <div class="font-mono text-[14px] text-text-primary">{{ last_submission.formula }}</div>
+                        <div class="font-mono text-[12px] mt-1 {% if last_submission.holds %}text-accent-lime{% else %}text-accent-orange{% endif %}">{{ last_submission.verdict }}</div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="bg-bg-secondary border border-border-primary rounded px-4 py-10 text-center text-[13px] text-text-secondary">No submissions yet.</div>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

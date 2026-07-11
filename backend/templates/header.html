@@ -23,6 +23,13 @@
                     {% if request.resolver_match.url_name == 'results' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
               Results
           </a>
+          {% if request.profile and request.profile.role == 'teacher' %}
+          <a href="{% url 'manage' %}"
+            class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors
+                    {% if request.resolver_match.url_name == 'manage' or request.resolver_match.url_name == 'exercise_builder' or request.resolver_match.url_name == 'exercise_edit' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
+              Manage
+          </a>
+          {% endif %}
       </nav>
       <div class="flex items-center gap-3">
           {% if request.supabase_user %}

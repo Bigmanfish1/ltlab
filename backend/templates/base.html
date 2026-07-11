@@ -35,19 +35,45 @@
         body {
             font-family: 'Inter', system-ui, sans-serif;
         }
+        .app-toast {
+            animation: app-toast-in .25s ease both;
+            transition: opacity .25s ease, transform .25s ease;
+        }
+        .app-toast.hide { opacity: 0; transform: translateX(24px); }
+        @keyframes app-toast-in {
+            from { opacity: 0; transform: translateX(24px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body class="bg-bg-primary text-text-primary antialiased"
       hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
     {% if messages %}
-    <div class="max-w-[1280px] mx-auto px-12 pt-4">
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 space-y-2 max-w-sm">
         {% for message in messages %}
-        <div class="px-4 py-3 mb-2 rounded text-bg-primary text-[13px] {% if message.tags == 'error' %}bg-accent-orange{% else %}bg-accent-lime{% endif %}">
-            {{ message }}
+        <div class="app-toast flex items-start gap-3 text-bg-primary text-[13px] px-4 py-3 rounded shadow-lg {% if message.tags == 'error' %}bg-accent-orange{% else %}bg-accent-lime{% endif %}">
+            <span class="flex-1">{{ message }}</span>
+            <button type="button" class="js-toast-dismiss leading-none text-lg">&times;</button>
         </div>
         {% endfor %}
     </div>
+    <script>
+        (function () {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            function dismiss(toast) {
+                toast.classList.add('hide');
+                setTimeout(function () { toast.remove(); }, 250);
+            }
+            container.addEventListener('click', function (e) {
+                if (e.target.closest('.js-toast-dismiss')) dismiss(e.target.closest('.app-toast'));
+            });
+            setTimeout(function () {
+                container.querySelectorAll('.app-toast').forEach(dismiss);
+            }, 4000);
+        })();
+    </script>
     {% endif %}
 
     <main>
