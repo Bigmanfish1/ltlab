@@ -66,3 +66,25 @@ class ReconciliationTests(TestCase):
         # a second load classifies nothing new — same result, no pending rows
         first = services.misconception_breakdown()
         self.assertEqual(first, services.misconception_breakdown())
+
+
+class TopicCompletionTests(TestCase):
+    def setUp(self):
+        self.teacher = Profile.objects.create(email="t@x.com", name="T", role=Profile.ROLE_TEACHER)
+        self.s1 = Profile.objects.create(email="s1@x.com", name="S One", role=Profile.ROLE_STUDENT)
+        self.topic = Topic.objects.create(title="T1", created_by=self.teacher)
+        self.published = Exercise.objects.create(
+            topic=self.topic, title="Pub", description="d", difficulty="beginner",
+            hint="h", target_formula="G p", is_published=True,
+        )
+        self.draft = Exercise.objects.create(
+            topic=self.topic, title="Draft", description="d", difficulty="beginner",
+            hint="h", target_formula="G p", is_published=False,
+        )
+        # the one enrolled student solves the published exercise -> 100%
+        Attempt.objects.create(exercise=self.published, student=self.s1, is_correct=True, formula_input="G p")
+
+    def test_draft_excluded_from_module_completion(self):
+        (module,) = [m for m in services.topic_completion() if m["name"] == "T1"]
+        # draft's guaranteed 0% must not drag the average down from 100
+        self.assertEqual(module["completion"], 100)

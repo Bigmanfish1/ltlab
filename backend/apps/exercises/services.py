@@ -102,6 +102,9 @@ def topic_completion(rows=None):
     rows = rows if rows is not None else exercise_rows()
     by_topic = defaultdict(list)
     for r in rows:
+        # drafts are invisible to students — a guaranteed 0% would drag the average
+        if not r["is_published"]:
+            continue
         by_topic[r["module_id"]].append(r["completion_raw"])
     out = []
     for topic in Topic.objects.all():
