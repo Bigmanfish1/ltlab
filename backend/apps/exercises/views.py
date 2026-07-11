@@ -236,7 +236,7 @@ def teacher_exercises(request):
 
 @teacher_required
 def manage(request):
-    topics = list(Topic.objects.prefetch_related("exercises"))
+    topics = list(Topic.objects.select_related("unlocks_after").prefetch_related("exercises"))
     modules = []
     for i, t in enumerate(topics, start=1):
         modules.append({
