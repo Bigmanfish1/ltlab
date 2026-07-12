@@ -17,10 +17,10 @@ DO $$
 BEGIN
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'Topics' AND column_name = 'created_by'
+        WHERE table_name = 'Topics' AND column_name = 'created_by'
     ) AND NOT EXISTS (
         SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'Topics' AND column_name = 'created_by_id'
+        WHERE table_name = 'Topics' AND column_name = 'created_by_id'
     ) THEN
         ALTER TABLE "Topics" RENAME COLUMN "created_by" TO "created_by_id";
     END IF;

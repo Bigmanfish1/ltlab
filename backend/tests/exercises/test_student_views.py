@@ -2,6 +2,7 @@ from django.contrib.messages.storage.fallback import FallbackStorage
 from django.contrib.sessions.backends.db import SessionStore
 from django.http import Http404
 from django.test import RequestFactory, TestCase, override_settings
+from django.urls import NoReverseMatch, reverse
 
 # the canvas loads js/kripke_editor.js via {% static %}; the manifest storage
 # has no manifest under test, so fall back to plain static for full renders
@@ -96,6 +97,23 @@ class GradingTests(StudentViewTestCase):
     def test_empty_formula_records_no_attempt(self):
         views.submit_formula(self._post({"formula": ""}), self.published.id)
         self.assertFalse(Attempt.objects.filter(exercise=self.published).exists())
+
+    def test_overlong_formula_rejected(self):
+        response = views.submit_formula(self._post({"formula": "a" * 513}), self.published.id)
+        self.assertContains(response, "too long")
+        self.assertFalse(Attempt.objects.filter(exercise=self.published).exists())
+
+    def test_correct_submission_triggers_reload(self):
+        response = views.submit_formula(self._post({"formula": "true"}), self.published.id)
+        self.assertEqual(response["HX-Trigger"], "exerciseSolved")
+
+    def test_wrong_submission_has_no_reload_trigger(self):
+        response = views.submit_formula(self._post({"formula": "G a"}), self.published.id)
+        self.assertNotIn("HX-Trigger", response)
+
+    def test_get_hint_route_removed(self):
+        with self.assertRaises(NoReverseMatch):
+            reverse("get_hint", args=[self.published.id])
 
     def test_hints_used_clamped_to_authored_count(self):
         # only two hints authored; a client claiming nine must be clamped

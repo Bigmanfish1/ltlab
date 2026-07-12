@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import run_ltl_check
-from apps.checker.views import _build_result_context, _error_response
+from apps.checker.views import MAX_FORMULA_CHARS, build_result_context, error_response
 
 from .constants import BUILDER_OPERATORS, DIFFICULTIES, OPERATOR_LABELS
 from .models import Attempt, Exercise, Topic
@@ -35,10 +35,6 @@ logger = logging.getLogger(__name__)
 def published_exercises():
     """Exercises visible to students — drafts (is_published=False) are excluded."""
     return Exercise.objects.filter(is_published=True)
-
-
-def get_exercise(exercise_id):
-    return published_exercises().filter(id=exercise_id).first()
 
 
 @supabase_login_required
@@ -108,17 +104,20 @@ def submit_formula(request, exercise_id):
 
     formula = request.POST.get('formula', '').strip()
     if not formula:
-        return _error_response(request, "Enter a formula to check.")
+        return error_response(request, "Enter a formula to check.")
+    if len(formula) > MAX_FORMULA_CHARS:
+        return error_response(
+            request, f"Formula is too long — at most {MAX_FORMULA_CHARS} characters."
+        )
 
     graph = exercise.kripke_structure
     if not graph:
-        return _error_response(request, "This exercise has no model to check against.")
+        return error_response(request, "This exercise has no model to check against.")
 
-    # enforce the teacher's operator restriction (None = legacy = no limit)
     if exercise.allowed_operators is not None:
         bad = disallowed_operators(formula, exercise.allowed_operators)
         if bad:
-            return _error_response(
+            return error_response(
                 request,
                 "These operators aren't allowed for this exercise: "
                 + ", ".join(sorted(bad)) + ".",
@@ -127,10 +126,10 @@ def submit_formula(request, exercise_id):
     try:
         result = run_ltl_check(graph, formula)
     except ValueError as exc:
-        return _error_response(request, str(exc))
+        return error_response(request, str(exc))
     except Exception:
         logger.exception("run_ltl_check failed during exercise submission")
-        return _error_response(
+        return error_response(
             request, "Verification was stopped — the formula or graph could not be processed."
         )
 
@@ -150,18 +149,11 @@ def submit_formula(request, exercise_id):
         hints_used=hints_used,
     )
 
-    context = _build_result_context(result, json.dumps(result["kripke_graph"]))
-    return render(request, "sandbox/result.html", context)
-
-
-@supabase_login_required
-def get_hint(request, exercise_id):
-    """Get next hint for exercise"""
-    exercise = get_exercise(exercise_id)
-
-    if exercise and exercise.hint != "":
-        return JsonResponse({'hint': exercise.hint})
-    return JsonResponse({'error': 'No hint available'}, status=404)
+    context = build_result_context(result, json.dumps(result["kripke_graph"]))
+    response = render(request, "sandbox/result.html", context)
+    if is_correct:
+        response["HX-Trigger"] = "exerciseSolved"
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +271,8 @@ def _save_exercise(request, exercise):
 
     persist_exercise(exercise, form, graph, publishing)
     messages.success(request, "Exercise published." if publishing else "Draft saved.")
+    if not form["allowed_operators"]:
+        messages.warning(request, "No operators are enabled — students can only submit atomic propositions.")
     return redirect("manage")
 
 

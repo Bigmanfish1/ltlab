@@ -1,5 +1,7 @@
 import json
 
+from django.contrib import messages
+from django.contrib.messages import get_messages
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.contrib.sessions.backends.db import SessionStore
 from django.test import RequestFactory, TestCase, override_settings
@@ -92,6 +94,12 @@ class PublishValidationTests(TeacherViewTestCase):
         self.assertEqual(response.status_code, 302)
         ex = Exercise.objects.get(title="Draft Ex")
         self.assertFalse(ex.is_published)
+
+    def test_no_operators_warns_teacher(self):
+        request = self._req("post", self.teacher, self._form(action="publish", allowed_operators="[]"))
+        views.exercise_builder(request)
+        warnings = [m.message for m in get_messages(request) if m.level == messages.WARNING]
+        self.assertTrue(any("No operators" in m for m in warnings))
 
     def test_missing_required_fields_rejected(self):
         data = self._form(action="publish", title="")

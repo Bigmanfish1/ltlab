@@ -252,6 +252,11 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('submit-btn').click();
         }
     });
+
+    // reload after a correct answer so the COMPLETED badge and attempts refresh
+    document.body.addEventListener('exerciseSolved', () => {
+        setTimeout(() => location.reload(), 1200);
+    });
 });
 
 </script>

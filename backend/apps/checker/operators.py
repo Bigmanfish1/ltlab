@@ -45,11 +45,6 @@ def disallowed_operators(formula_str, allowed_symbols):
     """
     if not _SPOT_AVAILABLE or spot is None:
         return set()
-    try:
-        formula = spot.formula(_normalize_formula(formula_str))
-    except (SyntaxError, RuntimeError, ValueError):
-        return set()
-
     allowed = set(allowed_symbols or [])
     bad = set()
 
@@ -64,5 +59,8 @@ def disallowed_operators(formula_str, allowed_symbols):
         for child in node:
             walk(child)
 
-    walk(formula)
+    try:
+        walk(spot.formula(_normalize_formula(formula_str)))
+    except (SyntaxError, RuntimeError, ValueError, RecursionError):
+        return set()
     return bad
