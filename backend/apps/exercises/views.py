@@ -26,14 +26,19 @@ from .services import (
 # Student-facing views (DB-backed)
 # ---------------------------------------------------------------------------
 
+def published_exercises():
+    """Exercises visible to students — drafts (is_published=False) are excluded."""
+    return Exercise.objects.filter(is_published=True)
+
+
 def get_exercise(exercise_id):
-    return Exercise.objects.filter(id=exercise_id).first()
+    return published_exercises().filter(id=exercise_id).first()
 
 
 @supabase_login_required
 def exercises(request):
     exercises_data = []
-    for exercise in Exercise.objects.all():
+    for exercise in published_exercises():
         attempt_count = Attempt.objects.filter(exercise=exercise, student=request.profile).count()
         is_completed = Attempt.objects.filter(
             exercise=exercise, student=request.profile, is_correct=True
@@ -61,7 +66,7 @@ def exercise_canvas(request, exercise_id):
         exercise=exercise, student=request.profile, is_correct=True
     ).exists()
 
-    all_exercises = list(Exercise.objects.order_by('position', 'id'))
+    all_exercises = list(published_exercises().order_by('position', 'id'))
     current_index = next((i for i, ex in enumerate(all_exercises) if ex.id == exercise_id), 0)
     prev_exercise = all_exercises[current_index - 1] if current_index > 0 else None
     next_exercise = all_exercises[current_index + 1] if current_index < len(all_exercises) - 1 else None
@@ -82,7 +87,7 @@ def exercise_canvas(request, exercise_id):
 @require_POST
 def submit_formula(request, exercise_id):
     """Handle formula submission and check correctness"""
-    exercise = get_object_or_404(Exercise, id=exercise_id)
+    exercise = get_object_or_404(published_exercises(), id=exercise_id)
     student = request.profile
 
     try:

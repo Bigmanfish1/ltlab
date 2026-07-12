@@ -121,7 +121,8 @@ def class_metrics(matrix=None):
     enrolled_count = enrolled_students().count()
     total = correct = exercises_with_attempts = 0
     most_failed = None
-    most_failed_rate = -1.0
+    # only exercises with at least one wrong attempt qualify; 0.0 = no fails yet
+    most_failed_rate = 0.0
     for ex in Exercise.objects.all():
         per_student = matrix.get(ex.id, {})
         ex_total = sum(len(a) for a in per_student.values())
@@ -137,7 +138,7 @@ def class_metrics(matrix=None):
     return {
         "total_students": enrolled_count,
         "avg_accuracy": _pct(correct, total),
-        "most_failed_exercise": most_failed or "—",
+        "most_failed_exercise": most_failed or "N/A",
         "avg_attempts_per_ex": round(total / exercises_with_attempts, 1) if exercises_with_attempts else 0.0,
     }
 
