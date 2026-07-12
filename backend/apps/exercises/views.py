@@ -61,10 +61,7 @@ def exercises(request):
 @supabase_login_required
 def exercise_canvas(request, exercise_id):
     """Exercise canvas with Kripke model, formula input, and submission"""
-    exercise = get_exercise(exercise_id)
-
-    if not exercise:
-        return render(request, '404.html', status=404)
+    exercise = get_object_or_404(published_exercises(), id=exercise_id)
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
