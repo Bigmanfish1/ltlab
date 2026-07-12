@@ -6,6 +6,10 @@ module's BUCKETS.
 """
 
 BUILDER_OPERATORS = ["G", "F", "X", "U", "¬", "∧", "∨", "→"]
+OPERATOR_LABELS = {
+    "G": "Always", "F": "Eventually", "X": "Next", "U": "Until",
+    "¬": "Not", "∧": "And", "∨": "Or", "→": "Implies",
+}
 DIFFICULTIES = ["beginner", "intermediate", "advanced"]
 
 MISCONCEPTION_LABELS = {

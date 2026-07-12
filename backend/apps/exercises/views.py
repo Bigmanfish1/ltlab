@@ -14,7 +14,7 @@ from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.tasks import run_ltl_check
 from apps.checker.views import _build_result_context, _error_response
 
-from .constants import BUILDER_OPERATORS, DIFFICULTIES
+from .constants import BUILDER_OPERATORS, DIFFICULTIES, OPERATOR_LABELS
 from .models import Attempt, Exercise, Topic
 from .services import (
     _elements_json,
@@ -73,10 +73,18 @@ def exercise_canvas(request, exercise_id):
     prev_exercise = all_exercises[current_index - 1] if current_index > 0 else None
     next_exercise = all_exercises[current_index + 1] if current_index < len(all_exercises) - 1 else None
 
+    # only the operators the teacher allowed (None = legacy exercise = all)
+    allowed = exercise.allowed_operators if exercise.allowed_operators is not None else BUILDER_OPERATORS
+    operator_buttons = [
+        {"op": op, "label": OPERATOR_LABELS.get(op, op)}
+        for op in BUILDER_OPERATORS if op in allowed
+    ]
+
     context = {
         'exercise': exercise,
         'exercise_number': current_index + 1,
         'elements_json': _elements_json(exercise.kripke_structure),
+        'operator_buttons': operator_buttons,
         'attempts': attempts,
         'is_completed': is_completed,
         'prev_exercise': prev_exercise,

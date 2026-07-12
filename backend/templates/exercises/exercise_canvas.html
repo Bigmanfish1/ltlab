@@ -68,22 +68,10 @@
                     <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR FORMULA</h2>
                     <div class="bg-bg-secondary border-2 border-border-primary rounded p-4">
                         <div class="flex items-center gap-1 pb-3 mb-3 flex-wrap">
-                            <button type="button" onclick="insertOp('G')" title="Always"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">G</button>
-                            <button type="button" onclick="insertOp('F')" title="Eventually"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">F</button>
-                            <button type="button" onclick="insertOp('X')" title="Next"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">X</button>
-                            <button type="button" onclick="insertOp('U')" title="Until"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">U</button>
-                            <button type="button" onclick="insertOp('¬')" title="Not"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">¬</button>
-                            <button type="button" onclick="insertOp('∧')" title="And"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">∧</button>
-                            <button type="button" onclick="insertOp('∨')" title="Or"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">∨</button>
-                            <button type="button" onclick="insertOp('→')" title="Implies"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">→</button>
+                            {% for b in operator_buttons %}
+                            <button type="button" onclick="insertOp('{{ b.op }}')" title="{{ b.label }}"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">{{ b.op }}</button>
+                            {% endfor %}
                             <button type="button" onclick="insertParens()" title="Parentheses"
                                 class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">()</button>
                         </div>

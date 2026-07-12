@@ -1,7 +1,14 @@
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.contrib.sessions.backends.db import SessionStore
 from django.http import Http404
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
+
+# the canvas loads js/kripke_editor.js via {% static %}; the manifest storage
+# has no manifest under test, so fall back to plain static for full renders
+PLAIN_STATIC = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
 
 from apps.accounts.models import Profile
 from apps.exercises import views
@@ -93,3 +100,15 @@ class GradingTests(StudentViewTestCase):
         # only two hints authored; a client claiming nine must be clamped
         views.submit_formula(self._post({"formula": "true", "hints_used": "9"}), self.published.id)
         self.assertEqual(Attempt.objects.get(exercise=self.published).hints_used, 2)
+
+
+@override_settings(STORAGES=PLAIN_STATIC)
+class OperatorPaletteTests(StudentViewTestCase):
+    def test_palette_limited_to_allowed_operators(self):
+        self.published.allowed_operators = ["G", "F"]
+        self.published.save(update_fields=["allowed_operators"])
+        html = views.exercise_canvas(self._get(), self.published.id).content.decode()
+        self.assertIn("insertOp('G')", html)
+        self.assertIn("insertOp('F')", html)
+        self.assertNotIn("insertOp('U')", html)
+        self.assertNotIn("insertOp('¬')", html)  # ¬ hidden

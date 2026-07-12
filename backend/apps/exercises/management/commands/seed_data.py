@@ -8,6 +8,7 @@ idempotent and low-risk. Run:  python manage.py seed_data
 from django.core.management.base import BaseCommand
 
 from apps.accounts.models import Profile
+from apps.exercises.constants import BUILDER_OPERATORS
 from apps.exercises.models import Attempt, Exercise, Topic
 
 SEED_DOMAIN = "seed.ltlab"
@@ -141,13 +142,15 @@ class Command(BaseCommand):
                         "is_published": True,
                         "position": ex_pos,
                         "kripke_structure": REQUEST_GRANT,
+                        "allowed_operators": list(BUILDER_OPERATORS),
                     },
                 )
-                # keep the seed graph authoritative so re-running fixes drift
-                # (and backfills rows created before exercises carried a graph)
-                if exercise.kripke_structure != REQUEST_GRANT:
+                # keep the seed graph + operator set authoritative so re-running
+                # fixes drift (and backfills rows created before these existed)
+                if exercise.kripke_structure != REQUEST_GRANT or not exercise.allowed_operators:
                     exercise.kripke_structure = REQUEST_GRANT
-                    exercise.save(update_fields=["kripke_structure"])
+                    exercise.allowed_operators = list(BUILDER_OPERATORS)
+                    exercise.save(update_fields=["kripke_structure", "allowed_operators"])
                 exercises[ex["title"]] = exercise
 
         created = 0
