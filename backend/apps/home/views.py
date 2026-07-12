@@ -32,7 +32,9 @@ def home(request):
 
 def topic_display_difficulty(topic):
     """Most common difficulty among a topic's exercises."""
-    values = list(topic.exercises.values_list('difficulty', flat=True))
+    values = list(
+        topic.exercises.filter(is_published=True).values_list('difficulty', flat=True)
+    )
     if not values:
         return None
     return Counter(values).most_common(1)[0][0]
@@ -65,10 +67,16 @@ def student_dashboard(request):
     student = request.profile
 
     topics = Topic.objects.annotate(
-        total_exercises=Count('exercises', distinct=True),
+        total_exercises=Count(
+            'exercises', filter=Q(exercises__is_published=True), distinct=True
+        ),
         completed_exercises=Count(
             'exercises',
-            filter=Q(exercises__attempts__student=student, exercises__attempts__is_correct=True),
+            filter=Q(
+                exercises__is_published=True,
+                exercises__attempts__student=student,
+                exercises__attempts__is_correct=True,
+            ),
             distinct=True,
         ),
     ).order_by('position', 'id')
@@ -94,9 +102,9 @@ def student_dashboard(request):
             "status": status,
         })
 
-    total_exercises = Exercise.objects.count()
+    total_exercises = Exercise.objects.filter(is_published=True).count()
     exercises_done = Exercise.objects.filter(
-        attempts__student=student, attempts__is_correct=True
+        is_published=True, attempts__student=student, attempts__is_correct=True
     ).distinct().count()
     overall_progress = round((exercises_done / total_exercises) * 100) if total_exercises else 0
 
