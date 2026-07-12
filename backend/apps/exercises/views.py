@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -10,6 +11,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
+from apps.checker.misconceptions import classify_misconception
 
 from .constants import BUILDER_OPERATORS, DIFFICULTIES
 from .models import Attempt, Exercise, Topic
@@ -20,6 +22,8 @@ from .services import (
     persist_exercise,
     validate_exercise_form,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -100,18 +104,34 @@ def submit_formula(request, exercise_id):
         is_correct = submitted_formula == exercise.target_formula.strip()
 
         counterexample = None
+        misconception = None  # NULL for correct answers; classified below when wrong
         if not is_correct:
             counterexample = {
                 'path': ['s0', 's1', 's2', 's0'],
                 'reason': f'The formula "{submitted_formula}" does not hold on this path. Expected: {exercise.target_formula}',
                 'violated_at': 's1',
             }
+            # Classify at submit time so Results is pure aggregation (no lazy SPOT
+            # burst). On failure leave NULL so _backfill_misconceptions retries.
+            try:
+                misconception = classify_misconception(
+                    exercise.target_formula, submitted_formula
+                ) or ""
+            except Exception:
+                logger.exception("classify_misconception failed at submit")
+
+        try:
+            hints_used = max(0, int(data.get('hints_used', 0)))
+        except (TypeError, ValueError):
+            hints_used = 0
 
         attempt = Attempt.objects.create(
             exercise=exercise,
             student=student,
             formula_input=submitted_formula,
             is_correct=is_correct,
+            hints_used=hints_used,
+            misconception=misconception,
         )
 
         return JsonResponse({
