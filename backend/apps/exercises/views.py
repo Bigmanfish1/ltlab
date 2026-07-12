@@ -11,7 +11,8 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
-from apps.checker.misconceptions import classify_misconception
+from apps.checker.tasks import run_ltl_check
+from apps.checker.views import _build_result_context, _error_response
 
 from .constants import BUILDER_OPERATORS, DIFFICULTIES
 from .models import Attempt, Exercise, Topic
@@ -78,7 +79,7 @@ def exercise_canvas(request, exercise_id):
     context = {
         'exercise': exercise,
         'exercise_number': current_index + 1,
-        'kripke_model': "",
+        'elements_json': _elements_json(exercise.kripke_structure),
         'attempts': attempts,
         'is_completed': is_completed,
         'prev_exercise': prev_exercise,
@@ -90,62 +91,51 @@ def exercise_canvas(request, exercise_id):
 @supabase_login_required
 @require_POST
 def submit_formula(request, exercise_id):
-    """Handle formula submission and check correctness"""
+    """Grade a submission by model-checking it against the exercise's graph.
+
+    Same engine path as the sandbox: run_ltl_check(graph, formula) → satisfied
+    means correct. Renders the shared sandbox/result.html fragment (real
+    counterexample trace included) rather than a fabricated one.
+    """
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     student = request.profile
 
+    formula = request.POST.get('formula', '').strip()
+    if not formula:
+        return _error_response(request, "Enter a formula to check.")
+
+    graph = exercise.kripke_structure
+    if not graph:
+        return _error_response(request, "This exercise has no model to check against.")
+
     try:
-        data = json.loads(request.body)
-        submitted_formula = data.get('formula', '').strip()
-
-        if not submitted_formula:
-            return JsonResponse({'error': 'Formula cannot be empty'}, status=400)
-
-        is_correct = submitted_formula == exercise.target_formula.strip()
-
-        counterexample = None
-        misconception = None  # NULL for correct answers; classified below when wrong
-        if not is_correct:
-            counterexample = {
-                'path': ['s0', 's1', 's2', 's0'],
-                'reason': f'The formula "{submitted_formula}" does not hold on this path. Expected: {exercise.target_formula}',
-                'violated_at': 's1',
-            }
-            # Classify at submit time so Results is pure aggregation (no lazy SPOT
-            # burst). On failure leave NULL so _backfill_misconceptions retries.
-            try:
-                misconception = classify_misconception(
-                    exercise.target_formula, submitted_formula
-                ) or ""
-            except Exception:
-                logger.exception("classify_misconception failed at submit")
-
-        try:
-            hints_used = max(0, int(data.get('hints_used', 0)))
-        except (TypeError, ValueError):
-            hints_used = 0
-
-        attempt = Attempt.objects.create(
-            exercise=exercise,
-            student=student,
-            formula_input=submitted_formula,
-            is_correct=is_correct,
-            hints_used=hints_used,
-            misconception=misconception,
+        result = run_ltl_check(graph, formula)
+    except ValueError as exc:
+        return _error_response(request, str(exc))
+    except Exception:
+        logger.exception("run_ltl_check failed during exercise submission")
+        return _error_response(
+            request, "Verification was stopped — the formula or graph could not be processed."
         )
 
-        return JsonResponse({
-            'success': True,
-            'is_correct': is_correct,
-            'counterexample': counterexample,
-            'message': 'Correct! Well done. 🎉' if is_correct else 'Incorrect. Check the counterexample and try again.',
-            'attempt_id': str(attempt.id),
-        })
+    is_correct = result["result"] == "satisfied"
 
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON'}, status=400)
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+    hint_count = len([h for h in (exercise.hints or []) if h and h.strip()])
+    try:
+        hints_used = min(max(0, int(request.POST.get('hints_used', 0))), hint_count)
+    except (TypeError, ValueError):
+        hints_used = 0
+
+    Attempt.objects.create(
+        exercise=exercise,
+        student=student,
+        formula_input=formula,
+        is_correct=is_correct,
+        hints_used=hints_used,
+    )
+
+    context = _build_result_context(result, json.dumps(result["kripke_graph"]))
+    return render(request, "sandbox/result.html", context)
 
 
 @supabase_login_required

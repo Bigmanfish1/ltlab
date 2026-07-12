@@ -3,6 +3,7 @@
 {% block title %}{{ exercise.title }} - ModelCheck Edu{% endblock %}
 
 {% block content %}
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
 <div class="min-h-screen bg-bg-primary">
     {% include "header.html" %}
     <!-- Header -->
@@ -54,7 +55,7 @@
                 <div class="mb-6">
                     <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE MODEL</h2>
                     <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
-                        {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json %}
+                        {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json readonly=True %}
                         <div id="result-drawer"
                             class="absolute bottom-0 left-0 right-0 bg-bg-secondary border-t border-border-primary"
                             style="min-height: 0; max-height: 140px; z-index: 10; overflow-y: auto;">
@@ -87,14 +88,16 @@
                                 class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">()</button>
                         </div>
                         <div class="bg-bg-primary border border-border-secondary focus-within:border-accent-orange transition-colors rounded px-3 py-2">
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 id="formula-input"
+                                name="formula"
                                 placeholder="Enter your formula (e.g., GF q)"
                                 class="w-full bg-transparent text-text-primary font-mono text-lg outline-none"
                                 autocomplete="off"
                             />
                         </div>
+                        <input type="hidden" id="hints-used" name="hints_used" value="0" />
                     </div>
                     <div class="flex items-center mt-3">
                         <div class="flex gap-2">
@@ -104,26 +107,18 @@
                             >
                                 Get Hint
                             </button>
-                            <button 
+                            <button
                                 id="submit-btn"
+                                hx-post="{% url 'submit_formula' exercise.id %}"
+                                hx-target="#result-drawer"
+                                hx-swap="innerHTML"
+                                hx-include="#formula-input, #hints-used"
+                                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                                 class="px-6 py-1.5 bg-accent-orange hover:opacity-90 transition-opacity rounded text-sm font-medium text-text-primary"
                             >
                                 Check Answer
                             </button>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Result Display -->
-                <div id="result-display" class="hidden mb-6">
-                    <div id="result-content" class="p-4 rounded"></div>
-                </div>
-
-                <!-- Counterexample Display -->
-                <div id="counterexample-display" class="hidden mb-6">
-                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">COUNTEREXAMPLE</h2>
-                    <div class="bg-bg-secondary border border-accent-orange rounded p-4">
-                        <div id="counterexample-content" class="text-sm text-text-primary font-mono"></div>
                     </div>
                 </div>
             </div>
@@ -238,52 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
         disableHintBtn();
     }
 
-    document.getElementById('submit-btn').addEventListener('click', async () => {
-        const formula = document.getElementById('formula-input').value.trim();
-        if (!formula) {
-            alert('Please enter a formula');
-            return;
-        }
-
-        const response = await fetch(`/exercises/{{ exercise.id }}/submit/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token }}',
-            },
-            body: JSON.stringify({ formula: formula, hints_used: hintsRevealed }),
-        });
-
-        const result = await response.json();
-
-        const resultDiv = document.getElementById('result-display');
-        const resultContent = document.getElementById('result-content');
-
-        if (result.is_correct) {
-            resultContent.className = 'p-4 rounded bg-accent-lime text-bg-primary';
-            resultContent.innerHTML = `<div class="font-semibold mb-1">✓ Correct!</div><div class="text-sm">${result.message}</div>`;
-            document.getElementById('counterexample-display').classList.add('hidden');
-        } else {
-            resultContent.className = 'p-4 rounded bg-accent-orange text-bg-primary';
-            resultContent.innerHTML = `<div class="font-semibold mb-1">✗ Incorrect</div><div class="text-sm">${result.message}</div>`;
-
-            if (result.counterexample) {
-                document.getElementById('counterexample-display').classList.remove('hidden');
-                document.getElementById('counterexample-content').innerHTML = `
-                    <div>Path: ${result.counterexample.path.join(' → ')}</div>
-                    <div class="mt-2">Violated at: ${result.counterexample.violated_at}</div>
-                    <div class="mt-1 text-text-secondary">${result.counterexample.reason}</div>
-                `;
-            }
-        }
-
-        resultDiv.classList.remove('hidden');
-
-        if (result.is_correct) {
-            setTimeout(() => location.reload(), 2000);
-        }
-    });
-
     hintBtn.addEventListener('click', () => {
         if (hintsRevealed >= hints.length) {
             return;
@@ -301,6 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hintDiv.appendChild(document.createTextNode(hints[hintsRevealed]));
         hintsContainer.appendChild(hintDiv);
         hintsRevealed += 1;
+        document.getElementById('hints-used').value = hintsRevealed;
 
         if (hintsRevealed >= hints.length) {
             disableHintBtn();
