@@ -11,6 +11,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
+from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import run_ltl_check
 from apps.checker.views import _build_result_context, _error_response
 
@@ -112,6 +113,16 @@ def submit_formula(request, exercise_id):
     graph = exercise.kripke_structure
     if not graph:
         return _error_response(request, "This exercise has no model to check against.")
+
+    # enforce the teacher's operator restriction (None = legacy = no limit)
+    if exercise.allowed_operators is not None:
+        bad = disallowed_operators(formula, exercise.allowed_operators)
+        if bad:
+            return _error_response(
+                request,
+                "These operators aren't allowed for this exercise: "
+                + ", ".join(sorted(bad)) + ".",
+            )
 
     try:
         result = run_ltl_check(graph, formula)

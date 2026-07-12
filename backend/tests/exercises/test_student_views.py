@@ -12,6 +12,7 @@ PLAIN_STATIC = {
 
 from apps.accounts.models import Profile
 from apps.exercises import views
+from apps.exercises.constants import BUILDER_OPERATORS
 from apps.exercises.models import Attempt, Exercise, Topic
 
 # s0 --a--> s1 --b--> s0 ; "true" holds, "G a" is violated at s1
@@ -38,7 +39,7 @@ class StudentViewTestCase(TestCase):
         self.published = Exercise.objects.create(
             topic=self.topic, title="ZZPUBLISHED", description="d", difficulty="beginner",
             hint="", target_formula=None, is_published=True, hints=["h1", "h2"],
-            kripke_structure=GRAPH,
+            kripke_structure=GRAPH, allowed_operators=list(BUILDER_OPERATORS),
         )
         self.draft = Exercise.objects.create(
             topic=self.topic, title="ZZDRAFT", description="d", difficulty="beginner",
@@ -112,3 +113,34 @@ class OperatorPaletteTests(StudentViewTestCase):
         self.assertIn("insertOp('F')", html)
         self.assertNotIn("insertOp('U')", html)
         self.assertNotIn("insertOp('¬')", html)  # ¬ hidden
+
+
+class OperatorEnforcementTests(StudentViewTestCase):
+    def setUp(self):
+        super().setUp()
+        self.published.allowed_operators = ["G", "F"]
+        self.published.save(update_fields=["allowed_operators"])
+
+    def _submit(self, formula):
+        return views.submit_formula(self._post({"formula": formula}), self.published.id)
+
+    def test_allowed_operators_are_graded(self):
+        response = self._submit("G F a")
+        self.assertContains(response, "Property")  # graded (holds/violated)
+        self.assertTrue(Attempt.objects.filter(exercise=self.published).exists())
+
+    def test_disallowed_operator_rejected(self):
+        response = self._submit("X a")
+        self.assertContains(response, "allowed for this exercise")
+        self.assertFalse(Attempt.objects.filter(exercise=self.published).exists())
+
+    def test_until_rejected_when_not_allowed(self):
+        response = self._submit("a U b")
+        self.assertContains(response, "allowed for this exercise")
+        self.assertFalse(Attempt.objects.filter(exercise=self.published).exists())
+
+    def test_unsupported_operator_always_rejected(self):
+        # R (release) has no builder button, so it can never be permitted
+        response = self._submit("a R b")
+        self.assertContains(response, "allowed for this exercise")
+        self.assertFalse(Attempt.objects.filter(exercise=self.published).exists())
