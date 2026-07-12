@@ -117,10 +117,12 @@ def submit_formula(request, exercise_id):
     if exercise.allowed_operators is not None:
         bad = disallowed_operators(formula, exercise.allowed_operators)
         if bad:
+            labels = sorted(
+                f"{t} ({OPERATOR_LABELS[t]})" if t in OPERATOR_LABELS else t for t in bad
+            )
             return error_response(
                 request,
-                "These operators aren't allowed for this exercise: "
-                + ", ".join(sorted(bad)) + ".",
+                "These operators aren't allowed for this exercise: " + ", ".join(labels) + ".",
             )
 
     try:

@@ -25,12 +25,6 @@ _UNSUPPORTED_LABELS = {
     "Equiv": "↔ (equivalence)", "Xor": "xor",
 }
 
-# human labels for the eight builder operators, for error messages
-_SYMBOL_LABELS = {
-    "G": "G (always)", "F": "F (eventually)", "X": "X (next)", "U": "U (until)",
-    "¬": "¬ (not)", "∧": "∧ (and)", "∨": "∨ (or)", "→": "→ (implies)",
-}
-
 # leaves — not operators
 _NON_OPERATOR = {"ap", "tt", "ff"}
 
@@ -38,9 +32,11 @@ _NON_OPERATOR = {"ap", "tt", "ff"}
 def disallowed_operators(formula_str, allowed_symbols):
     """Operators in the formula the exercise does not permit.
 
-    Returns a set of human labels (empty when everything is allowed). Returns an
-    empty set — deferring to run_ltl_check — when SPOT is unavailable or the
-    formula does not parse, so syntax errors surface through the engine path.
+    Returns a set of tokens: builder symbols (G/F/X/U/¬/∧/∨/→) for disallowed
+    builder operators, and a descriptive label for operators with no builder
+    equivalent (R/W/M/↔/xor). The caller labels the symbols for display. Empty
+    when all operators are allowed, or — deferring to run_ltl_check — when SPOT
+    is unavailable or the formula does not parse.
     ``allowed_symbols`` is the exercise's allowed-operator list.
     """
     if not _SPOT_AVAILABLE or spot is None:
@@ -55,7 +51,7 @@ def disallowed_operators(formula_str, allowed_symbols):
             if symbol is None:
                 bad.add(_UNSUPPORTED_LABELS.get(kind, kind))
             elif symbol not in allowed:
-                bad.add(_SYMBOL_LABELS.get(symbol, symbol))
+                bad.add(symbol)
         for child in node:
             walk(child)
 
