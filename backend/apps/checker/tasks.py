@@ -1,4 +1,5 @@
 from .engine import analyze_lasso, check_ltl, cytoscape_to_kripke, validate_request
+from .equivalence import check_equivalence, validate_formula_submission
 
 
 def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
@@ -45,3 +46,20 @@ def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
     result["kripke_graph"] = kripke_graph
 
     return result
+
+
+def run_equivalence_check(target: str, submitted: str, declared_aps: list[str]) -> dict:
+    """Grade a submitted formula against a hidden target by language equivalence.
+
+    The submission is validated against the caps and the exercise's declared AP
+    list first (ValueError on violation, surfaced to the user). The target is
+    teacher data validated at publish time, so a target parse failure here also
+    raises ValueError rather than being masked as a wrong answer.
+
+    Returns {"equivalent": bool, "formula": str}.
+    """
+    validate_formula_submission(submitted, declared_aps)
+    return {
+        "equivalent": check_equivalence(target, submitted),
+        "formula": submitted,
+    }
