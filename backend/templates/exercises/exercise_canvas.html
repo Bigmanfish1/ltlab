@@ -132,13 +132,14 @@
             <div>
                <!-- Hint Panel -->
                 <div class="mb-6">
-                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">HINT</h2>
+                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">HINTS</h2>
                     <div id="hints-container" class="space-y-2">
-                        <div class="text-sm text-text-secondary">
+                        <div id="hints-placeholder" class="text-sm text-text-secondary">
                             Click "Get Hint" to reveal a hint for this exercise.
                         </div>
                     </div>
                 </div>
+                {{ exercise.hints|json_script:"exercise-hints-data" }}
 
                 <!-- Previous Attempts -->
                 {% if attempts %}
@@ -217,12 +218,25 @@ function insertParens() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const exerciseData = {
-        id: "{{ exercise.id }}",
-        hint: "{{ exercise.hint|escapejs }}",
-    };
+    const hintsData = JSON.parse(
+        document.getElementById('exercise-hints-data').textContent || '[]'
+    );
+    const hints = (Array.isArray(hintsData) ? hintsData : [])
+        .filter(h => typeof h === 'string' && h.trim());
 
     let hintsRevealed = 0;
+
+    const hintBtn = document.getElementById('hint-btn');
+
+    function disableHintBtn() {
+        hintBtn.disabled = true;
+        hintBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+
+    if (hints.length === 0) {
+        hintBtn.textContent = 'No Hints';
+        disableHintBtn();
+    }
 
     document.getElementById('submit-btn').addEventListener('click', async () => {
         const formula = document.getElementById('formula-input').value.trim();
@@ -237,7 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': '{{ csrf_token }}',
             },
-            body: JSON.stringify({ formula: formula }),
+            body: JSON.stringify({ formula: formula, hints_used: hintsRevealed }),
         });
 
         const result = await response.json();
@@ -270,16 +284,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.getElementById('hint-btn').addEventListener('click', () => {
+    hintBtn.addEventListener('click', () => {
+        if (hintsRevealed >= hints.length) {
+            return;
+        }
+        const placeholder = document.getElementById('hints-placeholder');
+        if (placeholder) {
+            placeholder.remove();
+        }
+
         const hintsContainer = document.getElementById('hints-container');
         const hintDiv = document.createElement('div');
         hintDiv.className = 'bg-bg-secondary border border-border-primary rounded p-3 text-sm text-text-primary';
-        hintDiv.innerHTML = `<span class="font-mono text-xs text-accent-orange">HINT:</span> ${exerciseData.hint}`;
+        const label = `HINT ${hintsRevealed + 1} OF ${hints.length}`;
+        hintDiv.innerHTML = `<span class="font-mono text-xs text-accent-orange">${label}:</span> `;
+        hintDiv.appendChild(document.createTextNode(hints[hintsRevealed]));
         hintsContainer.appendChild(hintDiv);
-        hintsRevealed = 1;
+        hintsRevealed += 1;
 
-        document.getElementById('hint-btn').disabled = true;
-        document.getElementById('hint-btn').classList.add('opacity-50', 'cursor-not-allowed');
+        if (hintsRevealed >= hints.length) {
+            disableHintBtn();
+        } else {
+            hintBtn.textContent = `Get Hint (${hintsRevealed + 1}/${hints.length})`;
+        }
     });
 
     document.getElementById('formula-input').addEventListener('keypress', (e) => {
