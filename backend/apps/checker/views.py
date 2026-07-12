@@ -39,7 +39,7 @@ _RESERVED_PROP_NAMES = frozenset(
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _error_response(request, message: str):
+def error_response(request, message: str):
     """Render the result drawer with a grey error banner."""
     return render(
         request,
@@ -112,7 +112,7 @@ def _validate_graph(nodes: list, edges: list | None = None) -> str | None:
     return None
 
 
-def _build_result_context(engine_result: dict, graph_json: str) -> dict:
+def build_result_context(engine_result: dict, graph_json: str) -> dict:
     """Translate a run_ltl_check result dict into a template context dict."""
     formula = engine_result["formula"]
     graph, nodes, node_count = _parse_graph(graph_json)
@@ -177,10 +177,10 @@ def verify_ltl(request):
     graph_json = request.POST.get("graph_data", "")
 
     if not formula:
-        return _error_response(request, "No formula provided.")
+        return error_response(request, "No formula provided.")
 
     if len(formula) > MAX_FORMULA_CHARS:
-        return _error_response(
+        return error_response(
             request,
             f"Formula is too long ({len(formula)} characters) — the sandbox "
             f"supports at most {MAX_FORMULA_CHARS} characters.",
@@ -195,7 +195,7 @@ def verify_ltl(request):
     ]
     error = _validate_graph(nodes, real_edges)
     if error:
-        return _error_response(request, error)
+        return error_response(request, error)
 
     # Synchronous — a check is a few ms. ValueError carries a clean user-facing
     # message (bad formula / complexity cap); any other exception is logged and
@@ -203,16 +203,16 @@ def verify_ltl(request):
     try:
         engine_result = run_ltl_check(graph, formula)
     except ValueError as exc:
-        return _error_response(request, str(exc))
+        return error_response(request, str(exc))
     except Exception:
         logger.exception("LTL verification failed unexpectedly")
-        return _error_response(
+        return error_response(
             request,
             "Verification was stopped — the formula or graph could not be processed.",
         )
 
     graph_json = json.dumps(engine_result["kripke_graph"])
-    context = _build_result_context(engine_result, graph_json)
+    context = build_result_context(engine_result, graph_json)
     return render(request, "sandbox/result.html", context)
 
 

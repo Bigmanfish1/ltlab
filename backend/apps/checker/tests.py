@@ -603,13 +603,13 @@ class TestVerifyLTLView(TestCase):
         self.assertNotIn(b"SPOT is not installed", resp.content)
 
 
-# ── 9. View: _build_result_context (status-driven derivations) ───────────────
+# ── 9. View: build_result_context (status-driven derivations) ───────────────
 
 class TestBuildResultContext(TestCase):
 
     def _ctx(self, engine_result, graph):
-        from .views import _build_result_context
-        return _build_result_context(engine_result, json.dumps(graph))
+        from .views import build_result_context
+        return build_result_context(engine_result, json.dumps(graph))
 
     def test_violating_states_taken_from_status(self):
         graph = _graph(
