@@ -12,8 +12,9 @@ class ConformanceTests(TestCase):
         self.assertEqual(Profile._meta.db_table, "Users")
 
     def test_created_by_column_conforms(self):
+        # prod (rebuilt on UUID) uses Django's default FK column name
         column = Topic._meta.get_field("created_by").column
-        self.assertEqual(column, "created_by")
+        self.assertEqual(column, "created_by_id")
 
     def test_cascade_delete_topic_removes_exercises_and_attempts(self):
         teacher = Profile.objects.create(email="t@x.com", role=Profile.ROLE_TEACHER)

@@ -17,7 +17,7 @@ class Topic(models.Model):
     title = models.TextField()
     description = models.TextField(null=True, blank=True)
     created_by = models.ForeignKey(
-        Profile, on_delete=models.CASCADE, db_column="created_by", related_name="topics"
+        Profile, on_delete=models.CASCADE, related_name="topics"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     visible = models.BooleanField(default=True)
