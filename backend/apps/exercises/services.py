@@ -1,5 +1,4 @@
 import json
-import logging
 import math
 from collections import defaultdict
 from datetime import timedelta
@@ -10,12 +9,9 @@ from django.utils import timezone
 
 from apps.accounts.models import Profile
 from apps.checker.misconceptions import classify_misconception
-from apps.checker.tasks import run_ltl_check
 
 from .constants import DIFFICULTIES, MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
 from .models import Attempt, Exercise, Topic
-
-logger = logging.getLogger(__name__)
 
 
 def enrolled_students():
@@ -407,8 +403,6 @@ def validate_exercise_form(form, exercise, publishing):
         errors.append("Select a difficulty.")
     if not _topic_exists(form["module_id"]):
         errors.append("Assign the exercise to a module.")
-    if not form["target_formula"]:
-        errors.append("Solution formula is required.")
 
     graph = None
     if form["graph_data"]:
@@ -419,20 +413,10 @@ def validate_exercise_form(form, exercise, publishing):
     elif exercise is not None:
         graph = exercise.kripke_structure
 
-    if publishing and not errors:
-        if not graph:
-            errors.append("Publishing needs a memorandum Kripke structure.")
-        else:
-            try:
-                result = run_ltl_check(graph, form["target_formula"])
-            except ValueError as exc:
-                errors.append(f"Formula check failed: {exc}")
-            except Exception:
-                logger.exception("run_ltl_check failed during publish validation")
-                errors.append("Formula check failed — check the structure and try again.")
-            else:
-                if result["result"] != "satisfied":
-                    errors.append("The solution formula does not hold on the memorandum structure.")
+    # Students are graded by model-checking their formula against this graph
+    # (sandbox parity), so publishing needs a graph but no solution formula.
+    if publishing and not errors and not graph:
+        errors.append("Publishing needs a memorandum Kripke structure.")
     return errors, graph
 
 
@@ -444,7 +428,7 @@ def persist_exercise(exercise, form, graph, publishing):
     exercise.title = form["title"]
     exercise.description = form["description"]
     exercise.difficulty = form["difficulty"]
-    exercise.target_formula = form["target_formula"]
+    exercise.target_formula = form["target_formula"] or None
     exercise.hints = form["hints"]
     exercise.hint = next((h for h in form["hints"] if h), "")
     exercise.allowed_operators = form["allowed_operators"]
