@@ -44,7 +44,7 @@ class Exercise(models.Model):
     description = models.TextField()
     difficulty = models.CharField(max_length=12, choices=DIFFICULTY_CHOICES)
     hint = models.TextField()
-    target_formula = models.TextField()
+    target_formula = models.TextField(null=True, blank=True)
     image_url = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     kripke_structure = models.JSONField(null=True, blank=True)

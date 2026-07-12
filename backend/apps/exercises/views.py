@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -10,8 +11,11 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
+from apps.checker.operators import disallowed_operators
+from apps.checker.tasks import run_ltl_check
+from apps.checker.views import MAX_FORMULA_CHARS, build_result_context, error_response
 
-from .constants import BUILDER_OPERATORS, DIFFICULTIES
+from .constants import BUILDER_OPERATORS, DIFFICULTIES, OPERATOR_LABELS
 from .models import Attempt, Exercise, Topic
 from .services import (
     _elements_json,
@@ -21,6 +25,8 @@ from .services import (
     validate_exercise_form,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Student-facing views (DB-backed)
@@ -29,10 +35,6 @@ from .services import (
 def published_exercises():
     """Exercises visible to students — drafts (is_published=False) are excluded."""
     return Exercise.objects.filter(is_published=True)
-
-
-def get_exercise(exercise_id):
-    return published_exercises().filter(id=exercise_id).first()
 
 
 @supabase_login_required
@@ -56,10 +58,7 @@ def exercises(request):
 @supabase_login_required
 def exercise_canvas(request, exercise_id):
     """Exercise canvas with Kripke model, formula input, and submission"""
-    exercise = get_exercise(exercise_id)
-
-    if not exercise:
-        return render(request, '404.html', status=404)
+    exercise = get_object_or_404(published_exercises(), id=exercise_id)
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
@@ -71,10 +70,18 @@ def exercise_canvas(request, exercise_id):
     prev_exercise = all_exercises[current_index - 1] if current_index > 0 else None
     next_exercise = all_exercises[current_index + 1] if current_index < len(all_exercises) - 1 else None
 
+    # only the operators the teacher allowed (None = legacy exercise = all)
+    allowed = exercise.allowed_operators if exercise.allowed_operators is not None else BUILDER_OPERATORS
+    operator_buttons = [
+        {"op": op, "label": OPERATOR_LABELS.get(op, op)}
+        for op in BUILDER_OPERATORS if op in allowed
+    ]
+
     context = {
         'exercise': exercise,
         'exercise_number': current_index + 1,
-        'kripke_model': "",
+        'elements_json': _elements_json(exercise.kripke_structure),
+        'operator_buttons': operator_buttons,
         'attempts': attempts,
         'is_completed': is_completed,
         'prev_exercise': prev_exercise,
@@ -86,56 +93,69 @@ def exercise_canvas(request, exercise_id):
 @supabase_login_required
 @require_POST
 def submit_formula(request, exercise_id):
-    """Handle formula submission and check correctness"""
+    """Grade a submission by model-checking it against the exercise's graph.
+
+    Same engine path as the sandbox: run_ltl_check(graph, formula) → satisfied
+    means correct. Renders the shared sandbox/result.html fragment (real
+    counterexample trace included) rather than a fabricated one.
+    """
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     student = request.profile
 
-    try:
-        data = json.loads(request.body)
-        submitted_formula = data.get('formula', '').strip()
-
-        if not submitted_formula:
-            return JsonResponse({'error': 'Formula cannot be empty'}, status=400)
-
-        is_correct = submitted_formula == exercise.target_formula.strip()
-
-        counterexample = None
-        if not is_correct:
-            counterexample = {
-                'path': ['s0', 's1', 's2', 's0'],
-                'reason': f'The formula "{submitted_formula}" does not hold on this path. Expected: {exercise.target_formula}',
-                'violated_at': 's1',
-            }
-
-        attempt = Attempt.objects.create(
-            exercise=exercise,
-            student=student,
-            formula_input=submitted_formula,
-            is_correct=is_correct,
+    formula = request.POST.get('formula', '').strip()
+    if not formula:
+        return error_response(request, "Enter a formula to check.")
+    if len(formula) > MAX_FORMULA_CHARS:
+        return error_response(
+            request, f"Formula is too long — at most {MAX_FORMULA_CHARS} characters."
         )
 
-        return JsonResponse({
-            'success': True,
-            'is_correct': is_correct,
-            'counterexample': counterexample,
-            'message': 'Correct! Well done. 🎉' if is_correct else 'Incorrect. Check the counterexample and try again.',
-            'attempt_id': str(attempt.id),
-        })
+    graph = exercise.kripke_structure
+    if not graph:
+        return error_response(request, "This exercise has no model to check against.")
 
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON'}, status=400)
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+    if exercise.allowed_operators is not None:
+        bad = disallowed_operators(formula, exercise.allowed_operators)
+        if bad:
+            labels = sorted(
+                f"{t} ({OPERATOR_LABELS[t]})" if t in OPERATOR_LABELS else t for t in bad
+            )
+            return error_response(
+                request,
+                "These operators aren't allowed for this exercise: " + ", ".join(labels) + ".",
+            )
 
+    try:
+        result = run_ltl_check(graph, formula)
+    except ValueError as exc:
+        return error_response(request, str(exc))
+    except Exception:
+        logger.exception("run_ltl_check failed during exercise submission")
+        return error_response(
+            request, "Verification was stopped — the formula or graph could not be processed."
+        )
 
-@supabase_login_required
-def get_hint(request, exercise_id):
-    """Get next hint for exercise"""
-    exercise = get_exercise(exercise_id)
+    is_correct = result["result"] == "satisfied"
 
-    if exercise and exercise.hint != "":
-        return JsonResponse({'hint': exercise.hint})
-    return JsonResponse({'error': 'No hint available'}, status=404)
+    hint_count = len([h for h in (exercise.hints or []) if h and h.strip()])
+    try:
+        hints_used = min(max(0, int(request.POST.get('hints_used', 0))), hint_count)
+    except (TypeError, ValueError):
+        hints_used = 0
+
+    Attempt.objects.create(
+        exercise=exercise,
+        student=student,
+        formula_input=formula,
+        is_correct=is_correct,
+        hints_used=hints_used,
+    )
+
+    context = build_result_context(result, json.dumps(result["kripke_graph"]))
+    response = render(request, "sandbox/result.html", context)
+    if is_correct:
+        response["HX-Trigger"] = "exerciseSolved"
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +273,8 @@ def _save_exercise(request, exercise):
 
     persist_exercise(exercise, form, graph, publishing)
     messages.success(request, "Exercise published." if publishing else "Draft saved.")
+    if not form["allowed_operators"]:
+        messages.warning(request, "No operators are enabled — students can only submit atomic propositions.")
     return redirect("manage")
 
 

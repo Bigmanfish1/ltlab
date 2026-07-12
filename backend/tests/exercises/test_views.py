@@ -1,5 +1,7 @@
 import json
 
+from django.contrib import messages
+from django.contrib.messages import get_messages
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.contrib.sessions.backends.db import SessionStore
 from django.test import RequestFactory, TestCase, override_settings
@@ -70,29 +72,37 @@ class GatingTests(TeacherViewTestCase):
 
 @override_settings(STORAGES=PLAIN_STATIC)
 class PublishValidationTests(TeacherViewTestCase):
-    def test_publish_holding_formula_saves_published(self):
-        data = self._form(action="publish", formula="G (req -> F grant)")
+    def test_publish_with_graph_saves_published(self):
+        # grading is by model-checking against the graph, so publishing needs a
+        # graph but no solution formula
+        data = self._form(action="publish")
         response = views.exercise_builder(self._req("post", self.teacher, data))
         self.assertEqual(response.status_code, 302)
         ex = Exercise.objects.get(title="New Ex")
         self.assertTrue(ex.is_published)
         self.assertEqual(ex.kripke_structure["elements"]["nodes"][0]["data"]["id"], "idle")
 
-    def test_publish_violated_formula_rejected(self):
-        data = self._form(action="publish", formula="G grant")
+    def test_publish_without_graph_rejected(self):
+        data = self._form(action="publish", graph_data="")
         response = views.exercise_builder(self._req("post", self.teacher, data))
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
 
-    def test_draft_skips_holds_check(self):
-        data = self._form(action="draft", title="Draft Ex", formula="nonsense formula")
+    def test_draft_saves_unpublished(self):
+        data = self._form(action="draft", title="Draft Ex")
         response = views.exercise_builder(self._req("post", self.teacher, data))
         self.assertEqual(response.status_code, 302)
         ex = Exercise.objects.get(title="Draft Ex")
         self.assertFalse(ex.is_published)
 
+    def test_no_operators_warns_teacher(self):
+        request = self._req("post", self.teacher, self._form(action="publish", allowed_operators="[]"))
+        views.exercise_builder(request)
+        warnings = [m.message for m in get_messages(request) if m.level == messages.WARNING]
+        self.assertTrue(any("No operators" in m for m in warnings))
+
     def test_missing_required_fields_rejected(self):
-        data = self._form(action="publish", formula="G (req -> F grant)", title="")
+        data = self._form(action="publish", title="")
         response = views.exercise_builder(self._req("post", self.teacher, data))
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Exercise.objects.filter(description="desc", title="").exists())

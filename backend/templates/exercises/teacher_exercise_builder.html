@@ -116,41 +116,13 @@
 
             <div>
                 <div class="flex items-center justify-between mb-5">
-                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">SOLUTION — KRIPKE STRUCTURE</div>
-                    <span class="font-mono text-[10px] tracking-[0.12em] uppercase px-2 py-0.5 border border-accent-orange text-accent-orange rounded">Memorandum</span>
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">KRIPKE STRUCTURE</div>
                 </div>
-                <div class="text-[12px] text-accent-orange mb-3">This is the memorandum. Students never see this.</div>
+                <div class="text-[12px] text-text-secondary mb-3">Students see this model and write an LTL formula that holds on it.</div>
 
                 <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
                     {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json %}
-                    <div id="result-drawer"
-                        class="absolute bottom-0 left-0 right-0 bg-bg-secondary border-t border-border-primary"
-                        style="min-height: 0; max-height: 140px; z-index: 10; overflow-y: auto;">
-                    </div>
                 </div>
-
-                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-4">SOLUTION — LTL FORMULA</div>
-                <div class="flex flex-wrap gap-2 mb-3" id="formula-operators">
-                    {% for op in operators %}
-                    <button type="button" data-op="{{ op }}"
-                        class="formula-op w-9 h-9 font-mono text-[13px] bg-bg-secondary border border-border-primary text-text-primary rounded hover:border-accent-orange transition-colors">
-                        {{ op }}
-                    </button>
-                    {% endfor %}
-                </div>
-                <input type="text" id="memo-formula" name="formula" placeholder="Enter the solution formula..."
-                    class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[14px] px-4 py-3 rounded mb-3 focus:border-border-secondary focus:outline-none transition-colors"
-                    value="{% if prefill %}{{ prefill.target_formula }}{% endif %}" />
-                <button
-                    type="button"
-                    id="validate-btn"
-                    hx-post="{% url 'sandbox_verify' %}"
-                    hx-target="#result-drawer"
-                    hx-swap="innerHTML"
-                    hx-include="#memo-formula, #memo-graph-data"
-                    class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
-                    Validate Formula →
-                </button>
             </div>
 
         </div>
@@ -201,48 +173,6 @@
             });
         });
         syncAllowed();
-
-        const input = document.getElementById('memo-formula');
-        document.querySelectorAll('.formula-op').forEach(function (b) {
-            b.addEventListener('click', function () {
-                const op = b.dataset.op;
-                const start = input.selectionStart ?? input.value.length;
-                const end = input.selectionEnd ?? input.value.length;
-                input.value = input.value.slice(0, start) + op + input.value.slice(end);
-                input.focus();
-                const pos = start + op.length;
-                input.setSelectionRange(pos, pos);
-            });
-        });
-
-        function memoEditor() { return (window.KripkeEditors || {})['memo']; }
-        const drawer = document.getElementById('result-drawer');
-        function showResultBanner(msg) {
-            drawer.style.minHeight = '80px';
-            drawer.innerHTML =
-                '<div class="flex items-center justify-between px-4 py-3 font-mono text-[12px] text-text-secondary">' +
-                '<span>' + msg + '</span>' +
-                '<button type="button" class="js-close-result text-text-secondary hover:text-text-primary ml-4 text-lg leading-none">&times;</button>' +
-                '</div>';
-        }
-        drawer.addEventListener('click', function (e) {
-            if (e.target.closest('.js-close-result')) { drawer.innerHTML = ''; drawer.style.minHeight = '0'; }
-        });
-        document.addEventListener('kripke:warn', function (e) {
-            if (e.detail && e.detail.html) showResultBanner(e.detail.html);
-        });
-        const validateBtn = document.getElementById('validate-btn');
-        validateBtn.addEventListener('htmx:beforeRequest', function (e) {
-            const editor = memoEditor();
-            if (!editor) return;
-            const error = editor.validateStructure();
-            if (error) { e.preventDefault(); showResultBanner(error); }
-        });
-        document.body.addEventListener('htmx:afterSwap', function (e) {
-            if (e.detail.target.id === 'result-drawer' && drawer.innerHTML.trim()) {
-                drawer.style.minHeight = '80px';
-            }
-        });
 
         const form = document.querySelector('form');
         const REQUIRED = [

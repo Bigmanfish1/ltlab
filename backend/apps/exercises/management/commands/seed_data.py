@@ -8,70 +8,97 @@ idempotent and low-risk. Run:  python manage.py seed_data
 from django.core.management.base import BaseCommand
 
 from apps.accounts.models import Profile
+from apps.exercises.constants import BUILDER_OPERATORS
 from apps.exercises.models import Attempt, Exercise, Topic
 
 SEED_DOMAIN = "seed.ltlab"
 
 STUDENTS = ["Amara Dlamini", "Sipho Ndlovu", "Jamie Kim"]
 
+# Grading model-checks the student's formula against this graph, so every seed
+# exercise needs one. This is the canonical request–grant model from the
+# research proposal (Bentley & Timms, Fig. 1): s0{idle} (initial), s1{req},
+# s2{req,grant}, with a TOTAL transition relation s0→s0, s0→s1, s1→s2, s2→s0.
+REQUEST_GRANT = {
+    "elements": {
+        # positions matter: the editor lays out with "preset", so nodes without
+        # coordinates would all stack at (0,0) and render as a single state
+        "nodes": [
+            {"data": {"id": "s0", "name": "s0", "props": ["idle"], "initial": True},
+             "position": {"x": 220, "y": 220}},
+            {"data": {"id": "s1", "name": "s1", "props": ["req"]},
+             "position": {"x": 460, "y": 220}},
+            {"data": {"id": "s2", "name": "s2", "props": ["req", "grant"]},
+             "position": {"x": 340, "y": 400}},
+        ],
+        "edges": [
+            {"data": {"id": "e_s0_s0", "source": "s0", "target": "s0"}},
+            {"data": {"id": "e_s0_s1", "source": "s0", "target": "s1"}},
+            {"data": {"id": "e_s1_s2", "source": "s1", "target": "s2"}},
+            {"data": {"id": "e_s2_s0", "source": "s2", "target": "s0"}},
+        ],
+    },
+}
+
+# Every target_formula below HOLDS on REQUEST_GRANT, so a student who writes the
+# described property is graded correct.
 MODULES = [
     {
         "title": "Kripke Structures",
-        "description": "Modelling systems as state-transition graphs.",
+        "description": "A request–grant protocol modelled as a state-transition graph.",
         "exercises": [
             {
-                "title": "Always eventually green",
-                "description": "The light is always eventually green.",
+                "title": "Requests are eventually granted",
+                "description": "Whenever a request is made, a grant eventually follows.",
                 "difficulty": "beginner",
-                "target_formula": "G F green",
-                "hint": "Combine G (globally) with F (eventually).",
+                "target_formula": "G (req -> F grant)",
+                "hint": "Combine G (globally) with an implication whose right side is F grant.",
             },
             {
-                "title": "Never red and green",
-                "description": "Red and green are never true together.",
+                "title": "Grant implies request",
+                "description": "A grant never occurs without a request holding in the same state.",
                 "difficulty": "beginner",
-                "target_formula": "G !(red & green)",
-                "hint": "Use G with a negated conjunction.",
+                "target_formula": "G (grant -> req)",
+                "hint": "Use G over an implication from grant to req.",
             },
         ],
     },
     {
         "title": "LTL Operators",
-        "description": "Globally, Finally, Next and Until.",
+        "description": "Globally, Finally, Next and Until on the request–grant model.",
         "exercises": [
             {
-                "title": "Yellow leads to red",
-                "description": "Whenever yellow holds, red eventually follows.",
+                "title": "Idle recurs forever",
+                "description": "The system returns to the idle state infinitely often.",
                 "difficulty": "intermediate",
-                "target_formula": "G (yellow -> F red)",
-                "hint": "G over an implication whose right side is F red.",
+                "target_formula": "G F idle",
+                "hint": "Combine G (globally) with F (eventually).",
             },
             {
-                "title": "Next is green",
-                "description": "Green holds in the next state.",
+                "title": "Grant is followed by idle",
+                "description": "Whenever grant holds, the next state is idle.",
                 "difficulty": "intermediate",
-                "target_formula": "X green",
+                "target_formula": "G (grant -> X idle)",
                 "hint": "X refers only to the immediately following state.",
             },
         ],
     },
 ]
 
-# (exercise title, submitted formula, is_correct) per student.
-# Wrong formulas are deliberate misconception variants so the teacher
-# breakdown has something to classify.
+# (exercise title, submitted formula, is_correct) per student. Wrong formulas
+# genuinely fail on REQUEST_GRANT so the roster/accuracy stats are truthful.
 ATTEMPTS = [
     # Amara — strong, solves all
-    (0, [("Always eventually green", "G F green", True),
-         ("Never red and green", "G !(red & green)", True),
-         ("Yellow leads to red", "G (yellow -> F red)", True),
-         ("Next is green", "X green", True)]),
-    # Sipho — partial, one misconception then a solve
-    (1, [("Always eventually green", "F green", False),      # dropped G
-         ("Always eventually green", "G F green", True),
-         ("Next is green", "F green", False)]),               # X vs F
+    (0, [("Requests are eventually granted", "G (req -> F grant)", True),
+         ("Grant implies request", "G (grant -> req)", True),
+         ("Idle recurs forever", "G F idle", True),
+         ("Grant is followed by idle", "G (grant -> X idle)", True)]),
+    # Sipho — partial: one failing attempt then a solve
+    (1, [("Requests are eventually granted", "F grant", False),   # F grant fails on (s0)ω
+         ("Requests are eventually granted", "G (req -> F grant)", True),
+         ("Idle recurs forever", "G idle", False)]),              # idle is not always true
     # Jamie — early, one wrong
-    (2, [("Yellow leads to red", "yellow -> F red", False)]), # missing global
+    (2, [("Grant is followed by idle", "X idle", False)]),  # s0's successors aren't both idle
 ]
 
 
@@ -114,8 +141,16 @@ class Command(BaseCommand):
                         "hint": ex["hint"],
                         "is_published": True,
                         "position": ex_pos,
+                        "kripke_structure": REQUEST_GRANT,
+                        "allowed_operators": list(BUILDER_OPERATORS),
                     },
                 )
+                # keep the seed graph + operator set authoritative so re-running
+                # fixes drift (and backfills rows created before these existed)
+                if exercise.kripke_structure != REQUEST_GRANT or not exercise.allowed_operators:
+                    exercise.kripke_structure = REQUEST_GRANT
+                    exercise.allowed_operators = list(BUILDER_OPERATORS)
+                    exercise.save(update_fields=["kripke_structure", "allowed_operators"])
                 exercises[ex["title"]] = exercise
 
         created = 0

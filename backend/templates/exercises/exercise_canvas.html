@@ -3,6 +3,7 @@
 {% block title %}{{ exercise.title }} - ModelCheck Edu{% endblock %}
 
 {% block content %}
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
 <div class="min-h-screen bg-bg-primary">
     {% include "header.html" %}
     <!-- Header -->
@@ -54,7 +55,7 @@
                 <div class="mb-6">
                     <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE MODEL</h2>
                     <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
-                        {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json %}
+                        {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json readonly=True %}
                         <div id="result-drawer"
                             class="absolute bottom-0 left-0 right-0 bg-bg-secondary border-t border-border-primary"
                             style="min-height: 0; max-height: 140px; z-index: 10; overflow-y: auto;">
@@ -67,34 +68,24 @@
                     <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR FORMULA</h2>
                     <div class="bg-bg-secondary border-2 border-border-primary rounded p-4">
                         <div class="flex items-center gap-1 pb-3 mb-3 flex-wrap">
-                            <button type="button" onclick="insertOp('G')" title="Always"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">G</button>
-                            <button type="button" onclick="insertOp('F')" title="Eventually"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">F</button>
-                            <button type="button" onclick="insertOp('X')" title="Next"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">X</button>
-                            <button type="button" onclick="insertOp('U')" title="Until"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">U</button>
-                            <button type="button" onclick="insertOp('¬')" title="Not"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">¬</button>
-                            <button type="button" onclick="insertOp('∧')" title="And"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">∧</button>
-                            <button type="button" onclick="insertOp('∨')" title="Or"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">∨</button>
-                            <button type="button" onclick="insertOp('→')" title="Implies"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">→</button>
+                            {% for b in operator_buttons %}
+                            <button type="button" onclick="insertOp('{{ b.op }}')" title="{{ b.label }}"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">{{ b.op }}</button>
+                            {% endfor %}
                             <button type="button" onclick="insertParens()" title="Parentheses"
                                 class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">()</button>
                         </div>
                         <div class="bg-bg-primary border border-border-secondary focus-within:border-accent-orange transition-colors rounded px-3 py-2">
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 id="formula-input"
+                                name="formula"
                                 placeholder="Enter your formula (e.g., GF q)"
                                 class="w-full bg-transparent text-text-primary font-mono text-lg outline-none"
                                 autocomplete="off"
                             />
                         </div>
+                        <input type="hidden" id="hints-used" name="hints_used" value="0" />
                     </div>
                     <div class="flex items-center mt-3">
                         <div class="flex gap-2">
@@ -104,26 +95,18 @@
                             >
                                 Get Hint
                             </button>
-                            <button 
+                            <button
                                 id="submit-btn"
+                                hx-post="{% url 'submit_formula' exercise.id %}"
+                                hx-target="#result-drawer"
+                                hx-swap="innerHTML"
+                                hx-include="#formula-input, #hints-used"
+                                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                                 class="px-6 py-1.5 bg-accent-orange hover:opacity-90 transition-opacity rounded text-sm font-medium text-text-primary"
                             >
                                 Check Answer
                             </button>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Result Display -->
-                <div id="result-display" class="hidden mb-6">
-                    <div id="result-content" class="p-4 rounded"></div>
-                </div>
-
-                <!-- Counterexample Display -->
-                <div id="counterexample-display" class="hidden mb-6">
-                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">COUNTEREXAMPLE</h2>
-                    <div class="bg-bg-secondary border border-accent-orange rounded p-4">
-                        <div id="counterexample-content" class="text-sm text-text-primary font-mono"></div>
                     </div>
                 </div>
             </div>
@@ -132,13 +115,14 @@
             <div>
                <!-- Hint Panel -->
                 <div class="mb-6">
-                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">HINT</h2>
+                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">HINTS</h2>
                     <div id="hints-container" class="space-y-2">
-                        <div class="text-sm text-text-secondary">
+                        <div id="hints-placeholder" class="text-sm text-text-secondary">
                             Click "Get Hint" to reveal a hint for this exercise.
                         </div>
                     </div>
                 </div>
+                {{ exercise.hints|json_script:"exercise-hints-data" }}
 
                 <!-- Previous Attempts -->
                 {% if attempts %}
@@ -217,75 +201,61 @@ function insertParens() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const exerciseData = {
-        id: "{{ exercise.id }}",
-        hint: "{{ exercise.hint|escapejs }}",
-    };
+    const hintsData = JSON.parse(
+        document.getElementById('exercise-hints-data').textContent || '[]'
+    );
+    const hints = (Array.isArray(hintsData) ? hintsData : [])
+        .filter(h => typeof h === 'string' && h.trim());
 
     let hintsRevealed = 0;
 
-    document.getElementById('submit-btn').addEventListener('click', async () => {
-        const formula = document.getElementById('formula-input').value.trim();
-        if (!formula) {
-            alert('Please enter a formula');
+    const hintBtn = document.getElementById('hint-btn');
+
+    function disableHintBtn() {
+        hintBtn.disabled = true;
+        hintBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+
+    if (hints.length === 0) {
+        hintBtn.textContent = 'No Hints';
+        disableHintBtn();
+    }
+
+    hintBtn.addEventListener('click', () => {
+        if (hintsRevealed >= hints.length) {
             return;
         }
-
-        const response = await fetch(`/exercises/{{ exercise.id }}/submit/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token }}',
-            },
-            body: JSON.stringify({ formula: formula }),
-        });
-
-        const result = await response.json();
-
-        const resultDiv = document.getElementById('result-display');
-        const resultContent = document.getElementById('result-content');
-
-        if (result.is_correct) {
-            resultContent.className = 'p-4 rounded bg-accent-lime text-bg-primary';
-            resultContent.innerHTML = `<div class="font-semibold mb-1">✓ Correct!</div><div class="text-sm">${result.message}</div>`;
-            document.getElementById('counterexample-display').classList.add('hidden');
-        } else {
-            resultContent.className = 'p-4 rounded bg-accent-orange text-bg-primary';
-            resultContent.innerHTML = `<div class="font-semibold mb-1">✗ Incorrect</div><div class="text-sm">${result.message}</div>`;
-
-            if (result.counterexample) {
-                document.getElementById('counterexample-display').classList.remove('hidden');
-                document.getElementById('counterexample-content').innerHTML = `
-                    <div>Path: ${result.counterexample.path.join(' → ')}</div>
-                    <div class="mt-2">Violated at: ${result.counterexample.violated_at}</div>
-                    <div class="mt-1 text-text-secondary">${result.counterexample.reason}</div>
-                `;
-            }
+        const placeholder = document.getElementById('hints-placeholder');
+        if (placeholder) {
+            placeholder.remove();
         }
 
-        resultDiv.classList.remove('hidden');
-
-        if (result.is_correct) {
-            setTimeout(() => location.reload(), 2000);
-        }
-    });
-
-    document.getElementById('hint-btn').addEventListener('click', () => {
         const hintsContainer = document.getElementById('hints-container');
         const hintDiv = document.createElement('div');
         hintDiv.className = 'bg-bg-secondary border border-border-primary rounded p-3 text-sm text-text-primary';
-        hintDiv.innerHTML = `<span class="font-mono text-xs text-accent-orange">HINT:</span> ${exerciseData.hint}`;
+        const label = `HINT ${hintsRevealed + 1} OF ${hints.length}`;
+        hintDiv.innerHTML = `<span class="font-mono text-xs text-accent-orange">${label}:</span> `;
+        hintDiv.appendChild(document.createTextNode(hints[hintsRevealed]));
         hintsContainer.appendChild(hintDiv);
-        hintsRevealed = 1;
+        hintsRevealed += 1;
+        document.getElementById('hints-used').value = hintsRevealed;
 
-        document.getElementById('hint-btn').disabled = true;
-        document.getElementById('hint-btn').classList.add('opacity-50', 'cursor-not-allowed');
+        if (hintsRevealed >= hints.length) {
+            disableHintBtn();
+        } else {
+            hintBtn.textContent = `Get Hint (${hintsRevealed + 1}/${hints.length})`;
+        }
     });
 
     document.getElementById('formula-input').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             document.getElementById('submit-btn').click();
         }
+    });
+
+    // reload after a correct answer so the COMPLETED badge and attempts refresh
+    document.body.addEventListener('exerciseSolved', () => {
+        setTimeout(() => location.reload(), 1200);
     });
 });
 
