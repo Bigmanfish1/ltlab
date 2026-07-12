@@ -108,7 +108,9 @@ def student_dashboard(request):
     ).distinct().count()
     overall_progress = round((exercises_done / total_exercises) * 100) if total_exercises else 0
 
-    attempts = Attempt.objects.filter(student=student)
+    # scope to published exercises so accuracy shares the denominator population
+    # with the progress metrics above (attempts on unpublished drafts excluded)
+    attempts = Attempt.objects.filter(student=student, exercise__is_published=True)
     total_attempts = attempts.count()
     correct_attempts = attempts.filter(is_correct=True).count()
     accuracy = round((correct_attempts / total_attempts) * 100) if total_attempts else 0
