@@ -68,6 +68,10 @@
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if is_edit %}opacity-60 cursor-not-allowed{% endif %}">
                             Find a Path
                         </button>
+                        <button type="button" data-type="judge" {% if is_edit %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if is_edit %}opacity-60 cursor-not-allowed{% endif %}">
+                            Judge
+                        </button>
                     </div>
                     {% if is_edit %}
                     <div class="text-[11px] text-text-secondary mt-1">Type is fixed after creation.</div>
@@ -137,21 +141,23 @@
             </div>
 
             <div>
-                <div data-type-section="model_check path_exhibit">
+                <div data-type-section="model_check path_exhibit judge">
                     <div class="flex items-center justify-between mb-5">
                         <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">KRIPKE STRUCTURE</div>
                     </div>
                     <div class="text-[12px] text-text-secondary mb-3" data-type-hint="model_check">Students see this model and write an LTL formula that holds on it.</div>
                     <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="path_exhibit">Students trace a path through this model that satisfies each formula below.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="judge">Students judge whether each formula below holds on this model, giving a counterexample when it does not.</div>
 
                     <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
                         {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json %}
                     </div>
                 </div>
 
-                <div data-type-section="path_exhibit" class="hidden mt-2">
-                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">FORMULAS TO SATISFY</div>
-                    <div class="text-[12px] text-text-secondary mb-3">Publishing checks each formula actually has a satisfying path on the model.</div>
+                <div data-type-section="path_exhibit judge" class="hidden mt-2">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">FORMULAS</div>
+                    <div class="text-[12px] text-text-secondary mb-3" data-type-hint="path_exhibit">Publishing checks each formula actually has a satisfying path on the model.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="judge">Formulas may hold or fail on the model — the answer key is shown after publishing.</div>
                     <div class="space-y-3 mb-4" id="path-parts-rows"></div>
                     <button type="button" id="path-part-add"
                         class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
@@ -283,6 +289,7 @@
                 label: 'FORMULA ',
             },
         };
+        containers.judge = containers.path_exhibit;
         function activeContainer() { return containers[typeInput.value] || null; }
         function collectParts() {
             const c = activeContainer();

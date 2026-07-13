@@ -359,3 +359,129 @@ class PathExhibitExerciseTests(StudentViewTestCase):
         with self.assertRaises(Http404):
             self._submit_trace(foreign_part, "[]", '["s0", "s1"]')
         self.assertFalse(Attempt.objects.filter(exercise=self.path).exists())
+
+
+@override_settings(STORAGES=PLAIN_STATIC)
+class JudgeExerciseTests(StudentViewTestCase):
+    # GRAPH admits the single run s0 s1 s0 s1 ... (word ({a}{b})^omega), so
+    # "holds universally" is decided by that one word:
+    #   G F b — b at every odd position, infinitely often -> HOLDS
+    #   G a   — position 1 is {b}, a false there          -> VIOLATED
+    def setUp(self):
+        super().setUp()
+        self.judge = Exercise.objects.create(
+            topic=self.topic, title="ZZJUDGE", description="alternator",
+            difficulty="beginner", hint="", is_published=True, hints=[],
+            exercise_type="judge", kripke_structure=GRAPH,
+        )
+        self.part_true = ExercisePart.objects.create(
+            exercise=self.judge, position=0, formula="G F b",
+        )
+        self.part_false = ExercisePart.objects.create(
+            exercise=self.judge, position=1, formula="G a",
+        )
+
+    def _submit_verdict(self, part, data):
+        return views.submit_part(self._post(data), self.judge.id, part.id)
+
+    def test_canvas_renders_judge_template(self):
+        response = views.exercise_canvas(self._get(), self.judge.id)
+        self.assertContains(response, "JUDGE THE FORMULAS")
+        self.assertContains(response, "G F b")
+        self.assertContains(response, "G a")
+        self.assertContains(response, "trace_prefix")
+        self.assertContains(response, "trace_cycle")
+
+    def test_holds_claim_on_true_formula_correct(self):
+        response = self._submit_verdict(self.part_true, {"verdict": "holds"})
+        self.assertContains(response, "CORRECT")
+        self.assertNotContains(response, "INCORRECT")
+        attempt = Attempt.objects.get(part=self.part_true)
+        self.assertTrue(attempt.is_correct)
+        self.assertEqual(attempt.answer, {"verdict": "holds"})
+        self.assertIsNone(attempt.formula_input)
+        self.assertEqual(attempt.misconception, "")
+
+    def test_holds_claim_on_false_formula_incorrect(self):
+        response = self._submit_verdict(self.part_false, {"verdict": "holds"})
+        self.assertContains(response, "INCORRECT")
+        attempt = Attempt.objects.get(part=self.part_false)
+        self.assertFalse(attempt.is_correct)
+        self.assertEqual(attempt.answer, {"verdict": "holds"})
+
+    def test_violated_claim_with_witness_correct(self):
+        # []·[s0,s1]^omega is the graph's run; G a fails there at position 1
+        response = self._submit_verdict(
+            self.part_false,
+            {"verdict": "violated", "trace_prefix": "[]", "trace_cycle": '["s0", "s1"]'},
+        )
+        self.assertContains(response, "CORRECT")
+        self.assertNotContains(response, "INCORRECT")
+        attempt = Attempt.objects.get(part=self.part_false)
+        self.assertTrue(attempt.is_correct)
+        self.assertEqual(
+            attempt.answer,
+            {"verdict": "violated", "prefix": [], "cycle": ["s0", "s1"]},
+        )
+        self.assertIsNone(attempt.formula_input)
+        self.assertEqual(attempt.misconception, "")
+
+    def test_violated_claim_on_true_formula_incorrect(self):
+        # the lasso is a real path, but G F b holds on it (and on every path),
+        # so no counterexample exists and the claim itself is wrong
+        response = self._submit_verdict(
+            self.part_true,
+            {"verdict": "violated", "trace_prefix": "[]", "trace_cycle": '["s0", "s1"]'},
+        )
+        self.assertContains(response, "INCORRECT")
+        attempt = Attempt.objects.get(part=self.part_true)
+        self.assertFalse(attempt.is_correct)
+        self.assertEqual(
+            attempt.answer,
+            {"verdict": "violated", "prefix": [], "cycle": ["s0", "s1"]},
+        )
+
+    def test_violated_claim_with_broken_path_incorrect_but_recorded(self):
+        # cycle [s0] needs the edge s0 -> s0, which the graph does not have;
+        # the verdict is right (G a is violated) but the witness is not a path
+        response = self._submit_verdict(
+            self.part_false,
+            {"verdict": "violated", "trace_prefix": "[]", "trace_cycle": '["s0"]'},
+        )
+        self.assertContains(response, "INCORRECT")
+        attempt = Attempt.objects.get(part=self.part_false)
+        self.assertFalse(attempt.is_correct)
+        self.assertEqual(
+            attempt.answer,
+            {"verdict": "violated", "prefix": [], "cycle": ["s0"]},
+        )
+
+    def test_missing_or_bogus_verdict_no_attempt(self):
+        response = self._submit_verdict(self.part_true, {})
+        self.assertEqual(response.status_code, 200)
+        response = self._submit_verdict(self.part_true, {"verdict": "maybe"})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Attempt.objects.filter(exercise=self.judge).exists())
+
+    def test_violated_with_bad_trace_no_attempt(self):
+        response = self._submit_verdict(
+            self.part_false,
+            {"verdict": "violated", "trace_prefix": "not json", "trace_cycle": '["s0", "s1"]'},
+        )
+        self.assertContains(response, "ERROR")
+        response = self._submit_verdict(
+            self.part_false,
+            {"verdict": "violated", "trace_prefix": '["s0"]', "trace_cycle": "[]"},
+        )
+        self.assertContains(response, "ERROR")
+        self.assertFalse(Attempt.objects.filter(exercise=self.judge).exists())
+
+    def test_solving_all_parts_triggers_completion(self):
+        first = self._submit_verdict(self.part_true, {"verdict": "holds"})
+        self.assertNotIn("HX-Trigger", first)
+        second = self._submit_verdict(
+            self.part_false,
+            {"verdict": "violated", "trace_prefix": "[]", "trace_cycle": '["s0", "s1"]'},
+        )
+        self.assertEqual(second["HX-Trigger"], "exerciseSolved")
+        self.assertIn(self.judge.id, solved_exercise_ids(self.student))

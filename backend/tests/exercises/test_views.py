@@ -352,3 +352,80 @@ class PathExhibitBuilderTests(TeacherViewTestCase):
         views.exercise_builder(self._req("post", self.teacher, data), ex.id)
         ex.refresh_from_db()
         self.assertEqual(ex.exercise_type, "path_exhibit")
+
+
+# REQGRANT's single run is (idle req grant)^ω, so universally:
+# G F grant holds (grant at every third position), G idle does not (position 1)
+JUDGE_PARTS = json.dumps([
+    {"prompt": "", "formula": "G F grant"},
+    {"prompt": "", "formula": "G idle"},
+])
+
+
+@override_settings(STORAGES=PLAIN_STATIC)
+class JudgeBuilderTests(TeacherViewTestCase):
+    def _judge_form(self, **overrides):
+        data = self._form(exercise_type="judge", parts=JUDGE_PARTS)
+        data.update(overrides)
+        return data
+
+    def test_publish_creates_parts_and_answer_key_warning(self):
+        request = self._req("post", self.teacher, self._judge_form(action="publish"))
+        response = views.exercise_builder(request)
+        self.assertEqual(response.status_code, 302)
+        ex = Exercise.objects.get(title="New Ex")
+        self.assertTrue(ex.is_published)
+        self.assertEqual(ex.exercise_type, "judge")
+        self.assertEqual(ex.kripke_structure["elements"]["nodes"][0]["data"]["id"], "idle")
+        self.assertEqual(
+            list(ex.parts.values_list("formula", flat=True)), ["G F grant", "G idle"]
+        )
+        warnings = [m.message for m in get_messages(request) if m.level == messages.WARNING]
+        key = " ".join(m for m in warnings if "Answer key" in m)
+        self.assertIn("G F grant", key)
+        self.assertIn("holds", key)
+        self.assertIn("does not hold", key)
+
+    def test_publish_accepts_universally_false_formula(self):
+        # G grant is false on the only run (position 0 is {idle}); judging a
+        # never-true formula IS the exercise, so there is no solvability gate
+        parts = json.dumps([{"prompt": "", "formula": "G grant"}])
+        data = self._judge_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 302)
+        ex = Exercise.objects.get(title="New Ex")
+        self.assertTrue(ex.is_published)
+        self.assertEqual(list(ex.parts.values_list("formula", flat=True)), ["G grant"])
+
+    def test_publish_unparseable_formula_rejected(self):
+        parts = json.dumps([{"prompt": "", "formula": "G (grant"}])
+        data = self._judge_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_undeclared_ap_rejected(self):
+        parts = json.dumps([{"prompt": "", "formula": "G espresso"}])
+        data = self._judge_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_without_parts_rejected(self):
+        data = self._judge_form(action="publish", parts="[]")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_without_graph_rejected(self):
+        data = self._judge_form(action="publish", graph_data="")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_draft_with_bad_formula_saves_unpublished(self):
+        parts = json.dumps([{"prompt": "", "formula": "G (grant"}])
+        data = self._judge_form(action="draft", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Exercise.objects.get(title="New Ex").is_published)

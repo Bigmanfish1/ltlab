@@ -141,6 +141,43 @@ PATH_ATTEMPTS = [
     (1, 0, [], ["s0"], False),
 ]
 
+# Judge exercise (MCL3 p.29 verbatim formulas). The slide's own graph is not
+# in the RAG, so this graph over {a,b,c} was authored and its verdicts pinned
+# empirically via run_ltl_check: F G c, G F c, (X !c) -> (X X c), G a violated;
+# a U (G (b | c)) and (X X b) U (b | c) satisfied.
+JUDGE_GRAPH = {
+    "elements": {
+        "nodes": [
+            {"data": {"id": "s0", "name": "s0", "props": ["a"], "initial": True},
+             "position": {"x": 220, "y": 220}},
+            {"data": {"id": "s1", "name": "s1", "props": ["a", "b"]},
+             "position": {"x": 460, "y": 220}},
+            {"data": {"id": "s2", "name": "s2", "props": ["b", "c"]},
+             "position": {"x": 340, "y": 400}},
+        ],
+        "edges": [
+            {"data": {"id": "e_s0_s1", "source": "s0", "target": "s1"}},
+            {"data": {"id": "e_s1_s1", "source": "s1", "target": "s1"}},
+            {"data": {"id": "e_s1_s2", "source": "s1", "target": "s2"}},
+            {"data": {"id": "e_s2_s2", "source": "s2", "target": "s2"}},
+        ],
+    },
+}
+
+JUDGE_EXERCISE = {
+    "title": "Which formulae hold universally?",
+    "description": (
+        "Which of the following LTL formulae hold universally for the given "
+        "Kripke structure? For each formula that does not hold, provide a "
+        "counterexample."
+    ),
+    "difficulty": "advanced",
+    "parts": [
+        "F G c", "G F c", "(X !c) -> (X X c)",
+        "G a", "a U (G (b | c))", "(X X b) U (b | c)",
+    ],
+}
+
 # (exercise title, submitted formula, is_correct) per student. Wrong formulas
 # genuinely fail on REQUEST_GRANT so the roster/accuracy stats are truthful.
 ATTEMPTS = [
@@ -262,6 +299,27 @@ class Command(BaseCommand):
                 defaults={"formula": formula},
             )
             path_parts.append(part)
+
+        judge_ex, _ = Exercise.objects.get_or_create(
+            title=JUDGE_EXERCISE["title"],
+            topic=ltl_topic,
+            defaults={
+                "description": JUDGE_EXERCISE["description"],
+                "difficulty": JUDGE_EXERCISE["difficulty"],
+                "hint": "",
+                "is_published": True,
+                "position": 3,
+                "exercise_type": "judge",
+                "kripke_structure": JUDGE_GRAPH,
+                "allowed_operators": list(BUILDER_OPERATORS),
+            },
+        )
+        for position, formula in enumerate(JUDGE_EXERCISE["parts"]):
+            ExercisePart.objects.get_or_create(
+                exercise=judge_ex,
+                position=position,
+                defaults={"formula": formula},
+            )
 
         created = 0
         for student_idx, rows in ATTEMPTS:

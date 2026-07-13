@@ -8,6 +8,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.accounts.models import Profile
+from apps.checker.engine import validate_request
 from apps.checker.equivalence import validate_formula_submission
 from apps.checker.misconceptions import classify_misconception
 from apps.checker.tasks import run_ltl_check
@@ -16,7 +17,7 @@ from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
 from .constants import DIFFICULTIES, MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
 from .models import Attempt, Exercise, ExercisePart, Topic
 
-BUILDER_EXERCISE_TYPES = ("model_check", "english_to_formula", "path_exhibit")
+BUILDER_EXERCISE_TYPES = ("model_check", "english_to_formula", "path_exhibit", "judge")
 
 
 def enrolled_students():
@@ -489,6 +490,31 @@ def _validate_english_parts(form, errors):
             errors.append(f"Requirement {i} target: {exc}")
 
 
+def _validate_judge_parts(form, graph, errors):
+    if not form["parts"]:
+        errors.append("Add at least one formula for students to judge.")
+        return
+    for i, part in enumerate(form["parts"], start=1):
+        if not part["formula"]:
+            errors.append(f"Formula {i} is empty.")
+            continue
+        try:
+            validate_request(graph, part["formula"])
+        except ValueError as exc:
+            errors.append(f"Formula {i}: {exc}")
+
+
+def judge_answer_key(exercise):
+    """(position, formula, holds) per part — the teacher-facing answer key.
+
+    Computed live by model checking so it can never drift from the graph."""
+    key = []
+    for i, part in enumerate(exercise.parts.all(), start=1):
+        result = run_ltl_check(exercise.kripke_structure, part.formula)
+        key.append((i, part.formula, result["result"] == "satisfied"))
+    return key
+
+
 def _validate_path_parts(form, graph, errors):
     """Each formula must parse against the graph AND have a satisfying lasso —
     a counterexample to !(φ) is exactly a satisfying path for φ, so an
@@ -547,6 +573,8 @@ def validate_exercise_form(form, exercise, publishing):
             errors.append("Publishing needs a memorandum Kripke structure.")
         elif exercise_type == "path_exhibit":
             _validate_path_parts(form, graph, errors)
+        elif exercise_type == "judge":
+            _validate_judge_parts(form, graph, errors)
     return errors, graph
 
 

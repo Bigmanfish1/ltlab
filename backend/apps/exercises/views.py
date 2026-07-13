@@ -21,6 +21,7 @@ from .services import (
     BUILDER_EXERCISE_TYPES,
     _elements_json,
     exercise_rows,
+    judge_answer_key,
     parse_exercise_form,
     persist_exercise,
     solved_exercise_ids,
@@ -81,6 +82,8 @@ def exercise_canvas(request, exercise_id):
         return _english_canvas(request, exercise)
     if exercise.exercise_type == "path_exhibit":
         return _path_canvas(request, exercise)
+    if exercise.exercise_type == "judge":
+        return _judge_canvas(request, exercise)
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
@@ -129,6 +132,21 @@ def _path_canvas(request, exercise):
         "next_exercise": next_exercise,
     }
     return render(request, "exercises/exercise_path.html", context)
+
+
+def _judge_canvas(request, exercise):
+    part_rows = _part_rows(exercise, request.profile)
+    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
+    context = {
+        "exercise": exercise,
+        "exercise_number": exercise_number,
+        "part_rows": part_rows,
+        "elements_json": _elements_json(exercise.kripke_structure),
+        "is_completed": bool(part_rows) and all(r["solved"] for r in part_rows),
+        "prev_exercise": prev_exercise,
+        "next_exercise": next_exercise,
+    }
+    return render(request, "exercises/exercise_judge.html", context)
 
 
 def _english_canvas(request, exercise):
@@ -298,6 +316,81 @@ def _submit_path_part(request, exercise, part):
     )
 
 
+def _submit_judge_part(request, exercise, part):
+    verdict = request.POST.get("verdict", "").strip()
+    if verdict not in ("holds", "violated"):
+        return _part_result(request, part, "error", "Choose a verdict first.")
+    if not exercise.kripke_structure:
+        return _part_result(request, part, "error", "This exercise has no model to check against.")
+
+    try:
+        truth = run_ltl_check(exercise.kripke_structure, part.formula)["result"]
+    except ValueError as exc:
+        return _part_result(request, part, "error", str(exc))
+    except Exception:
+        logger.exception("run_ltl_check failed during judge submission")
+        return _part_result(
+            request, part, "error",
+            "Verification was stopped — the formula could not be processed.",
+        )
+    actually_holds = truth == "satisfied"
+
+    if verdict == "holds":
+        answer = {"verdict": "holds"}
+        is_correct = actually_holds
+        message = (
+            "Correct — the formula holds on every path of the model."
+            if is_correct
+            else "The formula does not hold universally — there is a path that violates it."
+        )
+    else:
+        prefix = _parse_trace_field(request, "trace_prefix")
+        cycle = _parse_trace_field(request, "trace_cycle")
+        if prefix is None or cycle is None:
+            return _part_result(
+                request, part, "error",
+                "Select a counterexample path before submitting.",
+            )
+        if not cycle:
+            return _part_result(
+                request, part, "error",
+                "Close the loop first — click a state already on your path to form the cycle.",
+            )
+        try:
+            trace = run_trace_check(exercise.kripke_structure, part.formula, prefix, cycle)
+        except ValueError as exc:
+            return _part_result(request, part, "error", str(exc))
+        answer = {"verdict": "violated", "prefix": prefix, "cycle": cycle}
+        is_correct = (
+            not actually_holds and trace["path_ok"] and trace["holds"] is False
+        )
+        if is_correct:
+            message = "Correct — the formula does not hold, and your path witnesses the violation."
+        elif actually_holds:
+            message = "The formula actually holds on every path — no counterexample exists."
+        elif not trace["path_ok"]:
+            message = trace["path_error"]
+        else:
+            message = "The formula holds on your chosen path — find a path where it fails."
+
+    Attempt.objects.create(
+        exercise=exercise,
+        student=request.profile,
+        part=part,
+        answer=answer,
+        is_correct=is_correct,
+        hints_used=_clamped_hints(request, exercise),
+        misconception="",
+    )
+
+    response = _part_result(
+        request, part, "correct" if is_correct else "incorrect", message
+    )
+    if is_correct:
+        return _completion_trigger(response, request, exercise)
+    return response
+
+
 @supabase_login_required
 @require_POST
 def submit_part(request, exercise_id, part_id):
@@ -307,6 +400,8 @@ def submit_part(request, exercise_id, part_id):
 
     if exercise.exercise_type == "path_exhibit":
         return _submit_path_part(request, exercise, part)
+    if exercise.exercise_type == "judge":
+        return _submit_judge_part(request, exercise, part)
     if exercise.exercise_type != "english_to_formula":
         return _part_result(request, part, "error", "This exercise type is not submittable yet.")
 
@@ -493,10 +588,16 @@ def _save_exercise(request, exercise):
             messages.error(request, error)
         return render(request, "exercises/teacher_exercise_builder.html", _builder_context(exercise, form))
 
-    persist_exercise(exercise, form, graph, publishing)
+    saved = persist_exercise(exercise, form, graph, publishing)
     messages.success(request, "Exercise published." if publishing else "Draft saved.")
     if not form["allowed_operators"]:
         messages.warning(request, "No operators are enabled — students can only submit atomic propositions.")
+    if publishing and saved.exercise_type == "judge":
+        key = ", ".join(
+            f"{i}. {formula} — {'holds' if holds else 'does not hold'}"
+            for i, formula, holds in judge_answer_key(saved)
+        )
+        messages.warning(request, f"Answer key: {key}")
     return redirect("manage")
 
 
