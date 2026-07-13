@@ -18,6 +18,7 @@ from apps.checker.views import MAX_FORMULA_CHARS, build_result_context, error_re
 from .constants import BUILDER_OPERATORS, DIFFICULTIES, OPERATOR_LABELS
 from .models import Attempt, Exercise, Topic
 from .services import (
+    BUILDER_EXERCISE_TYPES,
     _elements_json,
     exercise_rows,
     parse_exercise_form,
@@ -212,6 +213,9 @@ def _builder_context(exercise, form=None):
         except json.JSONDecodeError:
             elements_json = ""
         prefill = form
+        exercise_type = exercise.exercise_type if exercise else form["exercise_type"]
+        declared_aps = form["declared_aps"]
+        parts = form["parts"]
     elif exercise is not None:
         hints = list(exercise.hints or [])[:3]
         hint_values = hints + [""] * (3 - len(hints))
@@ -228,11 +232,20 @@ def _builder_context(exercise, form=None):
             "module_id": exercise.topic_id,
             "target_formula": exercise.target_formula,
         }
+        exercise_type = exercise.exercise_type
+        declared_aps = list(exercise.declared_aps or [])
+        parts = [
+            {"id": str(p.id), "prompt": p.prompt, "formula": p.formula}
+            for p in exercise.parts.all()
+        ]
     else:
         hint_values = ["", "", ""]
         allowed = list(BUILDER_OPERATORS)
         elements_json = ""
         prefill = None
+        exercise_type = "model_check"
+        declared_aps = []
+        parts = []
     return {
         "modules": list(Topic.objects.all()),
         "operators": BUILDER_OPERATORS,
@@ -244,6 +257,10 @@ def _builder_context(exercise, form=None):
         "selected_topic_id": prefill["module_id"] if prefill else None,
         "is_edit": exercise is not None,
         "exercise_id": exercise.id if exercise else None,
+        "exercise_type": exercise_type,
+        "builder_types": BUILDER_EXERCISE_TYPES,
+        "declared_aps_json": json.dumps(declared_aps),
+        "parts_json": json.dumps(parts),
     }
 
 

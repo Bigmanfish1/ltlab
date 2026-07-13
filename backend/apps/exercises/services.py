@@ -8,10 +8,14 @@ from django.db.models import Count
 from django.utils import timezone
 
 from apps.accounts.models import Profile
+from apps.checker.equivalence import validate_formula_submission
 from apps.checker.misconceptions import classify_misconception
+from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
 
 from .constants import DIFFICULTIES, MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
-from .models import Attempt, Exercise, Topic
+from .models import Attempt, Exercise, ExercisePart, Topic
+
+BUILDER_EXERCISE_TYPES = ("model_check", "english_to_formula")
 
 
 def enrolled_students():
@@ -375,22 +379,66 @@ def _topic_exists(pk):
         return False
 
 
+def _json_field(request, name, default):
+    try:
+        value = json.loads(request.POST.get(name) or "")
+    except json.JSONDecodeError:
+        return default
+    return value if isinstance(value, type(default)) else default
+
+
 def parse_exercise_form(request):
     topic_id = request.POST.get("topic", "").strip()
-    try:
-        allowed = json.loads(request.POST.get("allowed_operators") or "[]")
-    except json.JSONDecodeError:
-        allowed = []
+    raw_parts = _json_field(request, "parts", [])
+    parts = [
+        {
+            "id": str(p.get("id", "")).strip(),
+            "prompt": str(p.get("prompt", "")).strip(),
+            "formula": str(p.get("formula", "")).strip(),
+        }
+        for p in raw_parts
+        if isinstance(p, dict)
+    ]
     return {
         "title": request.POST.get("title", "").strip(),
         "description": request.POST.get("description", "").strip(),
         "difficulty": request.POST.get("difficulty", "").strip(),
         "module_id": topic_id or None,
+        "exercise_type": request.POST.get("exercise_type", "model_check").strip(),
         "target_formula": request.POST.get("formula", "").strip(),
         "hints": [request.POST.get(f"hint_{i}", "").strip() for i in (1, 2, 3)],
-        "allowed_operators": allowed,
+        "allowed_operators": _json_field(request, "allowed_operators", []),
+        "declared_aps": [
+            str(a).strip() for a in _json_field(request, "declared_aps", []) if str(a).strip()
+        ],
+        "parts": parts,
         "graph_data": request.POST.get("graph_data", "").strip(),
     }
+
+
+def _validate_declared_aps(declared_aps, errors):
+    if not declared_aps:
+        errors.append("Declare at least one atomic proposition.")
+    for ap in declared_aps:
+        if not _PROP_NAME_RE.match(ap):
+            errors.append(f"'{ap}' is not a valid proposition name.")
+        elif ap in _RESERVED_PROP_NAMES:
+            errors.append(f"'{ap}' is a reserved LTL keyword.")
+
+
+def _validate_english_parts(form, errors):
+    if not form["parts"]:
+        errors.append("Add at least one requirement with a target formula.")
+    for i, part in enumerate(form["parts"], start=1):
+        if not part["prompt"]:
+            errors.append(f"Requirement {i} needs its English prompt.")
+        if not part["formula"]:
+            errors.append(f"Requirement {i} needs a target formula.")
+            continue
+        try:
+            validate_formula_submission(part["formula"], form["declared_aps"])
+        except ValueError as exc:
+            errors.append(f"Requirement {i} target: {exc}")
 
 
 def validate_exercise_form(form, exercise, publishing):
@@ -404,6 +452,11 @@ def validate_exercise_form(form, exercise, publishing):
     if not _topic_exists(form["module_id"]):
         errors.append("Assign the exercise to a module.")
 
+    exercise_type = exercise.exercise_type if exercise else form["exercise_type"]
+    if exercise_type not in BUILDER_EXERCISE_TYPES:
+        errors.append("Unknown exercise type.")
+        return errors, None
+
     graph = None
     if form["graph_data"]:
         try:
@@ -413,17 +466,28 @@ def validate_exercise_form(form, exercise, publishing):
     elif exercise is not None:
         graph = exercise.kripke_structure
 
-    # Students are graded by model-checking their formula against this graph
-    # (sandbox parity), so publishing needs a graph but no solution formula.
-    if publishing and not errors and not graph:
-        errors.append("Publishing needs a memorandum Kripke structure.")
+    if publishing and not errors:
+        if exercise_type == "english_to_formula":
+            _validate_declared_aps(form["declared_aps"], errors)
+            _validate_english_parts(form, errors)
+        elif not graph:
+            # Students are graded by model-checking their formula against this
+            # graph (sandbox parity), so publishing needs a graph but no
+            # solution formula.
+            errors.append("Publishing needs a memorandum Kripke structure.")
     return errors, graph
 
 
 def persist_exercise(exercise, form, graph, publishing):
     if exercise is None:
-        exercise = Exercise(topic_id=form["module_id"], created_at=timezone.now())
+        exercise = Exercise(
+            topic_id=form["module_id"],
+            created_at=timezone.now(),
+            exercise_type=form["exercise_type"],
+        )
     else:
+        # exercise_type is locked after creation — switching types under live
+        # parts/attempts has no coherent semantics.
         exercise.topic_id = form["module_id"]
     exercise.title = form["title"]
     exercise.description = form["description"]
@@ -432,6 +496,40 @@ def persist_exercise(exercise, form, graph, publishing):
     exercise.hints = form["hints"]
     exercise.hint = next((h for h in form["hints"] if h), "")
     exercise.allowed_operators = form["allowed_operators"]
+    exercise.declared_aps = form["declared_aps"]
     exercise.kripke_structure = graph
     exercise.is_published = publishing
     exercise.save()
+    if exercise.exercise_type != "model_check":
+        _sync_parts(exercise, form["parts"])
+    return exercise
+
+
+def _sync_parts(exercise, parts):
+    """Diff-sync parts by id: update kept rows, create new, delete removed.
+
+    Never delete-and-recreate — Attempt.part is CASCADE, so a blanket recreate
+    would silently destroy student attempts on unchanged parts.
+    """
+    existing = {str(p.id): p for p in exercise.parts.all()}
+    kept_ids = set()
+    for position, data in enumerate(parts):
+        part = existing.get(data["id"])
+        if part is not None:
+            kept_ids.add(data["id"])
+            if (part.prompt, part.formula, part.position) != (
+                data["prompt"], data["formula"], position,
+            ):
+                part.prompt = data["prompt"]
+                part.formula = data["formula"]
+                part.position = position
+                part.save(update_fields=["prompt", "formula", "position"])
+        else:
+            part = ExercisePart.objects.create(
+                exercise=exercise,
+                position=position,
+                prompt=data["prompt"],
+                formula=data["formula"],
+            )
+            kept_ids.add(str(part.id))
+    exercise.parts.exclude(id__in=kept_ids).delete()
