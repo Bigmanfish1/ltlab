@@ -14,7 +14,12 @@ from apps.checker.misconceptions import classify_misconception
 from apps.checker.tasks import run_ltl_check
 from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
 
-from .constants import DIFFICULTIES, MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
+from .constants import (
+    DIFFICULTIES,
+    EXERCISE_TYPE_BADGES,
+    MISCONCEPTION_DESCRIPTIONS,
+    MISCONCEPTION_LABELS,
+)
 from .models import Attempt, Exercise, ExercisePart, Topic
 
 BUILDER_EXERCISE_TYPES = ("model_check", "english_to_formula", "path_exhibit", "judge")
@@ -120,6 +125,7 @@ def exercise_rows(matrix=None):
             "module": ex.topic.title,
             "module_id": ex.topic_id,
             "difficulty": ex.difficulty,
+            "type_label": EXERCISE_TYPE_BADGES.get(ex.exercise_type, ""),
             "is_published": ex.is_published,
             "attempts": m["attempts"],
             "completion": m["completion"],

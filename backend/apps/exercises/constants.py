@@ -12,6 +12,14 @@ OPERATOR_LABELS = {
 }
 DIFFICULTIES = ["beginner", "intermediate", "advanced"]
 
+# badge text per exercise type; the default type carries no badge
+EXERCISE_TYPE_BADGES = {
+    "model_check": "",
+    "english_to_formula": "English",
+    "path_exhibit": "Path",
+    "judge": "Judge",
+}
+
 MISCONCEPTION_LABELS = {
     "g_vs_f": "G vs F confusion",
     "f_vs_x": "F vs X confusion",

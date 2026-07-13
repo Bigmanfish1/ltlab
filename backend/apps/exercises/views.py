@@ -15,7 +15,12 @@ from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import run_equivalence_check, run_ltl_check, run_trace_check
 from apps.checker.views import MAX_FORMULA_CHARS, build_result_context, error_response
 
-from .constants import BUILDER_OPERATORS, DIFFICULTIES, OPERATOR_LABELS
+from .constants import (
+    BUILDER_OPERATORS,
+    DIFFICULTIES,
+    EXERCISE_TYPE_BADGES,
+    OPERATOR_LABELS,
+)
 from .models import Attempt, Exercise, ExercisePart, Topic
 from .services import (
     BUILDER_EXERCISE_TYPES,
@@ -494,7 +499,9 @@ def manage(request):
             "unlocks_after_id": t.unlocks_after_id or "",
             "visible": t.visible,
             "exercises": [
-                {"id": e.id, "name": e.title, "difficulty": e.difficulty, "is_published": e.is_published}
+                {"id": e.id, "name": e.title, "difficulty": e.difficulty,
+                 "is_published": e.is_published,
+                 "type_label": EXERCISE_TYPE_BADGES.get(e.exercise_type, "")}
                 for e in t.exercises.all()
             ],
         })
