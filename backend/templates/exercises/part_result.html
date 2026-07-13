@@ -1,0 +1,16 @@
+{% if status == "correct" %}
+<div class="flex items-start gap-2 p-3 bg-bg-primary border border-accent-lime rounded">
+    <span class="font-mono text-xs text-accent-lime shrink-0">✓ CORRECT</span>
+    <span class="text-xs text-text-primary">{{ message }}</span>
+</div>
+{% elif status == "incorrect" %}
+<div class="flex items-start gap-2 p-3 bg-bg-primary border border-accent-orange rounded">
+    <span class="font-mono text-xs text-accent-orange shrink-0">✗ INCORRECT</span>
+    <span class="text-xs text-text-primary">{{ message }}</span>
+</div>
+{% else %}
+<div class="flex items-start gap-2 p-3 bg-bg-primary border border-border-secondary rounded">
+    <span class="font-mono text-xs text-text-secondary shrink-0">! ERROR</span>
+    <span class="text-xs text-text-primary">{{ message }}</span>
+</div>
+{% endif %}

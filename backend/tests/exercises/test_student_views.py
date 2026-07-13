@@ -14,7 +14,8 @@ PLAIN_STATIC = {
 from apps.accounts.models import Profile
 from apps.exercises import views
 from apps.exercises.constants import BUILDER_OPERATORS
-from apps.exercises.models import Attempt, Exercise, Topic
+from apps.exercises.models import Attempt, Exercise, ExercisePart, Topic
+from apps.exercises.services import solved_exercise_ids
 
 # s0 --a--> s1 --b--> s0 ; "true" holds, "G a" is violated at s1
 GRAPH = {
@@ -162,3 +163,83 @@ class OperatorEnforcementTests(StudentViewTestCase):
         response = self._submit("a R b")
         self.assertContains(response, "allowed for this exercise")
         self.assertFalse(Attempt.objects.filter(exercise=self.published).exists())
+
+
+@override_settings(STORAGES=PLAIN_STATIC)
+class EnglishExerciseTests(StudentViewTestCase):
+    def setUp(self):
+        super().setUp()
+        self.english = Exercise.objects.create(
+            topic=self.topic, title="ZZENGLISH", description="coffee machine",
+            difficulty="beginner", hint="", is_published=True, hints=[],
+            exercise_type="english_to_formula",
+            declared_aps=["coffee_chosen", "tea_chosen"],
+            allowed_operators=list(BUILDER_OPERATORS),
+        )
+        self.part1 = ExercisePart.objects.create(
+            exercise=self.english, position=0,
+            prompt="once in a while someone chooses tea or coffee",
+            formula="G F (tea_chosen | coffee_chosen)",
+        )
+        self.part2 = ExercisePart.objects.create(
+            exercise=self.english, position=1,
+            prompt="eventually coffee is chosen",
+            formula="F coffee_chosen",
+        )
+
+    def _submit_part(self, part, formula):
+        return views.submit_part(
+            self._post({"formula": formula}), self.english.id, part.id
+        )
+
+    def test_canvas_renders_english_template(self):
+        response = views.exercise_canvas(self._get(), self.english.id)
+        self.assertContains(response, "ENGLISH → FORMULA")
+        self.assertContains(response, "once in a while someone chooses tea or coffee")
+        self.assertContains(response, "coffee_chosen")
+
+    def test_equivalent_submission_correct(self):
+        # textually different but language-equivalent to the target
+        response = self._submit_part(self.part2, "true U coffee_chosen")
+        self.assertContains(response, "CORRECT")
+        attempt = Attempt.objects.get(part=self.part2)
+        self.assertTrue(attempt.is_correct)
+        self.assertEqual(attempt.formula_input, "true U coffee_chosen")
+
+    def test_wrong_submission_incorrect_without_target_leak(self):
+        response = self._submit_part(self.part1, "F (tea_chosen | coffee_chosen)")
+        self.assertContains(response, "INCORRECT")
+        self.assertNotContains(response, "G F (tea_chosen | coffee_chosen)")
+        self.assertFalse(Attempt.objects.get(part=self.part1).is_correct)
+
+    def test_undeclared_ap_no_attempt(self):
+        response = self._submit_part(self.part2, "F espresso")
+        self.assertContains(response, "not in this exercise")
+        self.assertFalse(Attempt.objects.filter(part=self.part2).exists())
+
+    def test_solving_all_parts_triggers_completion(self):
+        first = self._submit_part(self.part1, "G F (tea_chosen | coffee_chosen)")
+        self.assertNotIn("HX-Trigger", first)
+        second = self._submit_part(self.part2, "F coffee_chosen")
+        self.assertEqual(second["HX-Trigger"], "exerciseSolved")
+        self.assertIn(self.english.id, solved_exercise_ids(self.student))
+
+    def test_partial_parts_not_solved(self):
+        self._submit_part(self.part1, "G F (tea_chosen | coffee_chosen)")
+        self.assertNotIn(self.english.id, solved_exercise_ids(self.student))
+        response = views.exercises(self._get())
+        self.assertContains(response, "ZZENGLISH")
+
+    def test_partless_completion_rule_unchanged(self):
+        Attempt.objects.create(
+            exercise=self.published, student=self.student, is_correct=True,
+            formula_input="true",
+        )
+        self.assertIn(self.published.id, solved_exercise_ids(self.student))
+
+    def test_part_submit_404_for_wrong_exercise(self):
+        with self.assertRaises(Http404):
+            views.submit_part(
+                self._post({"formula": "F coffee_chosen"}),
+                self.published.id, self.part1.id,
+            )

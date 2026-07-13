@@ -66,25 +66,26 @@ def get_day_streak(student):
 def student_dashboard(request):
     student = request.profile
 
+    solved = services.solved_exercise_ids(student)
+    completed_by_topic = Counter(
+        topic_id
+        for topic_id, ex_id in Exercise.objects.filter(
+            is_published=True
+        ).values_list("topic_id", "id")
+        if ex_id in solved
+    )
+
     topics = Topic.objects.annotate(
         total_exercises=Count(
             'exercises', filter=Q(exercises__is_published=True), distinct=True
-        ),
-        completed_exercises=Count(
-            'exercises',
-            filter=Q(
-                exercises__is_published=True,
-                exercises__attempts__student=student,
-                exercises__attempts__is_correct=True,
-            ),
-            distinct=True,
         ),
     ).order_by('position', 'id')
 
     modules = []
     for topic in topics:
+        completed = completed_by_topic.get(topic.id, 0)
         completion = (
-            round((topic.completed_exercises / topic.total_exercises) * 100)
+            round((completed / topic.total_exercises) * 100)
             if topic.total_exercises else 0
         )
         if completion == 100:
@@ -103,9 +104,7 @@ def student_dashboard(request):
         })
 
     total_exercises = Exercise.objects.filter(is_published=True).count()
-    exercises_done = Exercise.objects.filter(
-        is_published=True, attempts__student=student, attempts__is_correct=True
-    ).distinct().count()
+    exercises_done = len(solved)
     overall_progress = round((exercises_done / total_exercises) * 100) if total_exercises else 0
 
     # scope to published exercises so accuracy shares the denominator population

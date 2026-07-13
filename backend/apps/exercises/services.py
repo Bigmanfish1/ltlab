@@ -159,6 +159,44 @@ def struggled_exercises(rows=None, limit=5):
     return out
 
 
+def solved_exercise_ids(student, exercises=None):
+    """Ids of exercises the student has solved.
+
+    Solved := every part has a correct attempt when parts exist, else any
+    correct attempt — degenerates to the pre-parts behaviour for partless
+    exercises, so legacy completion semantics are unchanged.
+    """
+    qs = exercises if exercises is not None else Exercise.objects.filter(is_published=True)
+    ids = list(qs.values_list("id", flat=True))
+    part_counts = dict(
+        ExercisePart.objects.filter(exercise_id__in=ids)
+        .values("exercise_id")
+        .annotate(n=Count("id"))
+        .values_list("exercise_id", "n")
+    )
+    correct = (
+        Attempt.objects.filter(student=student, exercise_id__in=ids, is_correct=True)
+        .values_list("exercise_id", "part_id")
+        .distinct()
+    )
+    whole = set()
+    parts_solved = defaultdict(set)
+    for ex_id, part_id in correct:
+        if part_id is None:
+            whole.add(ex_id)
+        else:
+            parts_solved[ex_id].add(part_id)
+    solved = set()
+    for ex_id in ids:
+        n = part_counts.get(ex_id, 0)
+        if n:
+            if len(parts_solved.get(ex_id, ())) >= n:
+                solved.add(ex_id)
+        elif ex_id in whole:
+            solved.add(ex_id)
+    return solved
+
+
 def _backfill_misconceptions():
     """Classify wrong attempts that have no stored bucket yet, one time each.
 

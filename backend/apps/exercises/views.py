@@ -12,17 +12,18 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.operators import disallowed_operators
-from apps.checker.tasks import run_ltl_check
+from apps.checker.tasks import run_equivalence_check, run_ltl_check
 from apps.checker.views import MAX_FORMULA_CHARS, build_result_context, error_response
 
 from .constants import BUILDER_OPERATORS, DIFFICULTIES, OPERATOR_LABELS
-from .models import Attempt, Exercise, Topic
+from .models import Attempt, Exercise, ExercisePart, Topic
 from .services import (
     BUILDER_EXERCISE_TYPES,
     _elements_json,
     exercise_rows,
     parse_exercise_form,
     persist_exercise,
+    solved_exercise_ids,
     validate_exercise_form,
 )
 
@@ -40,15 +41,14 @@ def published_exercises():
 
 @supabase_login_required
 def exercises(request):
+    all_published = list(published_exercises())
+    solved = solved_exercise_ids(request.profile)
     exercises_data = []
-    for exercise in published_exercises():
+    for exercise in all_published:
         attempt_count = Attempt.objects.filter(exercise=exercise, student=request.profile).count()
-        is_completed = Attempt.objects.filter(
-            exercise=exercise, student=request.profile, is_correct=True
-        ).exists()
         exercises_data.append({
             'exercise': exercise,
-            'is_completed': is_completed,
+            'is_completed': exercise.id in solved,
             'attempt_count': attempt_count,
             'best_attempt': None,
         })
@@ -56,39 +56,74 @@ def exercises(request):
     return render(request, 'exercises/exercises.html', {'exercises_data': exercises_data})
 
 
+def _exercise_nav(exercise_id):
+    all_exercises = list(published_exercises().order_by('position', 'id'))
+    current_index = next((i for i, ex in enumerate(all_exercises) if ex.id == exercise_id), 0)
+    prev_exercise = all_exercises[current_index - 1] if current_index > 0 else None
+    next_exercise = all_exercises[current_index + 1] if current_index < len(all_exercises) - 1 else None
+    return current_index + 1, prev_exercise, next_exercise
+
+
+def _operator_buttons(exercise):
+    # only the operators the teacher allowed (None = legacy exercise = all)
+    allowed = exercise.allowed_operators if exercise.allowed_operators is not None else BUILDER_OPERATORS
+    return [
+        {"op": op, "label": OPERATOR_LABELS.get(op, op)}
+        for op in BUILDER_OPERATORS if op in allowed
+    ]
+
+
 @supabase_login_required
 def exercise_canvas(request, exercise_id):
-    """Exercise canvas with Kripke model, formula input, and submission"""
+    """Exercise page — dispatches to the type-specific template."""
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
+    if exercise.exercise_type == "english_to_formula":
+        return _english_canvas(request, exercise)
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
         exercise=exercise, student=request.profile, is_correct=True
     ).exists()
 
-    all_exercises = list(published_exercises().order_by('position', 'id'))
-    current_index = next((i for i, ex in enumerate(all_exercises) if ex.id == exercise_id), 0)
-    prev_exercise = all_exercises[current_index - 1] if current_index > 0 else None
-    next_exercise = all_exercises[current_index + 1] if current_index < len(all_exercises) - 1 else None
-
-    # only the operators the teacher allowed (None = legacy exercise = all)
-    allowed = exercise.allowed_operators if exercise.allowed_operators is not None else BUILDER_OPERATORS
-    operator_buttons = [
-        {"op": op, "label": OPERATOR_LABELS.get(op, op)}
-        for op in BUILDER_OPERATORS if op in allowed
-    ]
+    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise_id)
 
     context = {
         'exercise': exercise,
-        'exercise_number': current_index + 1,
+        'exercise_number': exercise_number,
         'elements_json': _elements_json(exercise.kripke_structure),
-        'operator_buttons': operator_buttons,
+        'operator_buttons': _operator_buttons(exercise),
         'attempts': attempts,
         'is_completed': is_completed,
         'prev_exercise': prev_exercise,
         'next_exercise': next_exercise,
     }
     return render(request, 'exercises/exercise_canvas.html', context)
+
+
+def _english_canvas(request, exercise):
+    parts = list(exercise.parts.all())
+    correct_part_ids = set(
+        Attempt.objects.filter(
+            exercise=exercise, student=request.profile,
+            is_correct=True, part__isnull=False,
+        ).values_list("part_id", flat=True)
+    )
+    part_rows = [
+        {"part": p, "number": i, "solved": p.id in correct_part_ids}
+        for i, p in enumerate(parts, start=1)
+    ]
+    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
+    context = {
+        "exercise": exercise,
+        "exercise_number": exercise_number,
+        "part_rows": part_rows,
+        "declared_aps": list(exercise.declared_aps or []),
+        "operator_buttons": _operator_buttons(exercise),
+        "is_completed": bool(parts) and all(r["solved"] for r in part_rows),
+        "prev_exercise": prev_exercise,
+        "next_exercise": next_exercise,
+    }
+    return render(request, "exercises/exercise_english.html", context)
 
 
 @supabase_login_required
@@ -157,6 +192,86 @@ def submit_formula(request, exercise_id):
     if is_correct:
         response["HX-Trigger"] = "exerciseSolved"
     return response
+
+
+def _part_result(request, part, status, message):
+    return render(request, "exercises/part_result.html", {
+        "part": part,
+        "status": status,
+        "message": message,
+    })
+
+
+@supabase_login_required
+@require_POST
+def submit_part(request, exercise_id, part_id):
+    """Grade a sub-question submission and render its result partial."""
+    exercise = get_object_or_404(published_exercises(), id=exercise_id)
+    part = get_object_or_404(ExercisePart, pk=part_id, exercise=exercise)
+
+    if exercise.exercise_type != "english_to_formula":
+        return _part_result(request, part, "error", "This exercise type is not submittable yet.")
+
+    formula = request.POST.get("formula", "").strip()
+    if not formula:
+        return _part_result(request, part, "error", "Enter a formula to check.")
+    if len(formula) > MAX_FORMULA_CHARS:
+        return _part_result(
+            request, part, "error",
+            f"Formula is too long — at most {MAX_FORMULA_CHARS} characters.",
+        )
+
+    if exercise.allowed_operators is not None:
+        bad = disallowed_operators(formula, exercise.allowed_operators)
+        if bad:
+            labels = sorted(
+                f"{t} ({OPERATOR_LABELS[t]})" if t in OPERATOR_LABELS else t for t in bad
+            )
+            return _part_result(
+                request, part, "error",
+                "These operators aren't allowed for this exercise: " + ", ".join(labels) + ".",
+            )
+
+    try:
+        result = run_equivalence_check(part.formula, formula, exercise.declared_aps or [])
+    except ValueError as exc:
+        return _part_result(request, part, "error", str(exc))
+    except Exception:
+        logger.exception("run_equivalence_check failed during part submission")
+        return _part_result(
+            request, part, "error",
+            "Verification was stopped — the formula could not be processed.",
+        )
+
+    is_correct = result["equivalent"]
+
+    hint_count = len([h for h in (exercise.hints or []) if h and h.strip()])
+    try:
+        hints_used = min(max(0, int(request.POST.get("hints_used", 0))), hint_count)
+    except (TypeError, ValueError):
+        hints_used = 0
+
+    Attempt.objects.create(
+        exercise=exercise,
+        student=request.profile,
+        part=part,
+        formula_input=formula,
+        is_correct=is_correct,
+        hints_used=hints_used,
+    )
+
+    if is_correct:
+        message = "Correct — your formula is equivalent to the requirement."
+        response = _part_result(request, part, "correct", message)
+        if exercise.id in solved_exercise_ids(
+            request.profile, Exercise.objects.filter(pk=exercise.pk)
+        ):
+            response["HX-Trigger"] = "exerciseSolved"
+        return response
+    return _part_result(
+        request, part, "incorrect",
+        "Not equivalent to the requirement — check which behaviours your formula allows or forbids.",
+    )
 
 
 # ---------------------------------------------------------------------------
