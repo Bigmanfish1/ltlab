@@ -122,6 +122,25 @@ ENGLISH_ATTEMPTS = [
     (2, 1, "G ((coffee_chosen & F money_inserted) -> F coffee_delivered)", False),
 ]
 
+# Path-exhibit exercise (MCL3 p.11 form: "a path π with π ⊨ φ?"). Every part
+# formula verified satisfiable on REQUEST_GRANT via run_ltl_check("!(φ)").
+PATH_EXERCISE = {
+    "title": "Exhibit a satisfying path",
+    "description": (
+        "For each formula, trace an infinite path of the request–grant model "
+        "that satisfies it."
+    ),
+    "difficulty": "intermediate",
+    "parts": ["F grant", "G F idle", "X req"],
+}
+
+# (student index, part position, prefix, cycle, is_correct) — verified against
+# run_trace_check: the wrong one is a real path on which the formula fails.
+PATH_ATTEMPTS = [
+    (0, 0, ["s0", "s1"], ["s2", "s0", "s1"], True),
+    (1, 0, [], ["s0"], False),
+]
+
 # (exercise title, submitted formula, is_correct) per student. Wrong formulas
 # genuinely fail on REQUEST_GRANT so the roster/accuracy stats are truthful.
 ATTEMPTS = [
@@ -220,6 +239,30 @@ class Command(BaseCommand):
             )
             english_parts.append(part)
 
+        ltl_topic = Topic.objects.get(title="LTL Operators")
+        path_ex, _ = Exercise.objects.get_or_create(
+            title=PATH_EXERCISE["title"],
+            topic=ltl_topic,
+            defaults={
+                "description": PATH_EXERCISE["description"],
+                "difficulty": PATH_EXERCISE["difficulty"],
+                "hint": "",
+                "is_published": True,
+                "position": 2,
+                "exercise_type": "path_exhibit",
+                "kripke_structure": REQUEST_GRANT,
+                "allowed_operators": list(BUILDER_OPERATORS),
+            },
+        )
+        path_parts = []
+        for position, formula in enumerate(PATH_EXERCISE["parts"]):
+            part, _ = ExercisePart.objects.get_or_create(
+                exercise=path_ex,
+                position=position,
+                defaults={"formula": formula},
+            )
+            path_parts.append(part)
+
         created = 0
         for student_idx, rows in ATTEMPTS:
             student = students[student_idx]
@@ -239,6 +282,16 @@ class Command(BaseCommand):
                 part=english_parts[part_pos],
                 formula_input=formula,
                 defaults={"is_correct": is_correct},
+            )
+            created += int(made)
+
+        for student_idx, part_pos, prefix, cycle, is_correct in PATH_ATTEMPTS:
+            _, made = Attempt.objects.get_or_create(
+                exercise=path_ex,
+                student=students[student_idx],
+                part=path_parts[part_pos],
+                answer={"prefix": prefix, "cycle": cycle},
+                defaults={"is_correct": is_correct, "misconception": ""},
             )
             created += int(made)
 

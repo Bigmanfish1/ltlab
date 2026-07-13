@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.operators import disallowed_operators
-from apps.checker.tasks import run_equivalence_check, run_ltl_check
+from apps.checker.tasks import run_equivalence_check, run_ltl_check, run_trace_check
 from apps.checker.views import MAX_FORMULA_CHARS, build_result_context, error_response
 
 from .constants import BUILDER_OPERATORS, DIFFICULTIES, OPERATOR_LABELS
@@ -79,6 +79,8 @@ def exercise_canvas(request, exercise_id):
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     if exercise.exercise_type == "english_to_formula":
         return _english_canvas(request, exercise)
+    if exercise.exercise_type == "path_exhibit":
+        return _path_canvas(request, exercise)
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
@@ -100,18 +102,37 @@ def exercise_canvas(request, exercise_id):
     return render(request, 'exercises/exercise_canvas.html', context)
 
 
-def _english_canvas(request, exercise):
+def _part_rows(exercise, student):
     parts = list(exercise.parts.all())
     correct_part_ids = set(
         Attempt.objects.filter(
-            exercise=exercise, student=request.profile,
+            exercise=exercise, student=student,
             is_correct=True, part__isnull=False,
         ).values_list("part_id", flat=True)
     )
-    part_rows = [
+    return [
         {"part": p, "number": i, "solved": p.id in correct_part_ids}
         for i, p in enumerate(parts, start=1)
     ]
+
+
+def _path_canvas(request, exercise):
+    part_rows = _part_rows(exercise, request.profile)
+    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
+    context = {
+        "exercise": exercise,
+        "exercise_number": exercise_number,
+        "part_rows": part_rows,
+        "elements_json": _elements_json(exercise.kripke_structure),
+        "is_completed": bool(part_rows) and all(r["solved"] for r in part_rows),
+        "prev_exercise": prev_exercise,
+        "next_exercise": next_exercise,
+    }
+    return render(request, "exercises/exercise_path.html", context)
+
+
+def _english_canvas(request, exercise):
+    part_rows = _part_rows(exercise, request.profile)
     exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
     context = {
         "exercise": exercise,
@@ -119,7 +140,7 @@ def _english_canvas(request, exercise):
         "part_rows": part_rows,
         "declared_aps": list(exercise.declared_aps or []),
         "operator_buttons": _operator_buttons(exercise),
-        "is_completed": bool(parts) and all(r["solved"] for r in part_rows),
+        "is_completed": bool(part_rows) and all(r["solved"] for r in part_rows),
         "prev_exercise": prev_exercise,
         "next_exercise": next_exercise,
     }
@@ -202,6 +223,81 @@ def _part_result(request, part, status, message):
     })
 
 
+def _clamped_hints(request, exercise):
+    hint_count = len([h for h in (exercise.hints or []) if h and h.strip()])
+    try:
+        return min(max(0, int(request.POST.get("hints_used", 0))), hint_count)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _completion_trigger(response, request, exercise):
+    if exercise.id in solved_exercise_ids(
+        request.profile, Exercise.objects.filter(pk=exercise.pk)
+    ):
+        response["HX-Trigger"] = "exerciseSolved"
+    return response
+
+
+def _parse_trace_field(request, name):
+    try:
+        value = json.loads(request.POST.get(name) or "")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(value, list) or not all(isinstance(s, str) for s in value):
+        return None
+    return value
+
+
+def _submit_path_part(request, exercise, part):
+    prefix = _parse_trace_field(request, "trace_prefix")
+    cycle = _parse_trace_field(request, "trace_cycle")
+    if prefix is None or cycle is None:
+        return _part_result(request, part, "error", "Select a path before submitting.")
+    if not cycle:
+        return _part_result(
+            request, part, "error",
+            "Close the loop first — click a state already on your path to form the cycle.",
+        )
+    if not exercise.kripke_structure:
+        return _part_result(request, part, "error", "This exercise has no model to check against.")
+
+    try:
+        result = run_trace_check(exercise.kripke_structure, part.formula, prefix, cycle)
+    except ValueError as exc:
+        return _part_result(request, part, "error", str(exc))
+    except Exception:
+        logger.exception("run_trace_check failed during part submission")
+        return _part_result(
+            request, part, "error",
+            "Verification was stopped — the path could not be processed.",
+        )
+
+    is_correct = bool(result["path_ok"] and result["holds"])
+    Attempt.objects.create(
+        exercise=exercise,
+        student=request.profile,
+        part=part,
+        answer={"prefix": prefix, "cycle": cycle},
+        is_correct=is_correct,
+        hints_used=_clamped_hints(request, exercise),
+        misconception="",
+    )
+
+    if is_correct:
+        response = _part_result(
+            request, part, "correct",
+            "Correct — your path satisfies the formula.",
+        )
+        return _completion_trigger(response, request, exercise)
+    if not result["path_ok"]:
+        return _part_result(request, part, "incorrect", result["path_error"])
+    return _part_result(
+        request, part, "incorrect",
+        "That is a valid path of the model, but the formula does not hold on it.",
+    )
+
+
 @supabase_login_required
 @require_POST
 def submit_part(request, exercise_id, part_id):
@@ -209,6 +305,8 @@ def submit_part(request, exercise_id, part_id):
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     part = get_object_or_404(ExercisePart, pk=part_id, exercise=exercise)
 
+    if exercise.exercise_type == "path_exhibit":
+        return _submit_path_part(request, exercise, part)
     if exercise.exercise_type != "english_to_formula":
         return _part_result(request, part, "error", "This exercise type is not submittable yet.")
 
@@ -245,29 +343,21 @@ def submit_part(request, exercise_id, part_id):
 
     is_correct = result["equivalent"]
 
-    hint_count = len([h for h in (exercise.hints or []) if h and h.strip()])
-    try:
-        hints_used = min(max(0, int(request.POST.get("hints_used", 0))), hint_count)
-    except (TypeError, ValueError):
-        hints_used = 0
-
     Attempt.objects.create(
         exercise=exercise,
         student=request.profile,
         part=part,
         formula_input=formula,
         is_correct=is_correct,
-        hints_used=hints_used,
+        hints_used=_clamped_hints(request, exercise),
     )
 
     if is_correct:
-        message = "Correct — your formula is equivalent to the requirement."
-        response = _part_result(request, part, "correct", message)
-        if exercise.id in solved_exercise_ids(
-            request.profile, Exercise.objects.filter(pk=exercise.pk)
-        ):
-            response["HX-Trigger"] = "exerciseSolved"
-        return response
+        response = _part_result(
+            request, part, "correct",
+            "Correct — your formula is equivalent to the requirement.",
+        )
+        return _completion_trigger(response, request, exercise)
     return _part_result(
         request, part, "incorrect",
         "Not equivalent to the requirement — check which behaviours your formula allows or forbids.",
