@@ -1,5 +1,6 @@
 from .engine import analyze_lasso, check_ltl, cytoscape_to_kripke, validate_request
 from .equivalence import check_equivalence, validate_formula_submission
+from .traces import evaluate_lasso, validate_lasso
 
 
 def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
@@ -46,6 +47,26 @@ def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
     result["kripke_graph"] = kripke_graph
 
     return result
+
+
+def run_trace_check(graph: dict, formula: str, prefix: list[str], cycle: list[str]) -> dict:
+    """Verify a student-selected lasso path and evaluate the formula on it.
+
+    Returns {"path_ok": bool, "path_error": str | None, "holds": bool | None}.
+    A broken path (not a real path of the graph, wrong start, open cycle) is
+    student data: path_ok=False with a user-facing path_error and holds=None.
+    ValueError is raised only for system/teacher problems — unparseable
+    formula, complexity caps, malformed graph, oversized trace.
+    """
+    validate_request(graph, formula)
+    error = validate_lasso(graph, prefix, cycle)
+    if error is not None:
+        return {"path_ok": False, "path_error": error, "holds": None}
+    return {
+        "path_ok": True,
+        "path_error": None,
+        "holds": evaluate_lasso(graph, formula, prefix, cycle),
+    }
 
 
 def run_equivalence_check(target: str, submitted: str, declared_aps: list[str]) -> dict:
