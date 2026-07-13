@@ -57,6 +57,7 @@
                 <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex" style="height: 460px;">
                     {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="460px" elements_json=elements_json readonly=True %}
                 </div>
+                <div id="trace-warning" class="hidden mt-2 border-l-2 border-accent-orange bg-bg-secondary px-3 py-2 font-mono text-[12px] text-text-secondary"></div>
                 <div class="flex items-center gap-3 mt-3">
                     <button type="button" id="trace-undo"
                         class="px-3 py-1.5 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-secondary">
@@ -122,6 +123,16 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('trace-reset').addEventListener('click', () => picker.reset());
     }
     boot();
+
+    let warnTimer = null;
+    document.addEventListener('kripke:warn', (e) => {
+        if (!(e.detail && e.detail.html)) return;
+        const box = document.getElementById('trace-warning');
+        box.innerHTML = e.detail.html;
+        box.classList.remove('hidden');
+        clearTimeout(warnTimer);
+        warnTimer = setTimeout(() => box.classList.add('hidden'), 3000);
+    });
 
     document.querySelectorAll('[data-part-card]').forEach((card) => {
         card.addEventListener('click', () => {
