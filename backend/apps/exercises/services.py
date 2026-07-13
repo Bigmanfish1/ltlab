@@ -41,24 +41,50 @@ def _attempt_matrix():
     # numerator population must match the enrolled denominator, else completion can exceed 100%
     matrix = defaultdict(lambda: defaultdict(list))
     rows = Attempt.objects.filter(student_id__in=enrolled_ids()).values_list(
-        "exercise_id", "student_id", "is_correct", "created_at", "formula_input", "hints_used"
+        "exercise_id", "student_id", "is_correct", "created_at", "formula_input", "hints_used", "part_id"
     ).order_by("created_at")
-    for ex_id, st_id, correct, created, formula, hints in rows:
+    for ex_id, st_id, correct, created, formula, hints, part_id in rows:
         matrix[ex_id][st_id].append(
-            {"correct": correct, "created": created, "formula": formula, "hints": hints}
+            {"correct": correct, "created": created, "formula": formula,
+             "hints": hints, "part": part_id}
         )
     return matrix
 
 
-def _exercise_metrics(exercise, per_student, enrolled_count):
+def _part_counts():
+    return dict(
+        ExercisePart.objects.values("exercise_id")
+        .annotate(n=Count("id"))
+        .values_list("exercise_id", "n")
+    )
+
+
+def _solve_index(attempts, part_count):
+    """1-based index of the attempt that solved the exercise, or None.
+
+    Partless: the first correct attempt. With parts: the attempt that made the
+    last remaining part correct."""
+    if not part_count:
+        idx = next((i for i, a in enumerate(attempts) if a["correct"]), None)
+        return idx + 1 if idx is not None else None
+    solved_parts = set()
+    for i, a in enumerate(attempts):
+        if a["correct"] and a["part"] is not None:
+            solved_parts.add(a["part"])
+            if len(solved_parts) >= part_count:
+                return i + 1
+    return None
+
+
+def _exercise_metrics(exercise, per_student, enrolled_count, part_count=0):
     total_attempts = sum(len(a) for a in per_student.values())
     solvers = 0
     tries_to_solve = []
     for attempts in per_student.values():
-        first_correct = next((i for i, a in enumerate(attempts) if a["correct"]), None)
-        if first_correct is not None:
+        solve_at = _solve_index(attempts, part_count)
+        if solve_at is not None:
             solvers += 1
-            tries_to_solve.append(first_correct + 1)
+            tries_to_solve.append(solve_at)
     engaged = len(per_student)
     completion_raw = 100 * solvers / enrolled_count if enrolled_count else 0.0
     completion = _pct(solvers, enrolled_count)
@@ -82,9 +108,12 @@ def _exercise_metrics(exercise, per_student, enrolled_count):
 def exercise_rows(matrix=None):
     matrix = matrix if matrix is not None else _attempt_matrix()
     enrolled_count = enrolled_students().count()
+    part_counts = _part_counts()
     rows = []
     for ex in Exercise.objects.select_related("topic"):
-        m = _exercise_metrics(ex, matrix.get(ex.id, {}), enrolled_count)
+        m = _exercise_metrics(
+            ex, matrix.get(ex.id, {}), enrolled_count, part_counts.get(ex.id, 0)
+        )
         rows.append({
             "id": ex.id,
             "name": ex.title,
@@ -264,7 +293,11 @@ def _largest_remainder(counts, total):
 
 def students_roster(matrix=None):
     matrix = matrix if matrix is not None else _attempt_matrix()
-    per_student = defaultdict(lambda: {"total": 0, "correct": 0, "solved": set(), "last": None})
+    part_counts = _part_counts()
+    per_student = defaultdict(
+        lambda: {"total": 0, "correct": 0, "whole": set(),
+                 "parts": defaultdict(set), "last": None}
+    )
     for ex_id, students in matrix.items():
         for st_id, attempts in students.items():
             acc = per_student[st_id]
@@ -272,18 +305,27 @@ def students_roster(matrix=None):
             for a in attempts:
                 if a["correct"]:
                     acc["correct"] += 1
-                    acc["solved"].add(ex_id)
+                    if a["part"] is None:
+                        acc["whole"].add(ex_id)
+                    else:
+                        acc["parts"][ex_id].add(a["part"])
                 if acc["last"] is None or a["created"] > acc["last"]:
                     acc["last"] = a["created"]
     out = []
     for student in enrolled_students():
         acc = per_student.get(student.id)
         if acc:
+            solved = {
+                ex_id for ex_id in acc["whole"] if not part_counts.get(ex_id)
+            } | {
+                ex_id for ex_id, parts in acc["parts"].items()
+                if part_counts.get(ex_id) and len(parts) >= part_counts[ex_id]
+            }
             out.append({
                 "id": student.id,
                 "name": student.name or student.email,
                 "email": student.email,
-                "exercises_done": len(acc["solved"]),
+                "exercises_done": len(solved),
                 "accuracy": _pct(acc["correct"], acc["total"]),
                 "last_active": _humanize(acc["last"]),
             })
@@ -341,7 +383,12 @@ def recent_activity(limit=6):
     for a in rows:
         name = a.student.name or a.student.email
         initials = "".join(p[0] for p in name.split()[:2]).upper() or "?"
-        verb = "completed" if a.is_correct else "attempted"
+        if a.is_correct and a.part_id is not None:
+            verb = "solved a part of"
+        elif a.is_correct:
+            verb = "completed"
+        else:
+            verb = "attempted"
         out.append({
             "student_id": a.student_id,
             "initials": initials,
@@ -352,19 +399,51 @@ def recent_activity(limit=6):
     return out
 
 
+def _fmt_lasso(answer):
+    prefix = answer.get("prefix") or []
+    cycle = answer.get("cycle") or []
+    cycle_str = "(" + " → ".join(cycle) + ")ω"
+    return " → ".join(prefix) + " → " + cycle_str if prefix else cycle_str
+
+
+def _attempt_display(attempt):
+    """One-line rendering of what the student submitted, whatever the type."""
+    if attempt.formula_input:
+        return attempt.formula_input
+    answer = attempt.answer or {}
+    if answer.get("verdict") == "holds":
+        return "judged: holds"
+    if answer.get("verdict") == "violated":
+        return "judged: does not hold · " + _fmt_lasso(answer)
+    if answer.get("cycle"):
+        return "path: " + _fmt_lasso(answer)
+    return ""
+
+
 def student_detail(student):
     attempts = list(
         Attempt.objects.filter(student=student)
-        .select_related("exercise")
+        .select_related("exercise", "part")
         .order_by("-created_at")
     )
     total = len(attempts)
     correct = sum(1 for a in attempts if a.is_correct)
-    solved = {a.exercise_id for a in attempts if a.is_correct}
+    part_counts = _part_counts()
+    whole = {a.exercise_id for a in attempts if a.is_correct and a.part_id is None}
+    parts_solved = defaultdict(set)
+    for a in attempts:
+        if a.is_correct and a.part_id is not None:
+            parts_solved[a.exercise_id].add(a.part_id)
+    solved = {ex_id for ex_id in whole if not part_counts.get(ex_id)} | {
+        ex_id for ex_id, parts in parts_solved.items()
+        if part_counts.get(ex_id) and len(parts) >= part_counts[ex_id]
+    }
     hints_used = sum(a.hints_used for a in attempts)
     history = [{
-        "exercise": a.exercise.title,
-        "formula": a.formula_input or "",
+        "exercise": (
+            f"{a.exercise.title} · Part {a.part.position + 1}" if a.part_id else a.exercise.title
+        ),
+        "formula": _attempt_display(a),
         "result": a.is_correct,
         "hints": a.hints_used,
         "date": _short_date(a.created_at),
@@ -373,8 +452,8 @@ def student_detail(student):
     last_submission = None
     if last is not None:
         last_submission = {
-            "formula": last.formula_input or "",
-            "verdict": "Property holds." if last.is_correct else "Property violated.",
+            "formula": _attempt_display(last),
+            "verdict": "Correct." if last.is_correct else "Incorrect.",
             "holds": last.is_correct,
             "elements_json": _elements_json(last.exercise.kripke_structure),
         }
