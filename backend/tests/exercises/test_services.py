@@ -4,7 +4,7 @@ from apps.accounts.models import Profile
 from apps.checker.misconceptions import BUCKETS
 from apps.exercises import services
 from apps.exercises.constants import MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
-from apps.exercises.models import Attempt, Exercise, Topic
+from apps.exercises.models import Attempt, Exercise, ExercisePart, Topic
 
 
 # Misconception classification is tested directly in tests/checker/test_misconceptions.py.
@@ -66,6 +66,55 @@ class ReconciliationTests(TestCase):
         # a second load classifies nothing new — same result, no pending rows
         first = services.misconception_breakdown()
         self.assertEqual(first, services.misconception_breakdown())
+
+
+class BackfillTypeGuardTests(TestCase):
+    def setUp(self):
+        self.teacher = Profile.objects.create(email="t@x.com", name="T", role=Profile.ROLE_TEACHER)
+        self.student = Profile.objects.create(email="s@x.com", name="S", role=Profile.ROLE_STUDENT)
+        self.topic = Topic.objects.create(title="T1", created_by=self.teacher)
+        self.english = Exercise.objects.create(
+            topic=self.topic, title="Eng", description="d", difficulty="beginner",
+            hint="", is_published=True, exercise_type="english_to_formula",
+            declared_aps=["p", "q"],
+        )
+        self.part = ExercisePart.objects.create(
+            exercise=self.english, prompt="always eventually p", formula="G F p",
+        )
+
+    def test_english_attempt_classified_against_part_target(self):
+        attempt = Attempt.objects.create(
+            exercise=self.english, student=self.student, part=self.part,
+            is_correct=False, formula_input="F G p",
+        )
+        services._backfill_misconceptions()
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.misconception, "g_vs_f")
+
+    def test_judge_attempt_excluded_from_backfill(self):
+        judge = Exercise.objects.create(
+            topic=self.topic, title="Judge", description="d", difficulty="beginner",
+            hint="", is_published=True, exercise_type="judge",
+        )
+        judge_part = ExercisePart.objects.create(exercise=judge, formula="G a")
+        attempt = Attempt.objects.create(
+            exercise=judge, student=self.student, part=judge_part,
+            is_correct=False, answer={"verdict": "holds"},
+        )
+        services._backfill_misconceptions()
+        attempt.refresh_from_db()
+        self.assertIsNone(attempt.misconception)
+
+    def test_partless_english_attempt_excluded(self):
+        # english grading always sets part; a partless row on an english
+        # exercise has no per-part target and must not be classified
+        attempt = Attempt.objects.create(
+            exercise=self.english, student=self.student,
+            is_correct=False, formula_input="F G p",
+        )
+        services._backfill_misconceptions()
+        attempt.refresh_from_db()
+        self.assertIsNone(attempt.misconception)
 
 
 class TopicCompletionTests(TestCase):

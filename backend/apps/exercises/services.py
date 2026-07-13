@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.accounts.models import Profile
@@ -203,13 +203,22 @@ def _backfill_misconceptions():
     Classification needs SPOT (Django-only); prod attempts written by the external
     system arrive with misconception NULL and get classified on first Results view.
     NULL vs "" (classified, no misconception) keeps this idempotent.
+
+    Only formula-writing attempts are classifiable: partless model_check attempts
+    (target on the exercise) and english_to_formula part attempts (target on the
+    part). Judge/path answers are verdicts and traces, not formulas.
     """
     pending = (
         Attempt.objects.filter(is_correct=False, misconception__isnull=True)
-        .values_list("id", "formula_input", "exercise__target_formula")
+        .filter(
+            Q(part__isnull=True, exercise__exercise_type="model_check")
+            | Q(part__isnull=False, exercise__exercise_type="english_to_formula")
+        )
+        .values_list("id", "formula_input", "exercise__target_formula", "part__formula")
     )
     by_bucket = defaultdict(list)
-    for aid, submitted, target in pending:
+    for aid, submitted, exercise_target, part_target in pending:
+        target = part_target if part_target is not None else exercise_target
         by_bucket[classify_misconception(target, submitted) or ""].append(aid)
     for bucket, ids in by_bucket.items():
         Attempt.objects.filter(pk__in=ids).update(misconception=bucket)

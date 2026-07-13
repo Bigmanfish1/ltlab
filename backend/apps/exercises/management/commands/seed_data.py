@@ -9,7 +9,7 @@ from django.core.management.base import BaseCommand
 
 from apps.accounts.models import Profile
 from apps.exercises.constants import BUILDER_OPERATORS
-from apps.exercises.models import Attempt, Exercise, Topic
+from apps.exercises.models import Attempt, Exercise, ExercisePart, Topic
 
 SEED_DOMAIN = "seed.ltlab"
 
@@ -85,6 +85,43 @@ MODULES = [
     },
 ]
 
+# The coffee-machine specification exercise from the module slides (MCL3
+# p.17–20), graded by language equivalence against each hidden target.
+ENGLISH_MODULE = {
+    "title": "Specification of Properties",
+    "description": "Translate plain-English requirements into LTL formulas.",
+}
+ENGLISH_EXERCISE = {
+    "title": "Coffee machine requirements",
+    "description": (
+        "A coffee machine lets users choose tea or coffee, accepts money, and "
+        "delivers drinks. Translate each requirement into an LTL formula over "
+        "the listed atomic propositions."
+    ),
+    "difficulty": "intermediate",
+    "declared_aps": [
+        "coffee_chosen", "tea_chosen", "money_inserted",
+        "coffee_delivered", "tea_delivered",
+    ],
+    "parts": [
+        ("once in a while someone chooses tea or coffee",
+         "G F (tea_chosen | coffee_chosen)"),
+        ("if coffee is chosen and next money is inserted coffee will be delivered",
+         "G ((coffee_chosen & X money_inserted) -> F coffee_delivered)"),
+        ("when coffee is chosen tea will not be delivered until tea is chosen",
+         "G (coffee_chosen -> (!tea_delivered U tea_chosen))"),
+    ],
+}
+
+# (student index, part position, submitted formula, is_correct) — the wrong
+# ones are real slips (missing G, F-for-X) so Results shows genuine buckets.
+ENGLISH_ATTEMPTS = [
+    (0, 0, "G F (tea_chosen | coffee_chosen)", True),
+    (1, 0, "F (tea_chosen | coffee_chosen)", False),
+    (1, 0, "G F (tea_chosen | coffee_chosen)", True),
+    (2, 1, "G ((coffee_chosen & F money_inserted) -> F coffee_delivered)", False),
+]
+
 # (exercise title, submitted formula, is_correct) per student. Wrong formulas
 # genuinely fail on REQUEST_GRANT so the roster/accuracy stats are truthful.
 ATTEMPTS = [
@@ -153,6 +190,36 @@ class Command(BaseCommand):
                     exercise.save(update_fields=["kripke_structure", "allowed_operators"])
                 exercises[ex["title"]] = exercise
 
+        english_topic, _ = Topic.objects.get_or_create(
+            title=ENGLISH_MODULE["title"],
+            defaults={
+                "description": ENGLISH_MODULE["description"],
+                "created_by": teacher,
+                "position": len(MODULES),
+            },
+        )
+        english, _ = Exercise.objects.get_or_create(
+            title=ENGLISH_EXERCISE["title"],
+            topic=english_topic,
+            defaults={
+                "description": ENGLISH_EXERCISE["description"],
+                "difficulty": ENGLISH_EXERCISE["difficulty"],
+                "hint": "",
+                "is_published": True,
+                "exercise_type": "english_to_formula",
+                "declared_aps": ENGLISH_EXERCISE["declared_aps"],
+                "allowed_operators": list(BUILDER_OPERATORS),
+            },
+        )
+        english_parts = []
+        for position, (prompt, formula) in enumerate(ENGLISH_EXERCISE["parts"]):
+            part, _ = ExercisePart.objects.get_or_create(
+                exercise=english,
+                position=position,
+                defaults={"prompt": prompt, "formula": formula},
+            )
+            english_parts.append(part)
+
         created = 0
         for student_idx, rows in ATTEMPTS:
             student = students[student_idx]
@@ -164,6 +231,16 @@ class Command(BaseCommand):
                     defaults={"is_correct": is_correct},
                 )
                 created += int(made)
+
+        for student_idx, part_pos, formula, is_correct in ENGLISH_ATTEMPTS:
+            _, made = Attempt.objects.get_or_create(
+                exercise=english,
+                student=students[student_idx],
+                part=english_parts[part_pos],
+                formula_input=formula,
+                defaults={"is_correct": is_correct},
+            )
+            created += int(made)
 
         self.stdout.write(self.style.SUCCESS(
             f"Seeded {Profile.objects.count()} profiles, {Exercise.objects.count()} exercises, "
