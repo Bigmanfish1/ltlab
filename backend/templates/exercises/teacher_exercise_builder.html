@@ -64,6 +64,10 @@
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if is_edit %}opacity-60 cursor-not-allowed{% endif %}">
                             English → Formula
                         </button>
+                        <button type="button" data-type="path_exhibit" {% if is_edit %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if is_edit %}opacity-60 cursor-not-allowed{% endif %}">
+                            Find a Path
+                        </button>
                     </div>
                     {% if is_edit %}
                     <div class="text-[11px] text-text-secondary mt-1">Type is fixed after creation.</div>
@@ -133,15 +137,26 @@
             </div>
 
             <div>
-                <div data-type-section="model_check">
+                <div data-type-section="model_check path_exhibit">
                     <div class="flex items-center justify-between mb-5">
                         <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">KRIPKE STRUCTURE</div>
                     </div>
-                    <div class="text-[12px] text-text-secondary mb-3">Students see this model and write an LTL formula that holds on it.</div>
+                    <div class="text-[12px] text-text-secondary mb-3" data-type-hint="model_check">Students see this model and write an LTL formula that holds on it.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="path_exhibit">Students trace a path through this model that satisfies each formula below.</div>
 
                     <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
                         {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json %}
                     </div>
+                </div>
+
+                <div data-type-section="path_exhibit" class="hidden mt-2">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">FORMULAS TO SATISFY</div>
+                    <div class="text-[12px] text-text-secondary mb-3">Publishing checks each formula actually has a satisfying path on the model.</div>
+                    <div class="space-y-3 mb-4" id="path-parts-rows"></div>
+                    <button type="button" id="path-part-add"
+                        class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
+                        + Add Formula
+                    </button>
                 </div>
 
                 <div data-type-section="english_to_formula" class="hidden">
@@ -180,6 +195,17 @@
             class="w-full bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
     </div>
 </template>
+
+<template id="path-part-row-template">
+    <div class="part-row bg-bg-secondary border border-border-primary rounded p-3">
+        <div class="flex items-center gap-3">
+            <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary part-row-label shrink-0"></span>
+            <input type="text" data-part-field="formula" placeholder="e.g. F grant"
+                class="flex-1 bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
+            <button type="button" class="part-remove font-mono text-[11px] text-text-secondary hover:text-accent-orange transition-colors shrink-0">REMOVE</button>
+        </div>
+    </div>
+</template>
 {% endblock %}
 
 {% block extra_js %}
@@ -201,7 +227,10 @@
                 b.classList.toggle('border-border-primary', !on);
             });
             sections.forEach(function (s) {
-                s.classList.toggle('hidden', s.dataset.typeSection !== current);
+                s.classList.toggle('hidden', s.dataset.typeSection.split(' ').indexOf(current) === -1);
+            });
+            document.querySelectorAll('[data-type-hint]').forEach(function (h) {
+                h.classList.toggle('hidden', h.dataset.typeHint !== current);
             });
         }
         typeBtns.forEach(function (b) {
@@ -242,44 +271,68 @@
         renderAps();
 
         const partsInput = document.getElementById('parts-input');
-        const partsRows = document.getElementById('parts-rows');
-        const partTemplate = document.getElementById('part-row-template');
+        const containers = {
+            english_to_formula: {
+                rows: document.getElementById('parts-rows'),
+                template: document.getElementById('part-row-template'),
+                label: 'REQUIREMENT ',
+            },
+            path_exhibit: {
+                rows: document.getElementById('path-parts-rows'),
+                template: document.getElementById('path-part-row-template'),
+                label: 'FORMULA ',
+            },
+        };
+        function activeContainer() { return containers[typeInput.value] || null; }
         function collectParts() {
-            return Array.from(partsRows.querySelectorAll('.part-row')).map(function (row) {
+            const c = activeContainer();
+            if (!c) return [];
+            return Array.from(c.rows.querySelectorAll('.part-row')).map(function (row) {
+                const prompt = row.querySelector('[data-part-field="prompt"]');
                 return {
                     id: row.dataset.partId || '',
-                    prompt: row.querySelector('[data-part-field="prompt"]').value.trim(),
+                    prompt: prompt ? prompt.value.trim() : '',
                     formula: row.querySelector('[data-part-field="formula"]').value.trim(),
                 };
             });
         }
         function syncParts() { partsInput.value = JSON.stringify(collectParts()); }
-        function relabelParts() {
-            partsRows.querySelectorAll('.part-row-label').forEach(function (l, i) {
-                l.textContent = 'REQUIREMENT ' + (i + 1);
+        function relabelParts(c) {
+            c.rows.querySelectorAll('.part-row-label').forEach(function (l, i) {
+                l.textContent = c.label + (i + 1);
             });
         }
-        function addPartRow(data) {
-            const row = partTemplate.content.firstElementChild.cloneNode(true);
+        function addPartRow(c, data) {
+            const row = c.template.content.firstElementChild.cloneNode(true);
             row.dataset.partId = (data && data.id) || '';
             if (data) {
-                row.querySelector('[data-part-field="prompt"]').value = data.prompt || '';
+                const prompt = row.querySelector('[data-part-field="prompt"]');
+                if (prompt) prompt.value = data.prompt || '';
                 row.querySelector('[data-part-field="formula"]').value = data.formula || '';
             }
             row.querySelectorAll('[data-part-field]').forEach(function (f) {
                 f.addEventListener('input', syncParts);
             });
             row.querySelector('.part-remove').addEventListener('click', function () {
-                row.remove(); relabelParts(); syncParts();
+                row.remove(); relabelParts(c); syncParts();
             });
-            partsRows.appendChild(row);
-            relabelParts();
+            c.rows.appendChild(row);
+            relabelParts(c);
             syncParts();
         }
-        document.getElementById('part-add').addEventListener('click', function () { addPartRow(null); });
+        document.getElementById('part-add').addEventListener('click', function () {
+            addPartRow(containers.english_to_formula, null);
+        });
+        document.getElementById('path-part-add').addEventListener('click', function () {
+            addPartRow(containers.path_exhibit, null);
+        });
+        typeBtns.forEach(function (b) { b.addEventListener('click', syncParts); });
         const existingParts = JSON.parse(JSON.parse(document.getElementById('parts-data').textContent));
-        existingParts.forEach(addPartRow);
-        if (!existingParts.length && typeInput.value === 'english_to_formula') addPartRow(null);
+        const prefillContainer = activeContainer();
+        if (prefillContainer) {
+            existingParts.forEach(function (p) { addPartRow(prefillContainer, p); });
+            if (!existingParts.length) addPartRow(prefillContainer, null);
+        }
         syncParts();
 
         const diffInput = document.getElementById('difficulty-input');

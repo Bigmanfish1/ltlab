@@ -10,12 +10,13 @@ from django.utils import timezone
 from apps.accounts.models import Profile
 from apps.checker.equivalence import validate_formula_submission
 from apps.checker.misconceptions import classify_misconception
+from apps.checker.tasks import run_ltl_check
 from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
 
 from .constants import DIFFICULTIES, MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
 from .models import Attempt, Exercise, ExercisePart, Topic
 
-BUILDER_EXERCISE_TYPES = ("model_check", "english_to_formula")
+BUILDER_EXERCISE_TYPES = ("model_check", "english_to_formula", "path_exhibit")
 
 
 def enrolled_students():
@@ -488,6 +489,29 @@ def _validate_english_parts(form, errors):
             errors.append(f"Requirement {i} target: {exc}")
 
 
+def _validate_path_parts(form, graph, errors):
+    """Each formula must parse against the graph AND have a satisfying lasso —
+    a counterexample to !(φ) is exactly a satisfying path for φ, so an
+    unsatisfiable formula would make the part impossible for students."""
+    if not form["parts"]:
+        errors.append("Add at least one formula for students to find a path for.")
+        return
+    for i, part in enumerate(form["parts"], start=1):
+        if not part["formula"]:
+            errors.append(f"Formula {i} is empty.")
+            continue
+        try:
+            result = run_ltl_check(graph, f"!({part['formula']})")
+        except ValueError as exc:
+            errors.append(f"Formula {i}: {exc}")
+            continue
+        if result["result"] != "violated":
+            errors.append(
+                f"Formula {i} ({part['formula']}) has no satisfying path on this "
+                "model — students could never solve it."
+            )
+
+
 def validate_exercise_form(form, exercise, publishing):
     errors = []
     if not form["title"]:
@@ -518,10 +542,11 @@ def validate_exercise_form(form, exercise, publishing):
             _validate_declared_aps(form["declared_aps"], errors)
             _validate_english_parts(form, errors)
         elif not graph:
-            # Students are graded by model-checking their formula against this
-            # graph (sandbox parity), so publishing needs a graph but no
-            # solution formula.
+            # Students are graded against this graph (model-checking their
+            # formula, or walking their path on it), so publishing needs one.
             errors.append("Publishing needs a memorandum Kripke structure.")
+        elif exercise_type == "path_exhibit":
+            _validate_path_parts(form, graph, errors)
     return errors, graph
 
 

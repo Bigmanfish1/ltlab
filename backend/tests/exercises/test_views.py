@@ -282,3 +282,73 @@ class EnglishBuilderTests(TeacherViewTestCase):
         views.exercise_builder(self._req("post", self.teacher, data), ex.id)
         ex.refresh_from_db()
         self.assertEqual(ex.exercise_type, "english_to_formula")
+
+
+# on REQGRANT the only infinite path is (idle req grant)^ω, so grant occurs
+# infinitely often: F grant / G F idle have satisfying paths, G !grant has none
+PATH_PARTS = json.dumps([
+    {"prompt": "", "formula": "F grant"},
+    {"prompt": "", "formula": "G F idle"},
+])
+
+
+@override_settings(STORAGES=PLAIN_STATIC)
+class PathExhibitBuilderTests(TeacherViewTestCase):
+    def _path_form(self, **overrides):
+        data = self._form(exercise_type="path_exhibit", parts=PATH_PARTS)
+        data.update(overrides)
+        return data
+
+    def test_publish_with_satisfiable_formulas_creates_parts(self):
+        data = self._path_form(action="publish")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 302)
+        ex = Exercise.objects.get(title="New Ex")
+        self.assertTrue(ex.is_published)
+        self.assertEqual(ex.exercise_type, "path_exhibit")
+        self.assertEqual(ex.kripke_structure["elements"]["nodes"][0]["data"]["id"], "idle")
+        self.assertEqual(list(ex.parts.values_list("formula", flat=True)), ["F grant", "G F idle"])
+
+    def test_publish_with_unsatisfiable_formula_rejected(self):
+        parts = json.dumps([
+            {"prompt": "", "formula": "F grant"},
+            {"prompt": "", "formula": "G (!grant)"},
+        ])
+        data = self._path_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_with_unparseable_formula_rejected(self):
+        parts = json.dumps([{"prompt": "", "formula": "F (grant"}])
+        data = self._path_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_without_parts_rejected(self):
+        data = self._path_form(action="publish", parts="[]")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_without_graph_rejected(self):
+        data = self._path_form(action="publish", graph_data="")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_draft_skips_satisfiability_gate(self):
+        parts = json.dumps([{"prompt": "", "formula": "G (!grant)"}])
+        data = self._path_form(action="draft", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Exercise.objects.get(title="New Ex").is_published)
+
+    def test_type_locked_on_edit(self):
+        views.exercise_builder(self._req("post", self.teacher, self._path_form(action="publish")))
+        ex = Exercise.objects.get(title="New Ex")
+        data = self._path_form(action="publish", exercise_type="english_to_formula")
+        views.exercise_builder(self._req("post", self.teacher, data), ex.id)
+        ex.refresh_from_db()
+        self.assertEqual(ex.exercise_type, "path_exhibit")
