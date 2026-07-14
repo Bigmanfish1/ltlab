@@ -82,6 +82,7 @@ class ExercisePart(models.Model):
     # formula: the displayed formula (judge/path_exhibit); the hidden target (english_to_formula)
     prompt = models.TextField(blank=True, default="")
     formula = models.TextField()
+    hints = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "ExerciseParts"
