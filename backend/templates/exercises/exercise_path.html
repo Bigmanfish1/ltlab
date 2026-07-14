@@ -69,6 +69,14 @@
                     </button>
                     <div id="trace-readout" class="font-mono text-[12px] text-text-primary truncate flex-1"></div>
                 </div>
+                <div class="flex items-center gap-2 mt-2">
+                    <input type="text" id="trace-text" placeholder="or type the path: s0 → (s1 → s2)ω" autocomplete="off"
+                        class="flex-1 bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[12px] px-3 py-1.5 rounded focus:border-border-secondary focus:outline-none transition-colors" />
+                    <button type="button" id="trace-apply"
+                        class="px-3 py-1.5 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-secondary">
+                        Apply
+                    </button>
+                </div>
                 <input type="hidden" id="trace-prefix" name="trace_prefix" value="[]" />
                 <input type="hidden" id="trace-cycle" name="trace_cycle" value="[]" />
             </div>
@@ -119,10 +127,16 @@ document.addEventListener('DOMContentLoaded', () => {
             prefixInput: '#trace-prefix',
             cycleInput: '#trace-cycle',
             readout: '#trace-readout',
+            textInput: '#trace-text',
         });
 
         document.getElementById('trace-undo').addEventListener('click', () => picker.undo());
         document.getElementById('trace-reset').addEventListener('click', () => picker.reset());
+        const traceText = document.getElementById('trace-text');
+        document.getElementById('trace-apply').addEventListener('click', () => picker.applyText(traceText.value));
+        traceText.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); picker.applyText(traceText.value); }
+        });
     }
     boot();
 

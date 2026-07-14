@@ -12,11 +12,15 @@
  *     prefixInput:  selector of the hidden input receiving JSON prefix ids
  *     cycleInput:   selector of the hidden input receiving JSON cycle ids
  *     readout:      selector of the element showing s0 → (s1 → s2)ω
+ *     textInput:    optional selector of a text input for typed lasso entry,
+ *                   kept in sync with the clicked path (module notation
+ *                   prefix·(cycle)ω, MCL8 p.24)
  *     onChange:     optional callback(state) on every change
  *   })
  *
  * Registered at window.TracePickers[editorId]; API: reset(), undo(),
- * getState() → {path, closedAt} , isClosed().
+ * getState() → {path, closedAt} , isClosed(), setState(prefix, cycle),
+ * applyText(text) → bool.
  */
 (function () {
   "use strict";
@@ -57,6 +61,7 @@
     const prefixInput = document.querySelector(config.prefixInput);
     const cycleInput = document.querySelector(config.cycleInput);
     const readoutEl = config.readout ? document.querySelector(config.readout) : null;
+    const textInput = config.textInput ? document.querySelector(config.textInput) : null;
 
     const styles = cy.style().json().concat(PICKER_STYLES);
     cy.style().fromJson(styles).update();
@@ -97,6 +102,9 @@
       if (prefixInput) prefixInput.value = JSON.stringify(parts.prefix);
       if (cycleInput) cycleInput.value = JSON.stringify(closedAt < 0 ? [] : parts.cycle);
       if (readoutEl) readoutEl.textContent = renderReadout(parts);
+      if (textInput && document.activeElement !== textInput) {
+        textInput.value = path.length ? renderReadout(parts) : "";
+      }
       if (config.onChange) config.onChange(getState());
     }
 
@@ -201,6 +209,88 @@
       return { path: path.slice(), closedAt: closedAt };
     }
 
+    function setState(prefixIds, cycleIds) {
+      path = prefixIds.concat(cycleIds);
+      closedAt = cycleIds.length ? prefixIds.length : -1;
+      paint();
+      sync();
+    }
+
+    function warn(message) {
+      if (editor.warn) editor.warn(message);
+    }
+
+    function resolveToken(token) {
+      const nodes = realNodes();
+      const byId = nodes.filter((n) => n.id() === token);
+      if (byId.length) return byId[0].id();
+      const byName = nodes.filter((n) => (n.data("name") || "") === token);
+      if (byName.length > 1) return { ambiguous: token };
+      if (byName.length) return byName[0].id();
+      return null;
+    }
+
+    function tokenize(part) {
+      return part
+        .split(/→|->|,|\s+/)
+        .map((t) => t.trim())
+        .filter(Boolean);
+    }
+
+    // Typed lasso in module notation prefix·(cycle)ω — e.g. "s0 → (s1 → s2)ω",
+    // "s0 (s1 s2)ω", "(s0)ω". Same rules as clicking; the server re-validates.
+    function applyText(text) {
+      const raw = String(text || "").trim();
+      if (!raw) {
+        warn("Type a path like s0 → (s1 → s2)ω.");
+        return false;
+      }
+      const match = raw.match(/^([^()]*)\(([^()]*)\)\s*(ω|\^ω|\^w|w)?\s*$/);
+      if (!match) {
+        warn("Wrap the repeating cycle in parentheses: prefix (cycle)ω.");
+        return false;
+      }
+      const prefixTokens = tokenize(match[1]);
+      const cycleTokens = tokenize(match[2]);
+      if (!cycleTokens.length) {
+        warn("The cycle needs at least one state inside ( )ω.");
+        return false;
+      }
+      const ids = [];
+      const tokens = prefixTokens.concat(cycleTokens);
+      for (let i = 0; i < tokens.length; i++) {
+        const resolved = resolveToken(tokens[i]);
+        if (resolved === null) {
+          warn("Unknown state: " + tokens[i] + ".");
+          return false;
+        }
+        if (typeof resolved === "object") {
+          warn("Ambiguous state name: " + resolved.ambiguous + ".");
+          return false;
+        }
+        ids.push(resolved);
+      }
+      if (ids[0] !== initialId()) {
+        warn("The path must start at the initial state.");
+        return false;
+      }
+      for (let i = 0; i < ids.length - 1; i++) {
+        if (!successorsOf(ids[i]).has(ids[i + 1])) {
+          warn("No transition from " + tokens[i] + " to " + tokens[i + 1] + ".");
+          return false;
+        }
+      }
+      const closeSrc = ids[ids.length - 1];
+      const closeTgt = ids[prefixTokens.length];
+      if (!successorsOf(closeSrc).has(closeTgt)) {
+        warn("The cycle does not close — no transition from " +
+          tokens[tokens.length - 1] + " back to " + tokens[prefixTokens.length] + ".");
+        return false;
+      }
+      setState(ids.slice(0, prefixTokens.length), ids.slice(prefixTokens.length));
+      return true;
+    }
+
     cy.on("tap", "node", handleTap);
     paint();
     sync();
@@ -210,6 +300,8 @@
       undo: undo,
       getState: getState,
       isClosed: function () { return closedAt >= 0; },
+      setState: setState,
+      applyText: applyText,
     };
     window.TracePickers = window.TracePickers || {};
     window.TracePickers[config.editorId] = api;
