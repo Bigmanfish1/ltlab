@@ -633,6 +633,19 @@ def _validate_path_parts(form, graph, errors):
             )
 
 
+def type_locked(exercise):
+    """Type changes are only safe while no student could have seen the
+    exercise: lock once ever published, or if any attempts exist (covers
+    prod rows published-then-drafted before ever_published landed)."""
+    return exercise is not None and (
+        exercise.ever_published or exercise.attempts.exists()
+    )
+
+
+def _effective_type(form, exercise):
+    return form["exercise_type"] if not type_locked(exercise) else exercise.exercise_type
+
+
 def validate_exercise_form(form, exercise, publishing):
     errors = []
     if not form["title"]:
@@ -644,7 +657,7 @@ def validate_exercise_form(form, exercise, publishing):
     if not _topic_exists(form["module_id"]):
         errors.append("Assign the exercise to a module.")
 
-    exercise_type = exercise.exercise_type if exercise else form["exercise_type"]
+    exercise_type = _effective_type(form, exercise)
     if exercise_type not in BUILDER_EXERCISE_TYPES:
         errors.append("Unknown exercise type.")
         return errors, None
@@ -681,9 +694,13 @@ def persist_exercise(exercise, form, graph, publishing):
             exercise_type=form["exercise_type"],
         )
     else:
-        # exercise_type is locked after creation — switching types under live
-        # parts/attempts has no coherent semantics.
         exercise.topic_id = form["module_id"]
+        new_type = _effective_type(form, exercise)
+        if new_type != exercise.exercise_type:
+            # only reachable while never-published with zero attempts, so the
+            # wipe destroys teacher-authored parts, never student data
+            exercise.exercise_type = new_type
+            exercise.parts.all().delete()
     exercise.title = form["title"]
     exercise.description = form["description"]
     exercise.difficulty = form["difficulty"]

@@ -32,6 +32,7 @@ from .services import (
     parse_exercise_form,
     persist_exercise,
     solved_exercise_ids,
+    type_locked,
     validate_exercise_form,
 )
 
@@ -523,7 +524,9 @@ def _builder_context(exercise, form=None):
         except json.JSONDecodeError:
             elements_json = ""
         prefill = form
-        exercise_type = exercise.exercise_type if exercise else form["exercise_type"]
+        exercise_type = (
+            exercise.exercise_type if type_locked(exercise) else form["exercise_type"]
+        )
         declared_aps = form["declared_aps"]
         parts = form["parts"]
     elif exercise is not None:
@@ -569,6 +572,7 @@ def _builder_context(exercise, form=None):
         "is_edit": exercise is not None,
         "exercise_id": exercise.id if exercise else None,
         "exercise_type": exercise_type,
+        "type_locked": type_locked(exercise),
         "builder_types": BUILDER_EXERCISE_TYPES,
         "declared_aps_json": json.dumps(declared_aps),
         "parts_json": json.dumps(parts),

@@ -56,25 +56,25 @@
                     <label class="block text-[13px] text-text-primary mb-2">Exercise Type</label>
                     <input type="hidden" name="exercise_type" id="type-input" value="{{ exercise_type }}" />
                     <div class="flex gap-2" id="type-toggle">
-                        <button type="button" data-type="model_check" {% if is_edit %}disabled{% endif %}
-                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if is_edit %}opacity-60 cursor-not-allowed{% endif %}">
+                        <button type="button" data-type="model_check" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
                             Formula on Graph
                         </button>
-                        <button type="button" data-type="english_to_formula" {% if is_edit %}disabled{% endif %}
-                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if is_edit %}opacity-60 cursor-not-allowed{% endif %}">
+                        <button type="button" data-type="english_to_formula" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
                             English → Formula
                         </button>
-                        <button type="button" data-type="path_exhibit" {% if is_edit %}disabled{% endif %}
-                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if is_edit %}opacity-60 cursor-not-allowed{% endif %}">
+                        <button type="button" data-type="path_exhibit" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
                             Find a Path
                         </button>
-                        <button type="button" data-type="judge" {% if is_edit %}disabled{% endif %}
-                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if is_edit %}opacity-60 cursor-not-allowed{% endif %}">
+                        <button type="button" data-type="judge" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
                             Judge
                         </button>
                     </div>
-                    {% if is_edit %}
-                    <div class="text-[11px] text-text-secondary mt-1">Type is fixed after creation.</div>
+                    {% if type_locked %}
+                    <div class="text-[11px] text-text-secondary mt-1">Type is locked once the exercise has been published or attempted.</div>
                     {% endif %}
                 </div>
 
@@ -250,6 +250,9 @@
         typeBtns.forEach(function (b) {
             b.addEventListener('click', function () {
                 if (b.disabled) return;
+                if (b.dataset.type === typeInput.value) return;
+                const savedParts = document.querySelectorAll('.part-row[data-part-id]:not([data-part-id=""])').length;
+                if (savedParts && !confirm('Changing the exercise type discards its saved parts. Continue?')) return;
                 typeInput.value = b.dataset.type;
                 paintType();
             });
