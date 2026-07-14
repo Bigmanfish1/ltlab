@@ -93,6 +93,7 @@
                                 hx-target="#part-result-{{ row.part.id }}"
                                 hx-swap="innerHTML"
                                 hx-vals='{"verdict": "holds"}'
+                                hx-include="#hints-used-{{ row.part.id }}"
                                 hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                                 class="px-4 py-1.5 bg-bg-primary border border-border-secondary hover:border-accent-lime transition-colors rounded text-sm font-medium text-text-primary">
                                 Holds
@@ -111,12 +112,13 @@
                                 hx-target="#part-result-{{ row.part.id }}"
                                 hx-swap="innerHTML"
                                 hx-vals='{"verdict": "violated"}'
-                                hx-include="#trace-prefix, #trace-cycle"
+                                hx-include="#trace-prefix, #trace-cycle, #hints-used-{{ row.part.id }}"
                                 hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                                 class="px-4 py-1.5 bg-accent-orange hover:opacity-90 transition-opacity rounded text-sm font-medium text-text-primary">
                                 Submit Counterexample
                             </button>
                         </div>
+                        {% include "components/student_part_hints.html" %}
                         <div id="part-result-{{ row.part.id }}" class="mt-3"></div>
                     </div>
                     {% endfor %}
@@ -127,6 +129,7 @@
 </div>
 
 <script src="{% static 'js/trace_picker.js' %}"></script>
+<script src="{% static 'js/part_hints.js' %}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     function boot() {

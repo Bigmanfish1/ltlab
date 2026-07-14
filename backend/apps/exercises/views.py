@@ -226,11 +226,7 @@ def submit_formula(request, exercise_id):
 
     is_correct = result["result"] == "satisfied"
 
-    hint_count = len([h for h in (exercise.hints or []) if h and h.strip()])
-    try:
-        hints_used = min(max(0, int(request.POST.get('hints_used', 0))), hint_count)
-    except (TypeError, ValueError):
-        hints_used = 0
+    hints_used = _clamped_hints(request, exercise.hints)
 
     Attempt.objects.create(
         exercise=exercise,
@@ -255,8 +251,8 @@ def _part_result(request, part, status, message):
     })
 
 
-def _clamped_hints(request, exercise):
-    hint_count = len([h for h in (exercise.hints or []) if h and h.strip()])
+def _clamped_hints(request, hints):
+    hint_count = len([h for h in (hints or []) if h and h.strip()])
     try:
         return min(max(0, int(request.POST.get("hints_used", 0))), hint_count)
     except (TypeError, ValueError):
@@ -312,7 +308,7 @@ def _submit_path_part(request, exercise, part):
         part=part,
         answer={"prefix": prefix, "cycle": cycle},
         is_correct=is_correct,
-        hints_used=_clamped_hints(request, exercise),
+        hints_used=_clamped_hints(request, part.hints),
         misconception="",
     )
 
@@ -393,7 +389,7 @@ def _submit_judge_part(request, exercise, part):
         part=part,
         answer=answer,
         is_correct=is_correct,
-        hints_used=_clamped_hints(request, exercise),
+        hints_used=_clamped_hints(request, part.hints),
         misconception="",
     )
 
@@ -456,7 +452,7 @@ def submit_part(request, exercise_id, part_id):
         part=part,
         formula_input=formula,
         is_correct=is_correct,
-        hints_used=_clamped_hints(request, exercise),
+        hints_used=_clamped_hints(request, part.hints),
     )
 
     if is_correct:

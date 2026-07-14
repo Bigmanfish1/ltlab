@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ exercise.title }} - ModelCheck Edu{% endblock %}
 
@@ -91,12 +92,13 @@
                                 hx-post="{% url 'submit_part' exercise.id row.part.id %}"
                                 hx-target="#part-result-{{ row.part.id }}"
                                 hx-swap="innerHTML"
-                                hx-include="#formula-{{ row.part.id }}, #hints-used"
+                                hx-include="#formula-{{ row.part.id }}, #hints-used-{{ row.part.id }}"
                                 hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                                 class="px-5 py-2 bg-accent-orange hover:opacity-90 transition-opacity rounded text-sm font-medium text-text-primary shrink-0">
                                 Check
                             </button>
                         </div>
+                        {% include "components/student_part_hints.html" %}
                         <div id="part-result-{{ row.part.id }}" class="mt-3"></div>
                     </div>
                     {% endfor %}
@@ -104,21 +106,6 @@
             </div>
 
             <div>
-                <div class="mb-6">
-                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">HINTS</h2>
-                    <div id="hints-container" class="space-y-2">
-                        <div id="hints-placeholder" class="text-sm text-text-secondary">
-                            Click "Get Hint" to reveal a hint for this exercise.
-                        </div>
-                    </div>
-                    <button id="hint-btn"
-                        class="mt-3 px-3 py-1.5 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-secondary">
-                        Get Hint
-                    </button>
-                    <input type="hidden" id="hints-used" name="hints_used" value="0" />
-                </div>
-                {{ exercise.hints|json_script:"exercise-hints-data" }}
-
                 <div>
                     <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">OPERATORS</h2>
                     <div class="bg-bg-secondary border border-border-primary rounded p-4">
@@ -172,47 +159,6 @@ function insertParens() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const hintsData = JSON.parse(
-        document.getElementById('exercise-hints-data').textContent || '[]'
-    );
-    const hints = (Array.isArray(hintsData) ? hintsData : [])
-        .filter(h => typeof h === 'string' && h.trim());
-
-    let hintsRevealed = 0;
-    const hintBtn = document.getElementById('hint-btn');
-
-    function disableHintBtn() {
-        hintBtn.disabled = true;
-        hintBtn.classList.add('opacity-50', 'cursor-not-allowed');
-    }
-
-    if (hints.length === 0) {
-        hintBtn.textContent = 'No Hints';
-        disableHintBtn();
-    }
-
-    hintBtn.addEventListener('click', () => {
-        if (hintsRevealed >= hints.length) return;
-        const placeholder = document.getElementById('hints-placeholder');
-        if (placeholder) placeholder.remove();
-
-        const hintsContainer = document.getElementById('hints-container');
-        const hintDiv = document.createElement('div');
-        hintDiv.className = 'bg-bg-secondary border border-border-primary rounded p-3 text-sm text-text-primary';
-        const label = `HINT ${hintsRevealed + 1} OF ${hints.length}`;
-        hintDiv.innerHTML = `<span class="font-mono text-xs text-accent-orange">${label}:</span> `;
-        hintDiv.appendChild(document.createTextNode(hints[hintsRevealed]));
-        hintsContainer.appendChild(hintDiv);
-        hintsRevealed += 1;
-        document.getElementById('hints-used').value = hintsRevealed;
-
-        if (hintsRevealed >= hints.length) {
-            disableHintBtn();
-        } else {
-            hintBtn.textContent = `Get Hint (${hintsRevealed + 1}/${hints.length})`;
-        }
-    });
-
     document.querySelectorAll('[data-part-input]').forEach((input) => {
         input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -229,4 +175,5 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 </script>
+<script src="{% static 'js/part_hints.js' %}"></script>
 {% endblock %}
