@@ -93,12 +93,18 @@ def _exercise_metrics(exercise, per_student, enrolled_count, part_count=0):
     engaged = len(per_student)
     completion_raw = 100 * solvers / enrolled_count if enrolled_count else 0.0
     completion = _pct(solvers, enrolled_count)
-    avg_tries = round(sum(tries_to_solve) / len(tries_to_solve), 1) if tries_to_solve else 0.0
+    # per-part normalisation keeps multi-part exercises comparable to
+    # single-answer ones (a 6-part judge is not automatically "most struggled")
+    per_part = max(part_count, 1)
+    avg_tries = (
+        round(sum(tries_to_solve) / len(tries_to_solve) / per_part, 1)
+        if tries_to_solve else 0.0
+    )
     fail_attempts = total_attempts - sum(
         1 for attempts in per_student.values() for a in attempts if a["correct"]
     )
     # struggle = mean submissions per engaged student; unsolved exercises rank high (unlike avg_tries)
-    struggle = round(total_attempts / engaged, 1) if engaged else 0.0
+    struggle = round(total_attempts / engaged / per_part, 1) if engaged else 0.0
     return {
         "attempts": total_attempts,
         "solvers": solvers,
