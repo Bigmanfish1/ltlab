@@ -130,13 +130,15 @@
                 </div>
                 <div class="text-[11px] text-text-secondary mb-6">Disabled operators are hidden from students.</div>
 
-                <label class="block text-[13px] text-text-primary mb-2">Progressive Hints</label>
-                <div class="space-y-2">
-                    {% for hint in hint_values %}
-                    <input type="text" name="hint_{{ forloop.counter }}" placeholder="Hint {{ forloop.counter }}..."
-                        class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors"
-                        value="{{ hint }}" />
-                    {% endfor %}
+                <div data-type-section="model_check">
+                    <label class="block text-[13px] text-text-primary mb-2">Progressive Hints</label>
+                    <div class="space-y-2">
+                        {% for hint in hint_values %}
+                        <input type="text" name="hint_{{ forloop.counter }}" placeholder="Hint {{ forloop.counter }}..."
+                            class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors"
+                            value="{{ hint }}" />
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
 
@@ -200,6 +202,7 @@
         <input type="text" data-part-field="formula" placeholder="Hidden target formula, e.g. G F (tea_chosen | coffee_chosen)"
             class="w-full bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
         {% include "components/operator_toolbar.html" %}
+        {% include "components/part_hints.html" %}
     </div>
 </template>
 
@@ -213,6 +216,7 @@
             <button type="button" class="part-remove font-mono text-[11px] text-text-secondary hover:text-accent-orange transition-colors shrink-0">REMOVE</button>
         </div>
         {% include "components/operator_toolbar.html" %}
+        {% include "components/part_hints.html" %}
         <div class="part-test-result text-[11px] font-mono mt-2 hidden"></div>
     </div>
 </template>
@@ -300,10 +304,14 @@
             if (!c) return [];
             return Array.from(c.rows.querySelectorAll('.part-row')).map(function (row) {
                 const prompt = row.querySelector('[data-part-field="prompt"]');
+                const hints = Array.from(row.querySelectorAll('[data-part-hint]'))
+                    .map(function (h) { return h.value.trim(); })
+                    .filter(Boolean);
                 return {
                     id: row.dataset.partId || '',
                     prompt: prompt ? prompt.value.trim() : '',
                     formula: row.querySelector('[data-part-field="formula"]').value.trim(),
+                    hints: hints,
                 };
             });
         }
@@ -320,8 +328,13 @@
                 const prompt = row.querySelector('[data-part-field="prompt"]');
                 if (prompt) prompt.value = data.prompt || '';
                 row.querySelector('[data-part-field="formula"]').value = data.formula || '';
+                const hintInputs = row.querySelectorAll('[data-part-hint]');
+                (data.hints || []).forEach(function (h, i) {
+                    if (hintInputs[i]) hintInputs[i].value = h;
+                });
+                if ((data.hints || []).length) row.querySelector('.part-hints').open = true;
             }
-            row.querySelectorAll('[data-part-field]').forEach(function (f) {
+            row.querySelectorAll('[data-part-field], [data-part-hint]').forEach(function (f) {
                 f.addEventListener('input', syncParts);
             });
             row.querySelector('.part-remove').addEventListener('click', function () {

@@ -529,6 +529,11 @@ def parse_exercise_form(request):
             "id": str(p.get("id", "")).strip(),
             "prompt": str(p.get("prompt", "")).strip(),
             "formula": str(p.get("formula", "")).strip(),
+            "hints": [
+                str(h).strip()
+                for h in (p.get("hints") if isinstance(p.get("hints"), list) else [])
+                if str(h).strip()
+            ][:3],
         }
         for p in raw_parts
         if isinstance(p, dict)
@@ -682,8 +687,10 @@ def persist_exercise(exercise, form, graph, publishing):
     exercise.title = form["title"]
     exercise.description = form["description"]
     exercise.difficulty = form["difficulty"]
-    exercise.hints = form["hints"]
-    exercise.hint = next((h for h in form["hints"] if h), "")
+    # global hints belong to the partless type; part types carry hints per part
+    global_hints = form["hints"] if exercise.exercise_type == "model_check" else []
+    exercise.hints = global_hints
+    exercise.hint = next((h for h in global_hints if h), "")
     exercise.allowed_operators = form["allowed_operators"]
     exercise.declared_aps = form["declared_aps"]
     exercise.kripke_structure = graph
@@ -706,19 +713,21 @@ def _sync_parts(exercise, parts):
         part = existing.get(data["id"])
         if part is not None:
             kept_ids.add(data["id"])
-            if (part.prompt, part.formula, part.position) != (
-                data["prompt"], data["formula"], position,
+            if (part.prompt, part.formula, part.hints, part.position) != (
+                data["prompt"], data["formula"], data["hints"], position,
             ):
                 part.prompt = data["prompt"]
                 part.formula = data["formula"]
+                part.hints = data["hints"]
                 part.position = position
-                part.save(update_fields=["prompt", "formula", "position"])
+                part.save(update_fields=["prompt", "formula", "hints", "position"])
         else:
             part = ExercisePart.objects.create(
                 exercise=exercise,
                 position=position,
                 prompt=data["prompt"],
                 formula=data["formula"],
+                hints=data["hints"],
             )
             kept_ids.add(str(part.id))
     exercise.parts.exclude(id__in=kept_ids).delete()

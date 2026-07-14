@@ -548,7 +548,8 @@ def _builder_context(exercise, form=None):
         exercise_type = exercise.exercise_type
         declared_aps = list(exercise.declared_aps or [])
         parts = [
-            {"id": str(p.id), "prompt": p.prompt, "formula": p.formula}
+            {"id": str(p.id), "prompt": p.prompt, "formula": p.formula,
+             "hints": list(p.hints or [])}
             for p in exercise.parts.all()
         ]
     else:

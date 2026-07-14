@@ -178,7 +178,7 @@ class BuilderContextTests(TeacherViewTestCase):
         self.assertEqual(json.loads(context["declared_aps_json"]), ["p"])
         self.assertEqual(
             json.loads(context["parts_json"]),
-            [{"id": str(part.id), "prompt": "always p", "formula": "G p"}],
+            [{"id": str(part.id), "prompt": "always p", "formula": "G p", "hints": []}],
         )
 
 
