@@ -58,6 +58,8 @@ class Exercise(models.Model):
     allowed_operators = models.JSONField(default=list, blank=True)
     hints = models.JSONField(default=list, blank=True)
     is_published = models.BooleanField(default=False)
+    # set on first publish, never reset — gates exercise-type changes
+    ever_published = models.BooleanField(default=False)
     position = models.IntegerField(default=0)
     exercise_type = models.CharField(
         max_length=20, choices=EXERCISE_TYPE_CHOICES, default="model_check"

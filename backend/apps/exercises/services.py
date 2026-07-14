@@ -695,6 +695,8 @@ def persist_exercise(exercise, form, graph, publishing):
     exercise.declared_aps = form["declared_aps"]
     exercise.kripke_structure = graph
     exercise.is_published = publishing
+    if publishing:
+        exercise.ever_published = True
     exercise.save()
     if exercise.exercise_type != "model_check":
         _sync_parts(exercise, form["parts"])
