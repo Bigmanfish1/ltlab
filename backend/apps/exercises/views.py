@@ -537,7 +537,6 @@ def _builder_context(exercise, form=None):
             "description": exercise.description,
             "difficulty": exercise.difficulty,
             "module_id": exercise.topic_id,
-            "target_formula": exercise.target_formula,
         }
         exercise_type = exercise.exercise_type
         declared_aps = list(exercise.declared_aps or [])

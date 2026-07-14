@@ -539,7 +539,6 @@ def parse_exercise_form(request):
         "difficulty": request.POST.get("difficulty", "").strip(),
         "module_id": topic_id or None,
         "exercise_type": request.POST.get("exercise_type", "model_check").strip(),
-        "target_formula": request.POST.get("formula", "").strip(),
         "hints": [request.POST.get(f"hint_{i}", "").strip() for i in (1, 2, 3)],
         "allowed_operators": _json_field(request, "allowed_operators", []),
         "declared_aps": [
@@ -677,7 +676,6 @@ def persist_exercise(exercise, form, graph, publishing):
     exercise.title = form["title"]
     exercise.description = form["description"]
     exercise.difficulty = form["difficulty"]
-    exercise.target_formula = form["target_formula"] or None
     exercise.hints = form["hints"]
     exercise.hint = next((h for h in form["hints"] if h), "")
     exercise.allowed_operators = form["allowed_operators"]
