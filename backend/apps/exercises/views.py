@@ -19,6 +19,7 @@ from .constants import (
     BUILDER_OPERATORS,
     DIFFICULTIES,
     EXERCISE_TYPE_BADGES,
+    OPERATOR_DISPLAY,
     OPERATOR_LABELS,
 )
 from .models import Attempt, Exercise, ExercisePart, Topic
@@ -73,10 +74,19 @@ def _exercise_nav(exercise_id):
 def _operator_buttons(exercise):
     # only the operators the teacher allowed (None = legacy exercise = all)
     allowed = exercise.allowed_operators if exercise.allowed_operators is not None else BUILDER_OPERATORS
-    return [
-        {"op": op, "label": OPERATOR_LABELS.get(op, op)}
-        for op in BUILDER_OPERATORS if op in allowed
-    ]
+    buttons = []
+    for op in BUILDER_OPERATORS:
+        if op not in allowed:
+            continue
+        buttons.append({"op": op, "label": OPERATOR_LABELS.get(op, op)})
+        if op == "∨":
+            buttons.append({"op": "|", "label": "Or"})
+    return buttons
+
+
+def _operator_error_label(token):
+    shown = OPERATOR_DISPLAY.get(token, token)
+    return f"{shown} ({OPERATOR_LABELS[token]})" if token in OPERATOR_LABELS else shown
 
 
 @supabase_login_required
@@ -197,9 +207,7 @@ def submit_formula(request, exercise_id):
     if exercise.allowed_operators is not None:
         bad = disallowed_operators(formula, exercise.allowed_operators)
         if bad:
-            labels = sorted(
-                f"{t} ({OPERATOR_LABELS[t]})" if t in OPERATOR_LABELS else t for t in bad
-            )
+            labels = sorted(_operator_error_label(t) for t in bad)
             return error_response(
                 request,
                 "These operators aren't allowed for this exercise: " + ", ".join(labels) + ".",
@@ -422,9 +430,7 @@ def submit_part(request, exercise_id, part_id):
     if exercise.allowed_operators is not None:
         bad = disallowed_operators(formula, exercise.allowed_operators)
         if bad:
-            labels = sorted(
-                f"{t} ({OPERATOR_LABELS[t]})" if t in OPERATOR_LABELS else t for t in bad
-            )
+            labels = sorted(_operator_error_label(t) for t in bad)
             return _part_result(
                 request, part, "error",
                 "These operators aren't allowed for this exercise: " + ", ".join(labels) + ".",

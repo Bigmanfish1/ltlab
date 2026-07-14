@@ -10,6 +10,8 @@ OPERATOR_LABELS = {
     "G": "Always", "F": "Eventually", "X": "Next", "U": "Until",
     "¬": "Not", "∧": "And", "∨": "Or", "→": "Implies",
 }
+# ∨ and | are the same operator; both glyphs are offered wherever ∨ appears
+OPERATOR_DISPLAY = {"∨": "∨ / |"}
 DIFFICULTIES = ["beginner", "intermediate", "advanced"]
 
 # badge text per exercise type — must match the builder's type-selector labels

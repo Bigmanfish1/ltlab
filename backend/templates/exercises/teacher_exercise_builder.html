@@ -123,8 +123,8 @@
                 <div class="flex flex-wrap gap-2 mb-1" id="operator-toggle" data-selected="{{ allowed_operators|join:',' }}">
                     {% for op in operators %}
                     <button type="button" data-op="{{ op }}"
-                        class="operator-btn w-9 h-9 font-mono text-[13px] border border-border-primary text-text-secondary rounded transition-colors">
-                        {{ op }}
+                        class="operator-btn min-w-9 h-9 px-2 font-mono text-[13px] border border-border-primary text-text-secondary rounded transition-colors whitespace-nowrap">
+                        {% if op == "∨" %}∨ / |{% else %}{{ op }}{% endif %}
                     </button>
                     {% endfor %}
                 </div>
