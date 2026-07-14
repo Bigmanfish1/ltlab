@@ -12,11 +12,11 @@ OPERATOR_LABELS = {
 }
 DIFFICULTIES = ["beginner", "intermediate", "advanced"]
 
-# badge text per exercise type; the default type carries no badge
+# badge text per exercise type — must match the builder's type-selector labels
 EXERCISE_TYPE_BADGES = {
-    "model_check": "",
-    "english_to_formula": "English",
-    "path_exhibit": "Path",
+    "model_check": "Formula on Graph",
+    "english_to_formula": "English → Formula",
+    "path_exhibit": "Find a Path",
     "judge": "Judge",
 }
 
