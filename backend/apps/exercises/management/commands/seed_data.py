@@ -105,11 +105,17 @@ ENGLISH_EXERCISE = {
     ],
     "parts": [
         ("once in a while someone chooses tea or coffee",
-         "G F (tea_chosen | coffee_chosen)"),
+         "G F (tea_chosen | coffee_chosen)",
+         ["'Once in a while' means again and again — infinitely often.",
+          "Combine G with F over the two choices joined by or."]),
         ("if coffee is chosen and next money is inserted coffee will be delivered",
-         "G ((coffee_chosen & X money_inserted) -> F coffee_delivered)"),
+         "G ((coffee_chosen & X money_inserted) -> F coffee_delivered)",
+         ["'Next' is the X operator.",
+          "The rule applies at every moment — wrap the implication in G.",
+          "Delivery happens eventually, not necessarily immediately."]),
         ("when coffee is chosen tea will not be delivered until tea is chosen",
-         "G (coffee_chosen -> (!tea_delivered U tea_chosen))"),
+         "G (coffee_chosen -> (!tea_delivered U tea_chosen))",
+         ["'Not ... until ...' is U with a negated left-hand side."]),
     ],
 }
 
@@ -131,7 +137,11 @@ PATH_EXERCISE = {
         "that satisfies it."
     ),
     "difficulty": "intermediate",
-    "parts": ["F grant", "G F idle", "X req"],
+    "parts": [
+        ("F grant", ["Reach a grant state, then loop anywhere."]),
+        ("G F idle", ["The loop you close must pass through an idle state."]),
+        ("X req", ["Only the second state of the path matters for X."]),
+    ],
 }
 
 # (student index, part position, prefix, cycle, is_correct) — verified against
@@ -173,8 +183,14 @@ JUDGE_EXERCISE = {
     ),
     "difficulty": "advanced",
     "parts": [
-        "F G c", "G F c", "(X !c) -> (X X c)",
-        "G a", "a U (G (b | c))", "(X X b) U (b | c)",
+        ("F G c", ["Can the system loop forever in states where c is false?"]),
+        ("G F c", ["Is there an infinite path that visits c only finitely often?"]),
+        ("(X !c) -> (X X c)",
+         ["The implication is evaluated at the first state of each path."]),
+        ("G a", ["Does every reachable state satisfy a?"]),
+        ("a U (G (b | c))",
+         ["a must hold until the run settles into states satisfying b or c."]),
+        ("(X X b) U (b | c)", ["U is satisfied immediately if its right side holds now."]),
     ],
 }
 
@@ -268,12 +284,15 @@ class Command(BaseCommand):
             },
         )
         english_parts = []
-        for position, (prompt, formula) in enumerate(ENGLISH_EXERCISE["parts"]):
+        for position, (prompt, formula, hints) in enumerate(ENGLISH_EXERCISE["parts"]):
             part, _ = ExercisePart.objects.get_or_create(
                 exercise=english,
                 position=position,
-                defaults={"prompt": prompt, "formula": formula},
+                defaults={"prompt": prompt, "formula": formula, "hints": hints},
             )
+            if part.hints != hints:
+                part.hints = hints
+                part.save(update_fields=["hints"])
             english_parts.append(part)
 
         ltl_topic = Topic.objects.get(title="LTL Operators")
@@ -292,12 +311,15 @@ class Command(BaseCommand):
             },
         )
         path_parts = []
-        for position, formula in enumerate(PATH_EXERCISE["parts"]):
+        for position, (formula, hints) in enumerate(PATH_EXERCISE["parts"]):
             part, _ = ExercisePart.objects.get_or_create(
                 exercise=path_ex,
                 position=position,
-                defaults={"formula": formula},
+                defaults={"formula": formula, "hints": hints},
             )
+            if part.hints != hints:
+                part.hints = hints
+                part.save(update_fields=["hints"])
             path_parts.append(part)
 
         judge_ex, _ = Exercise.objects.get_or_create(
@@ -314,12 +336,15 @@ class Command(BaseCommand):
                 "allowed_operators": list(BUILDER_OPERATORS),
             },
         )
-        for position, formula in enumerate(JUDGE_EXERCISE["parts"]):
-            ExercisePart.objects.get_or_create(
+        for position, (formula, hints) in enumerate(JUDGE_EXERCISE["parts"]):
+            part, _ = ExercisePart.objects.get_or_create(
                 exercise=judge_ex,
                 position=position,
-                defaults={"formula": formula},
+                defaults={"formula": formula, "hints": hints},
             )
+            if part.hints != hints:
+                part.hints = hints
+                part.save(update_fields=["hints"])
 
         created = 0
         for student_idx, rows in ATTEMPTS:
