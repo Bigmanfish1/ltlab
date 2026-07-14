@@ -199,6 +199,7 @@
             class="w-full bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors resize-none mb-2"></textarea>
         <input type="text" data-part-field="formula" placeholder="Hidden target formula, e.g. G F (tea_chosen | coffee_chosen)"
             class="w-full bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
+        {% include "components/operator_toolbar.html" %}
     </div>
 </template>
 
@@ -210,6 +211,7 @@
                 class="flex-1 bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
             <button type="button" class="part-remove font-mono text-[11px] text-text-secondary hover:text-accent-orange transition-colors shrink-0">REMOVE</button>
         </div>
+        {% include "components/operator_toolbar.html" %}
     </div>
 </template>
 {% endblock %}
@@ -334,6 +336,23 @@
             addPartRow(containers.path_exhibit, null);
         });
         typeBtns.forEach(function (b) { b.addEventListener('click', syncParts); });
+        function insertIntoFormula(row, text) {
+            const input = row.querySelector('[data-part-field="formula"]');
+            const start = input.selectionStart ?? input.value.length;
+            const end = input.selectionEnd ?? start;
+            input.value = input.value.slice(0, start) + text + input.value.slice(end);
+            const caret = text === '()' ? start + 1 : start + text.length;
+            input.focus();
+            input.setSelectionRange(caret, caret);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        [containers.english_to_formula.rows, containers.path_exhibit.rows].forEach(function (rows) {
+            rows.addEventListener('click', function (e) {
+                const btn = e.target.closest('.part-op');
+                if (!btn) return;
+                insertIntoFormula(btn.closest('.part-row'), btn.dataset.insert);
+            });
+        });
         const existingParts = JSON.parse(JSON.parse(document.getElementById('parts-data').textContent));
         const prefillContainer = activeContainer();
         if (prefillContainer) {
