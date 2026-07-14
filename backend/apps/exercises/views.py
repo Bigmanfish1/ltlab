@@ -561,7 +561,8 @@ def _builder_context(exercise, form=None):
         "allowed_operators": allowed,
         "elements_json": elements_json,
         "prefill": prefill,
-        "selected_topic_id": prefill["module_id"] if prefill else None,
+        # str: POST re-render carries the id as a string, the edit path as a UUID
+        "selected_topic_id": str(prefill["module_id"]) if prefill and prefill["module_id"] else None,
         "is_edit": exercise is not None,
         "exercise_id": exercise.id if exercise else None,
         "exercise_type": exercise_type,
@@ -582,7 +583,7 @@ def exercise_builder(request, exercise_id=None):
     if exercise is None:
         topic = _topic_or_none(request.GET.get("topic", ""))
         if topic is not None:
-            context["selected_topic_id"] = topic.id
+            context["selected_topic_id"] = str(topic.id)
     return render(request, "exercises/teacher_exercise_builder.html", context)
 
 

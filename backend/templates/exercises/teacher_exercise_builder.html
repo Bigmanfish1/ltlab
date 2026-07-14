@@ -112,7 +112,7 @@
                     <select name="topic" data-field="topic" class="w-full bg-bg-secondary border border-border-primary text-text-primary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors">
                         <option value="">Assign to module...</option>
                         {% for m in modules %}
-                        <option value="{{ m.id }}" {% if selected_topic_id == m.id %}selected{% endif %}>{{ m.title }}</option>
+                        <option value="{{ m.id }}" {% if selected_topic_id == m.id|stringformat:"s" %}selected{% endif %}>{{ m.title }}</option>
                         {% endfor %}
                     </select>
                     <p class="field-error text-[11px] text-accent-orange" data-error-for="topic"></p>
