@@ -27,6 +27,7 @@ from .services import (
     BUILDER_EXERCISE_TYPES,
     _elements_json,
     exercise_rows,
+    formula_satisfiable,
     judge_answer_key,
     parse_exercise_form,
     persist_exercise,
@@ -612,6 +613,44 @@ def _save_exercise(request, exercise):
         )
         messages.warning(request, f"Answer key: {key}")
     return redirect("manage")
+
+
+@teacher_required
+@require_POST
+def test_formula(request):
+    """Builder Test button — check a part formula against the live editor graph.
+
+    Always answers 200 JSON so the client has a single handler; ok=False
+    carries the user-facing problem (parse error, caps, malformed payload).
+    """
+    try:
+        payload = json.loads(request.body or b"")
+    except json.JSONDecodeError:
+        payload = None
+    if not isinstance(payload, dict):
+        return JsonResponse({"ok": False, "error": "Malformed request."})
+    graph = payload.get("graph")
+    formula = str(payload.get("formula") or "").strip()
+    mode = payload.get("mode")
+    if mode not in ("satisfiable", "holds"):
+        return JsonResponse({"ok": False, "error": "Unknown test mode."})
+    if not formula:
+        return JsonResponse({"ok": False, "error": "Enter a formula to test."})
+    if not isinstance(graph, dict) or not graph:
+        return JsonResponse({"ok": False, "error": "Draw a Kripke structure first."})
+    try:
+        if mode == "satisfiable":
+            result = "satisfiable" if formula_satisfiable(graph, formula) else "unsatisfiable"
+        else:
+            result = "holds" if run_ltl_check(graph, formula)["result"] == "satisfied" else "violated"
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)})
+    except Exception:
+        logger.exception("test_formula failed")
+        return JsonResponse(
+            {"ok": False, "error": "Verification was stopped — the formula or graph could not be processed."}
+        )
+    return JsonResponse({"ok": True, "result": result})
 
 
 @teacher_required

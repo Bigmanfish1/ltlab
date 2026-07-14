@@ -599,10 +599,16 @@ def judge_answer_key(exercise):
     return key
 
 
+def formula_satisfiable(graph, formula):
+    """∃ path of the model satisfying φ — a counterexample to !(φ) is exactly
+    a satisfying path for φ. Shared by the publish gate and the builder's
+    Test button so the two can never disagree."""
+    return run_ltl_check(graph, f"!({formula})")["result"] == "violated"
+
+
 def _validate_path_parts(form, graph, errors):
     """Each formula must parse against the graph AND have a satisfying lasso —
-    a counterexample to !(φ) is exactly a satisfying path for φ, so an
-    unsatisfiable formula would make the part impossible for students."""
+    an unsatisfiable formula would make the part impossible for students."""
     if not form["parts"]:
         errors.append("Add at least one formula for students to find a path for.")
         return
@@ -611,11 +617,11 @@ def _validate_path_parts(form, graph, errors):
             errors.append(f"Formula {i} is empty.")
             continue
         try:
-            result = run_ltl_check(graph, f"!({part['formula']})")
+            satisfiable = formula_satisfiable(graph, part["formula"])
         except ValueError as exc:
             errors.append(f"Formula {i}: {exc}")
             continue
-        if result["result"] != "violated":
+        if not satisfiable:
             errors.append(
                 f"Formula {i} ({part['formula']}) has no satisfying path on this "
                 "model — students could never solve it."

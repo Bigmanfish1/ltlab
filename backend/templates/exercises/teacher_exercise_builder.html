@@ -209,9 +209,11 @@
             <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary part-row-label shrink-0"></span>
             <input type="text" data-part-field="formula" placeholder="e.g. F grant"
                 class="flex-1 bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
+            <button type="button" class="part-test font-mono text-[11px] tracking-[0.12em] text-text-secondary border border-border-primary hover:border-border-secondary hover:text-text-primary px-2.5 py-1 rounded transition-colors shrink-0">TEST</button>
             <button type="button" class="part-remove font-mono text-[11px] text-text-secondary hover:text-accent-orange transition-colors shrink-0">REMOVE</button>
         </div>
         {% include "components/operator_toolbar.html" %}
+        <div class="part-test-result text-[11px] font-mono mt-2 hidden"></div>
     </div>
 </template>
 {% endblock %}
@@ -346,11 +348,49 @@
             input.setSelectionRange(caret, caret);
             input.dispatchEvent(new Event('input', { bubbles: true }));
         }
+        function showTestResult(row, ok, text) {
+            const out = row.querySelector('.part-test-result');
+            if (!out) return;
+            out.textContent = text;
+            out.classList.remove('hidden', 'text-accent-lime', 'text-accent-orange');
+            out.classList.add(ok ? 'text-accent-lime' : 'text-accent-orange');
+        }
+        const TEST_MESSAGES = {
+            satisfiable: [true, 'Satisfiable — students can find a path on this model.'],
+            unsatisfiable: [false, 'No satisfying path on this model — students could never solve it.'],
+            holds: [true, 'Holds on this model.'],
+            violated: [false, 'Does not hold on this model — students must give a counterexample.'],
+        };
+        function runFormulaTest(row) {
+            const formula = row.querySelector('[data-part-field="formula"]').value.trim();
+            const graphField = document.querySelector('input[name="graph_data"]');
+            let graph = null;
+            try { graph = graphField && graphField.value ? JSON.parse(graphField.value) : null; } catch (e) { graph = null; }
+            const mode = typeInput.value === 'judge' ? 'holds' : 'satisfiable';
+            fetch("{% url 'test_formula' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('input[name="csrfmiddlewaretoken"]').value,
+                },
+                body: JSON.stringify({ graph: graph, formula: formula, mode: mode }),
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                if (!data.ok) { showTestResult(row, false, data.error); return; }
+                const m = TEST_MESSAGES[data.result] || [false, data.result];
+                showTestResult(row, m[0], m[1]);
+            }).catch(function () {
+                showTestResult(row, false, 'The test request failed — try again.');
+            });
+        }
         [containers.english_to_formula.rows, containers.path_exhibit.rows].forEach(function (rows) {
             rows.addEventListener('click', function (e) {
-                const btn = e.target.closest('.part-op');
-                if (!btn) return;
-                insertIntoFormula(btn.closest('.part-row'), btn.dataset.insert);
+                const opBtn = e.target.closest('.part-op');
+                if (opBtn) {
+                    insertIntoFormula(opBtn.closest('.part-row'), opBtn.dataset.insert);
+                    return;
+                }
+                const testBtn = e.target.closest('.part-test');
+                if (testBtn) runFormulaTest(testBtn.closest('.part-row'));
             });
         });
         const existingParts = JSON.parse(JSON.parse(document.getElementById('parts-data').textContent));
