@@ -14,13 +14,13 @@ OPERATOR_LABELS = {
 OPERATOR_DISPLAY = {"∨": "∨ / |"}
 DIFFICULTIES = ["beginner", "intermediate", "advanced"]
 
-# badge text per exercise type — must match the builder's type-selector labels
+# badge text per exercise type — compact forms of the builder's type labels
 # (module terminology: MCL3 p.2/3 "formalising", p.27 universal/existential MC)
 EXERCISE_TYPE_BADGES = {
     "model_check": "Formalise a Property",
     "english_to_formula": "Requirements → LTL",
-    "path_exhibit": "Existential Model Checking",
-    "judge": "Universal Model Checking",
+    "path_exhibit": "∃ Model Checking",
+    "judge": "∀ Model Checking",
 }
 
 MISCONCEPTION_LABELS = {
