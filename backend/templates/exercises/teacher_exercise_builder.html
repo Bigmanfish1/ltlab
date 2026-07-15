@@ -58,19 +58,19 @@
                     <div class="flex gap-2" id="type-toggle">
                         <button type="button" data-type="model_check" {% if type_locked %}disabled{% endif %}
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
-                            Formula on Graph
+                            Formalise a Property
                         </button>
                         <button type="button" data-type="english_to_formula" {% if type_locked %}disabled{% endif %}
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
-                            English → Formula
+                            Requirements → LTL
                         </button>
                         <button type="button" data-type="path_exhibit" {% if type_locked %}disabled{% endif %}
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
-                            Find a Path
+                            Existential Model Checking
                         </button>
                         <button type="button" data-type="judge" {% if type_locked %}disabled{% endif %}
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
-                            Judge
+                            Universal Model Checking
                         </button>
                     </div>
                     {% if type_locked %}

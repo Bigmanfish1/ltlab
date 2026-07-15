@@ -194,7 +194,7 @@ class EnglishExerciseTests(StudentViewTestCase):
 
     def test_canvas_renders_english_template(self):
         response = views.exercise_canvas(self._get(), self.english.id)
-        self.assertContains(response, "ENGLISH → FORMULA")
+        self.assertContains(response, "REQUIREMENTS → LTL")
         self.assertContains(response, "once in a while someone chooses tea or coffee")
         self.assertContains(response, "coffee_chosen")
 
@@ -275,7 +275,7 @@ class PathExhibitExerciseTests(StudentViewTestCase):
 
     def test_canvas_renders_path_template(self):
         response = views.exercise_canvas(self._get(), self.path.id)
-        self.assertContains(response, "EXHIBIT A PATH")
+        self.assertContains(response, "EXISTENTIAL MODEL CHECKING")
         self.assertContains(response, "G F b")
         self.assertContains(response, "X b")
         self.assertContains(response, "trace_prefix")
@@ -386,7 +386,7 @@ class JudgeExerciseTests(StudentViewTestCase):
 
     def test_canvas_renders_judge_template(self):
         response = views.exercise_canvas(self._get(), self.judge.id)
-        self.assertContains(response, "JUDGE THE FORMULAS")
+        self.assertContains(response, "UNIVERSAL MODEL CHECKING")
         self.assertContains(response, "G F b")
         self.assertContains(response, "G a")
         self.assertContains(response, "trace_prefix")

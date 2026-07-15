@@ -15,11 +15,12 @@ OPERATOR_DISPLAY = {"∨": "∨ / |"}
 DIFFICULTIES = ["beginner", "intermediate", "advanced"]
 
 # badge text per exercise type — must match the builder's type-selector labels
+# (module terminology: MCL3 p.2/3 "formalising", p.27 universal/existential MC)
 EXERCISE_TYPE_BADGES = {
-    "model_check": "Formula on Graph",
-    "english_to_formula": "English → Formula",
-    "path_exhibit": "Find a Path",
-    "judge": "Judge",
+    "model_check": "Formalise a Property",
+    "english_to_formula": "Requirements → LTL",
+    "path_exhibit": "Existential Model Checking",
+    "judge": "Universal Model Checking",
 }
 
 MISCONCEPTION_LABELS = {
