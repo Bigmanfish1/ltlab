@@ -103,7 +103,7 @@
       if (cycleInput) cycleInput.value = JSON.stringify(closedAt < 0 ? [] : parts.cycle);
       if (readoutEl) readoutEl.textContent = renderReadout(parts);
       if (textInput && document.activeElement !== textInput) {
-        textInput.value = path.length ? renderReadout(parts) : "";
+        textInput.value = canonicalText();
       }
       if (config.onChange) config.onChange(getState());
     }
@@ -237,58 +237,53 @@
         .filter(Boolean);
     }
 
-    // Typed lasso in module notation prefix·(cycle)ω — e.g. "s0 → (s1 → s2)ω",
-    // "s0 (s1 s2)ω", "(s0)ω". Same rules as clicking; the server re-validates.
-    function applyText(text) {
+    // Typed lasso prefix·(cycle)ω (MCL8 p.24). silent suppresses warnings so
+    // live-while-typing does not fire on every half-finished keystroke.
+    function applyText(text, silent) {
+      const fail = (msg) => {
+        if (!silent) warn(msg);
+        return false;
+      };
       const raw = String(text || "").trim();
-      if (!raw) {
-        warn("Type a path like s0 → (s1 → s2)ω.");
-        return false;
-      }
+      if (!raw) return fail("Type a path like s0 → (s1 → s2)ω.");
       const match = raw.match(/^([^()]*)\(([^()]*)\)\s*(ω|\^ω|\^w|w)?\s*$/);
-      if (!match) {
-        warn("Wrap the repeating cycle in parentheses: prefix (cycle)ω.");
-        return false;
-      }
+      if (!match) return fail("Wrap the repeating cycle in parentheses: prefix (cycle)ω.");
       const prefixTokens = tokenize(match[1]);
       const cycleTokens = tokenize(match[2]);
-      if (!cycleTokens.length) {
-        warn("The cycle needs at least one state inside ( )ω.");
-        return false;
-      }
+      if (!cycleTokens.length) return fail("The cycle needs at least one state inside ( )ω.");
       const ids = [];
       const tokens = prefixTokens.concat(cycleTokens);
       for (let i = 0; i < tokens.length; i++) {
         const resolved = resolveToken(tokens[i]);
-        if (resolved === null) {
-          warn("Unknown state: " + tokens[i] + ".");
-          return false;
-        }
-        if (typeof resolved === "object") {
-          warn("Ambiguous state name: " + resolved.ambiguous + ".");
-          return false;
-        }
+        if (resolved === null) return fail("Unknown state: " + tokens[i] + ".");
+        if (typeof resolved === "object") return fail("Ambiguous state name: " + resolved.ambiguous + ".");
         ids.push(resolved);
       }
-      if (ids[0] !== initialId()) {
-        warn("The path must start at the initial state.");
-        return false;
-      }
+      if (ids[0] !== initialId()) return fail("The path must start at the initial state.");
       for (let i = 0; i < ids.length - 1; i++) {
         if (!successorsOf(ids[i]).has(ids[i + 1])) {
-          warn("No transition from " + tokens[i] + " to " + tokens[i + 1] + ".");
-          return false;
+          return fail("No transition from " + tokens[i] + " to " + tokens[i + 1] + ".");
         }
       }
       const closeSrc = ids[ids.length - 1];
       const closeTgt = ids[prefixTokens.length];
       if (!successorsOf(closeSrc).has(closeTgt)) {
-        warn("The cycle does not close — no transition from " +
+        return fail("The cycle does not close — no transition from " +
           tokens[tokens.length - 1] + " back to " + tokens[prefixTokens.length] + ".");
-        return false;
       }
       setState(ids.slice(0, prefixTokens.length), ids.slice(prefixTokens.length));
       return true;
+    }
+
+    // ids, not names, so a typed re-entry round-trips exactly even when names
+    // duplicate or contain spaces.
+    function canonicalText() {
+      const parts = split();
+      if (!path.length) return "";
+      if (closedAt < 0) return path.join(" → ") + " → …";
+      const pre = parts.prefix.join(" → ");
+      const cyc = "(" + parts.cycle.join(" → ") + ")ω";
+      return pre ? pre + " → " + cyc : cyc;
     }
 
     cy.on("tap", "node", handleTap);
@@ -302,6 +297,7 @@
       isClosed: function () { return closedAt >= 0; },
       setState: setState,
       applyText: applyText,
+      canonicalText: canonicalText,
     };
     window.TracePickers = window.TracePickers || {};
     window.TracePickers[config.editorId] = api;
