@@ -378,7 +378,7 @@ class Command(BaseCommand):
                 student=students[student_idx],
                 part=path_parts[part_pos],
                 answer={"prefix": prefix, "cycle": cycle},
-                defaults={"is_correct": is_correct, "misconception": ""},
+                defaults={"is_correct": is_correct},
             )
             created += int(made)
 

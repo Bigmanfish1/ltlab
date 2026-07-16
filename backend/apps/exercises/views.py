@@ -310,7 +310,6 @@ def _submit_path_part(request, exercise, part):
         answer={"prefix": prefix, "cycle": cycle},
         is_correct=is_correct,
         hints_used=_clamped_hints(request, part.hints),
-        misconception="",
     )
 
     if is_correct:
@@ -404,7 +403,6 @@ def _submit_judge_part(request, exercise, part):
         answer=answer,
         is_correct=is_correct,
         hints_used=_clamped_hints(request, part.hints),
-        misconception="",
     )
 
     response = _part_result(

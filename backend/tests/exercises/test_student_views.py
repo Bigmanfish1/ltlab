@@ -290,7 +290,7 @@ class PathExhibitExerciseTests(StudentViewTestCase):
         self.assertTrue(attempt.is_correct)
         self.assertIsNone(attempt.formula_input)
         self.assertEqual(attempt.answer, {"prefix": [], "cycle": ["s0", "s1"]})
-        self.assertEqual(attempt.misconception, "")
+        self.assertIsNone(attempt.misconception)
 
     def test_valid_but_unsatisfying_path_incorrect(self):
         # the only run the graph admits starts at s0 = {a}, so G b is false
@@ -302,7 +302,7 @@ class PathExhibitExerciseTests(StudentViewTestCase):
         attempt = Attempt.objects.get(part=self.part_b)
         self.assertFalse(attempt.is_correct)
         self.assertEqual(attempt.answer, {"prefix": [], "cycle": ["s0", "s1"]})
-        self.assertEqual(attempt.misconception, "")
+        self.assertIsNone(attempt.misconception)
 
     def test_nonedge_step_incorrect_and_recorded(self):
         # cycle [s0] closes with s0 -> s0, an edge the graph does not have
@@ -400,7 +400,7 @@ class JudgeExerciseTests(StudentViewTestCase):
         self.assertTrue(attempt.is_correct)
         self.assertEqual(attempt.answer, {"verdict": "holds"})
         self.assertIsNone(attempt.formula_input)
-        self.assertEqual(attempt.misconception, "")
+        self.assertIsNone(attempt.misconception)
 
     def test_holds_claim_on_false_formula_incorrect(self):
         response = self._submit_verdict(self.part_false, {"verdict": "holds"})
@@ -424,7 +424,7 @@ class JudgeExerciseTests(StudentViewTestCase):
             {"verdict": "violated", "prefix": [], "cycle": ["s0", "s1"]},
         )
         self.assertIsNone(attempt.formula_input)
-        self.assertEqual(attempt.misconception, "")
+        self.assertIsNone(attempt.misconception)
 
     def test_violated_claim_on_true_formula_incorrect(self):
         # the lasso is a real path, but G F b holds on it (and on every path),
