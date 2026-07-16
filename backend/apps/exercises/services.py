@@ -4,13 +4,12 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
-from django.db.models import Count, Q
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.accounts.models import Profile
 from apps.checker.engine import validate_request
 from apps.checker.equivalence import validate_formula_submission
-from apps.checker.misconceptions import classify_misconception
 from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import run_ltl_check
 from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
@@ -18,7 +17,6 @@ from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
 from .constants import (
     DIFFICULTIES,
     EXERCISE_TYPE_BADGES,
-    MISCONCEPTION_DESCRIPTIONS,
     MISCONCEPTION_LABELS,
     OPERATOR_DISPLAY,
     OPERATOR_LABELS,
@@ -243,67 +241,19 @@ def solved_exercise_ids(student, exercises=None):
     return solved
 
 
-def _backfill_misconceptions():
-    """Classify wrong attempts that have no stored bucket yet, one time each.
-
-    Classification needs SPOT (Django-only); prod attempts written by the external
-    system arrive with misconception NULL and get classified on first Results view.
-    NULL vs "" (classified, no misconception) keeps this idempotent.
-
-    Only formula-writing attempts are classifiable: partless model_check attempts
-    (target on the exercise) and english_to_formula part attempts (target on the
-    part). Judge/path answers are verdicts and traces, not formulas.
-    """
-    pending = (
-        Attempt.objects.filter(is_correct=False, misconception__isnull=True)
-        .filter(
-            Q(part__isnull=True, exercise__exercise_type="model_check")
-            | Q(part__isnull=False, exercise__exercise_type="english_to_formula")
-        )
-        .values_list("id", "formula_input", "exercise__target_formula", "part__formula")
-    )
-    by_bucket = defaultdict(list)
-    for aid, submitted, exercise_target, part_target in pending:
-        target = part_target if part_target is not None else exercise_target
-        by_bucket[classify_misconception(target, submitted) or ""].append(aid)
-    for bucket, ids in by_bucket.items():
-        Attempt.objects.filter(pk__in=ids).update(misconception=bucket)
-
-
 def misconception_breakdown():
-    _backfill_misconceptions()
-    counts = dict(
-        Attempt.objects.filter(is_correct=False, student_id__in=enrolled_ids())
-        .exclude(misconception__isnull=True)
-        .exclude(misconception="")
-        .values_list("misconception")
-        .annotate(n=Count("id"))
-    )
-    total_wrong = sum(counts.values())
-    pcts = _largest_remainder(counts, total_wrong)
-    out = []
-    for bucket, n in counts.items():
-        pct = pcts.get(bucket, 0)
-        out.append({
-            "key": bucket,
-            "label": MISCONCEPTION_LABELS.get(bucket, bucket),
-            "description": f"{pct}% of classified errors {MISCONCEPTION_DESCRIPTIONS.get(bucket, '')}",
+    # Placeholder pending a rework of LTL-error analytics for the new exercise
+    # types; static sample so the Results panel still renders.
+    sample = [("g_vs_f", 40), ("f_vs_x", 35), ("missing_global", 25)]
+    return [
+        {
+            "key": key,
+            "label": MISCONCEPTION_LABELS.get(key, key),
+            "description": "sample data — analytics being reworked",
             "percentage": pct,
-        })
-    out.sort(key=lambda x: x["percentage"], reverse=True)
-    return out
-
-
-def _largest_remainder(counts, total):
-    # apportion integer percentages that sum to exactly 100 (Hamilton method)
-    if not total:
-        return {}
-    raw = {b: 100 * n / total for b, n in counts.items()}
-    floors = {b: int(v) for b, v in raw.items()}
-    leftover = 100 - sum(floors.values())
-    for b, _ in sorted(raw.items(), key=lambda kv: kv[1] - int(kv[1]), reverse=True)[:leftover]:
-        floors[b] += 1
-    return floors
+        }
+        for key, pct in sample
+    ]
 
 
 def students_roster(matrix=None):
