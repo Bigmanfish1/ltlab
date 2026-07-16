@@ -608,12 +608,22 @@ def _validate_path_parts(form, graph, errors):
             )
 
 
+def _has_attempts(exercise):
+    # memoised per instance — type_locked and persist both need it within one
+    # request, and the exercise object is shared across them
+    cached = getattr(exercise, "_has_attempts_cache", None)
+    if cached is None:
+        cached = exercise.attempts.exists()
+        exercise._has_attempts_cache = cached
+    return cached
+
+
 def type_locked(exercise):
     """Type changes are only safe while no student could have seen the
     exercise: lock once ever published, or if any attempts exist (covers
     prod rows published-then-drafted before ever_published landed)."""
     return exercise is not None and (
-        exercise.ever_published or exercise.attempts.exists()
+        exercise.ever_published or _has_attempts(exercise)
     )
 
 
@@ -708,7 +718,7 @@ def persist_exercise(exercise, form, graph, publishing):
     had_attempts = False
     if exercise is not None:
         old_signature = _exercise_grading_signature(exercise)
-        had_attempts = exercise.attempts.exists()
+        had_attempts = _has_attempts(exercise)
         exercise.topic_id = form["module_id"]
         new_type = _effective_type(form, exercise)
         if new_type != exercise.exercise_type:
