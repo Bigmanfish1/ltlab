@@ -11,6 +11,7 @@ from apps.accounts.models import Profile
 from apps.checker.engine import validate_request
 from apps.checker.equivalence import validate_formula_submission
 from apps.checker.misconceptions import classify_misconception
+from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import run_ltl_check
 from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
 
@@ -19,6 +20,8 @@ from .constants import (
     EXERCISE_TYPE_BADGES,
     MISCONCEPTION_DESCRIPTIONS,
     MISCONCEPTION_LABELS,
+    OPERATOR_DISPLAY,
+    OPERATOR_LABELS,
 )
 from .models import Attempt, Exercise, ExercisePart, Topic
 
@@ -583,6 +586,21 @@ def _validate_english_parts(form, errors):
             validate_formula_submission(part["formula"], form["declared_aps"])
         except ValueError as exc:
             errors.append(f"Requirement {i} target: {exc}")
+            continue
+        # a target using an operator students can't enter is unsolvable —
+        # no permitted formula could ever be equivalent to it
+        bad = disallowed_operators(part["formula"], form["allowed_operators"])
+        if bad:
+            labels = ", ".join(sorted(_operator_label(t) for t in bad))
+            errors.append(
+                f"Requirement {i} target uses operators students can't enter: {labels}. "
+                "Enable them under Allowed Operators or rewrite the target."
+            )
+
+
+def _operator_label(token):
+    shown = OPERATOR_DISPLAY.get(token, token)
+    return f"{shown} ({OPERATOR_LABELS[token]})" if token in OPERATOR_LABELS else shown
 
 
 def _validate_judge_parts(form, graph, errors):

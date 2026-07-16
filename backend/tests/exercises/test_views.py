@@ -199,6 +199,9 @@ class EnglishBuilderTests(TeacherViewTestCase):
         data = self._form(
             exercise_type="english_to_formula", graph_data="",
             declared_aps=COFFEE_APS, parts=COFFEE_PARTS,
+            # coffee targets use the full operator set — students must be able
+            # to enter them, else the requirements are unsolvable
+            allowed_operators='["G", "F", "X", "U", "¬", "∧", "∨", "→"]',
         )
         data.update(overrides)
         return data
