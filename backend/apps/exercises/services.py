@@ -117,10 +117,10 @@ def _exercise_metrics(exercise, per_student, enrolled_count, part_count=0):
     }
 
 
-def exercise_rows(matrix=None):
+def exercise_rows(matrix=None, part_counts=None):
     matrix = matrix if matrix is not None else _attempt_matrix()
     enrolled_count = enrolled_students().count()
-    part_counts = _part_counts()
+    part_counts = part_counts if part_counts is not None else _part_counts()
     rows = []
     for ex in Exercise.objects.select_related("topic"):
         m = _exercise_metrics(
@@ -256,9 +256,9 @@ def misconception_breakdown():
     ]
 
 
-def students_roster(matrix=None):
+def students_roster(matrix=None, part_counts=None):
     matrix = matrix if matrix is not None else _attempt_matrix()
-    part_counts = _part_counts()
+    part_counts = part_counts if part_counts is not None else _part_counts()
     per_student = defaultdict(
         lambda: {"total": 0, "correct": 0, "whole": set(),
                  "parts": defaultdict(set), "last": None}
@@ -311,13 +311,14 @@ def results_data():
     # Build the attempt matrix and exercise rows once, then feed every panel of
     # the Results page from them (was 4 matrix scans + 2 exercise_rows per load).
     matrix = _attempt_matrix()
-    rows = exercise_rows(matrix)
+    part_counts = _part_counts()
+    rows = exercise_rows(matrix, part_counts)
     return {
         "metrics": class_metrics(matrix),
         "module_completion": topic_completion(rows),
         "struggled_exercises": struggled_exercises(rows),
         "misconceptions": misconception_breakdown(),
-        "students": students_roster(matrix),
+        "students": students_roster(matrix, part_counts),
     }
 
 
