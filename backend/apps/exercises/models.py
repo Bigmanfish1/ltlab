@@ -85,6 +85,9 @@ class ExercisePart(models.Model):
     prompt = models.TextField(blank=True, default="")
     formula = models.TextField()
     hints = models.JSONField(default=list, blank=True)
+    # judge only: whether formula holds on the graph, computed at save so the
+    # per-submission grade need not re-run the model checker (null = uncomputed)
+    answer_holds = models.BooleanField(null=True, blank=True)
 
     class Meta:
         db_table = "ExerciseParts"

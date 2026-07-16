@@ -620,12 +620,12 @@ def _validate_judge_parts(form, graph, errors):
 def judge_answer_key(exercise):
     """(position, formula, holds) per part — the teacher-facing answer key.
 
-    Computed live by model checking so it can never drift from the graph."""
-    key = []
-    for i, part in enumerate(exercise.parts.all(), start=1):
-        result = run_ltl_check(exercise.kripke_structure, part.formula)
-        key.append((i, part.formula, result["result"] == "satisfied"))
-    return key
+    Reads the answer cached at save (_store_judge_answers), which is recomputed
+    on every edit, so it never drifts from the graph."""
+    return [
+        (i, part.formula, bool(part.answer_holds))
+        for i, part in enumerate(exercise.parts.all(), start=1)
+    ]
 
 
 def formula_satisfiable(graph, formula):
@@ -710,14 +710,54 @@ def validate_exercise_form(form, exercise, publishing):
     return errors, graph
 
 
+def _grading_signature(graph, allowed_operators, declared_aps, parts):
+    """Stable fingerprint of everything that determines how answers are graded.
+
+    parts is a list of (prompt, formula) in position order. Title, description,
+    hints and difficulty are excluded — editing them never invalidates a
+    student's answer, so they must not trigger a reset.
+    """
+    return json.dumps(
+        {
+            "graph": graph,
+            "ops": sorted(allowed_operators or []),
+            "aps": sorted(declared_aps or []),
+            "parts": [[p, f] for p, f in parts],
+        },
+        sort_keys=True,
+        default=str,
+    )
+
+
+def _exercise_grading_signature(exercise):
+    parts = [(p.prompt, p.formula) for p in exercise.parts.all()]
+    return _grading_signature(
+        exercise.kripke_structure, exercise.allowed_operators,
+        exercise.declared_aps, parts,
+    )
+
+
+def _store_judge_answers(exercise):
+    """Cache each judge part's holds-verdict so grading need not re-check SPOT."""
+    graph = exercise.kripke_structure
+    for part in exercise.parts.all():
+        holds = None
+        if graph:
+            try:
+                holds = run_ltl_check(graph, part.formula)["result"] == "satisfied"
+            except ValueError:
+                holds = None
+        if part.answer_holds != holds:
+            part.answer_holds = holds
+            part.save(update_fields=["answer_holds"])
+
+
 def persist_exercise(exercise, form, graph, publishing):
-    if exercise is None:
-        exercise = Exercise(
-            topic_id=form["module_id"],
-            created_at=timezone.now(),
-            exercise_type=form["exercise_type"],
-        )
-    else:
+    old_signature = None
+    had_attempts = False
+    if exercise is not None:
+        old_signature = _exercise_grading_signature(exercise)
+        had_attempts = exercise.attempts.exists()
         exercise.topic_id = form["module_id"]
         new_type = _effective_type(form, exercise)
         if new_type != exercise.exercise_type:
@@ -725,6 +765,12 @@ def persist_exercise(exercise, form, graph, publishing):
             # wipe destroys teacher-authored parts, never student data
             exercise.exercise_type = new_type
             exercise.parts.all().delete()
+    else:
+        exercise = Exercise(
+            topic_id=form["module_id"],
+            created_at=timezone.now(),
+            exercise_type=form["exercise_type"],
+        )
     exercise.title = form["title"]
     exercise.description = form["description"]
     exercise.difficulty = form["difficulty"]
@@ -741,6 +787,17 @@ def persist_exercise(exercise, form, graph, publishing):
     exercise.save()
     if exercise.exercise_type != "model_check":
         _sync_parts(exercise, form["parts"])
+    if exercise.exercise_type == "judge":
+        _store_judge_answers(exercise)
+
+    # Editing what an answer is graded against invalidates existing answers;
+    # rather than silently keep stale grades (or unfairly re-grade), clear the
+    # attempts so students resubmit against the new definition.
+    exercise._attempts_reset = 0
+    if old_signature is not None and had_attempts:
+        if _exercise_grading_signature(exercise) != old_signature:
+            deleted, _ = Attempt.objects.filter(exercise=exercise).delete()
+            exercise._attempts_reset = deleted
     return exercise
 
 

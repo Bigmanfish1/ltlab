@@ -327,6 +327,14 @@ def _submit_path_part(request, exercise, part):
     )
 
 
+def _judge_holds(exercise, part):
+    """Whether part.formula holds on the model. Uses the answer cached at save;
+    falls back to a live check only if it was never computed."""
+    if part.answer_holds is not None:
+        return part.answer_holds
+    return run_ltl_check(exercise.kripke_structure, part.formula)["result"] == "satisfied"
+
+
 def _submit_judge_part(request, exercise, part):
     verdict = request.POST.get("verdict", "").strip()
     if verdict not in ("holds", "violated"):
@@ -334,19 +342,17 @@ def _submit_judge_part(request, exercise, part):
     if not exercise.kripke_structure:
         return _part_result(request, part, "error", "This exercise has no model to check against.")
 
-    try:
-        truth = run_ltl_check(exercise.kripke_structure, part.formula)["result"]
-    except ValueError as exc:
-        return _part_result(request, part, "error", str(exc))
-    except Exception:
-        logger.exception("run_ltl_check failed during judge submission")
-        return _part_result(
-            request, part, "error",
-            "Verification was stopped — the formula could not be processed.",
-        )
-    actually_holds = truth == "satisfied"
-
     if verdict == "holds":
+        try:
+            actually_holds = _judge_holds(exercise, part)
+        except ValueError as exc:
+            return _part_result(request, part, "error", str(exc))
+        except Exception:
+            logger.exception("judge truth check failed during submission")
+            return _part_result(
+                request, part, "error",
+                "Verification was stopped — the formula could not be processed.",
+            )
         answer = {"verdict": "holds"}
         is_correct = actually_holds
         message = (
@@ -368,9 +374,16 @@ def _submit_judge_part(request, exercise, part):
                 "Close the loop first — click a state already on your path to form the cycle.",
             )
         try:
+            actually_holds = _judge_holds(exercise, part)
             trace = run_trace_check(exercise.kripke_structure, part.formula, prefix, cycle)
         except ValueError as exc:
             return _part_result(request, part, "error", str(exc))
+        except Exception:
+            logger.exception("judge counterexample check failed during submission")
+            return _part_result(
+                request, part, "error",
+                "Verification was stopped — the path could not be processed.",
+            )
         answer = {"verdict": "violated", "prefix": prefix, "cycle": cycle}
         is_correct = (
             not actually_holds and trace["path_ok"] and trace["holds"] is False
@@ -605,6 +618,13 @@ def _save_exercise(request, exercise):
 
     saved = persist_exercise(exercise, form, graph, publishing)
     messages.success(request, "Exercise published." if publishing else "Draft saved.")
+    reset = getattr(saved, "_attempts_reset", 0)
+    if reset:
+        messages.warning(
+            request,
+            f"Editing the graph or formulas reset {reset} student "
+            f"submission{'s' if reset != 1 else ''} — students will resubmit.",
+        )
     if not form["allowed_operators"]:
         messages.warning(request, "No operators are enabled — students can only submit atomic propositions.")
     if publishing and saved.exercise_type == "judge":
