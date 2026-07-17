@@ -124,6 +124,7 @@ def exercise_canvas(request, exercise_id):
         'is_completed': is_completed,
         'prev_exercise': prev_exercise,
         'next_exercise': next_exercise,
+        'type_badge': EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
     }
     return render(request, 'exercises/exercise_canvas.html', context)
 
@@ -153,6 +154,7 @@ def _part_canvas(request, exercise, template, **extra):
         "is_completed": bool(part_rows) and all(r["solved"] for r in part_rows),
         "prev_exercise": prev_exercise,
         "next_exercise": next_exercise,
+        "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
         **extra,
     }
     return render(request, template, context)
