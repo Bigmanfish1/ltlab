@@ -25,24 +25,7 @@
                 <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex" style="height: 460px;">
                     {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="460px" elements_json=elements_json readonly=True %}
                 </div>
-                <div id="trace-warning" class="hidden mt-2 border-l-2 border-accent-orange bg-bg-secondary px-3 py-2 font-mono text-[12px] text-text-secondary"></div>
-                <div class="flex items-center gap-3 mt-3">
-                    <button type="button" id="trace-undo"
-                        class="px-3 py-1.5 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-secondary">
-                        Undo
-                    </button>
-                    <button type="button" id="trace-reset"
-                        class="px-3 py-1.5 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-secondary">
-                        Reset
-                    </button>
-                    <div id="trace-readout" class="font-mono text-[12px] text-text-primary truncate flex-1"></div>
-                </div>
-                <div class="mt-2">
-                    <input type="text" id="trace-text" placeholder="or type the path: s0 → (s1 → s2)ω" autocomplete="off"
-                        class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[12px] px-3 py-1.5 rounded focus:border-border-secondary focus:outline-none transition-colors" />
-                </div>
-                <input type="hidden" id="trace-prefix" name="trace_prefix" value="[]" />
-                <input type="hidden" id="trace-cycle" name="trace_cycle" value="[]" />
+                {% include "components/trace_controls.html" %}
             </div>
 
             <div>
