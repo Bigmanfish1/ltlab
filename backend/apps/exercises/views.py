@@ -98,11 +98,15 @@ def exercise_canvas(request, exercise_id):
     """Exercise page — dispatches to the type-specific template."""
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     if exercise.exercise_type == "english_to_formula":
-        return _english_canvas(request, exercise)
+        return _part_canvas(
+            request, exercise, "exercises/exercise_english.html",
+            declared_aps=list(exercise.declared_aps or []),
+            operator_buttons=_operator_buttons(exercise),
+        )
     if exercise.exercise_type == "path_exhibit":
-        return _path_canvas(request, exercise)
+        return _part_canvas(request, exercise, "exercises/exercise_path.html")
     if exercise.exercise_type == "judge":
-        return _judge_canvas(request, exercise)
+        return _part_canvas(request, exercise, "exercises/exercise_judge.html")
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
@@ -138,7 +142,7 @@ def _part_rows(exercise, student):
     ]
 
 
-def _path_canvas(request, exercise):
+def _part_canvas(request, exercise, template, **extra):
     part_rows = _part_rows(exercise, request.profile)
     exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
     context = {
@@ -149,39 +153,9 @@ def _path_canvas(request, exercise):
         "is_completed": bool(part_rows) and all(r["solved"] for r in part_rows),
         "prev_exercise": prev_exercise,
         "next_exercise": next_exercise,
+        **extra,
     }
-    return render(request, "exercises/exercise_path.html", context)
-
-
-def _judge_canvas(request, exercise):
-    part_rows = _part_rows(exercise, request.profile)
-    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
-    context = {
-        "exercise": exercise,
-        "exercise_number": exercise_number,
-        "part_rows": part_rows,
-        "elements_json": _elements_json(exercise.kripke_structure),
-        "is_completed": bool(part_rows) and all(r["solved"] for r in part_rows),
-        "prev_exercise": prev_exercise,
-        "next_exercise": next_exercise,
-    }
-    return render(request, "exercises/exercise_judge.html", context)
-
-
-def _english_canvas(request, exercise):
-    part_rows = _part_rows(exercise, request.profile)
-    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
-    context = {
-        "exercise": exercise,
-        "exercise_number": exercise_number,
-        "part_rows": part_rows,
-        "declared_aps": list(exercise.declared_aps or []),
-        "operator_buttons": _operator_buttons(exercise),
-        "is_completed": bool(part_rows) and all(r["solved"] for r in part_rows),
-        "prev_exercise": prev_exercise,
-        "next_exercise": next_exercise,
-    }
-    return render(request, "exercises/exercise_english.html", context)
+    return render(request, template, context)
 
 
 @supabase_login_required
