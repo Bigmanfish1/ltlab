@@ -62,6 +62,8 @@
     const cycleInput = document.querySelector(config.cycleInput);
     const readoutEl = config.readout ? document.querySelector(config.readout) : null;
     const textInput = config.textInput ? document.querySelector(config.textInput) : null;
+    const undoBtn = config.undoBtn ? document.querySelector(config.undoBtn) : null;
+    const resetBtn = config.resetBtn ? document.querySelector(config.resetBtn) : null;
 
     const styles = cy.style().json().concat(PICKER_STYLES);
     cy.style().fromJson(styles).update();
@@ -105,7 +107,21 @@
       if (textInput && document.activeElement !== textInput) {
         textInput.value = canonicalText();
       }
+      updateControls();
       if (config.onChange) config.onChange(getState());
+    }
+
+    // Undo/Reset only do something once the path has a state — reflect that.
+    function updateControls() {
+      const active = path.length > 0;
+      [undoBtn, resetBtn].forEach((b) => {
+        if (!b) return;
+        b.disabled = !active;
+        b.classList.toggle("text-text-primary", active);
+        b.classList.toggle("text-text-secondary", !active);
+        b.classList.toggle("opacity-50", !active);
+        b.classList.toggle("cursor-not-allowed", !active);
+      });
     }
 
     function renderReadout(parts) {
@@ -115,7 +131,7 @@
         return (node && node.data("name")) || id;
       };
       if (closedAt < 0) {
-        return path.map(name).join(" → ") + " → …";
+        return path.map(name).join(" → ");
       }
       const prefixStr = parts.prefix.map(name).join(" → ");
       const cycleStr = "(" + parts.cycle.map(name).join(" → ") + ")ω";
@@ -280,11 +296,78 @@
     function canonicalText() {
       const parts = split();
       if (!path.length) return "";
-      if (closedAt < 0) return path.join(" → ") + " → …";
+      if (closedAt < 0) return path.join(" → ");
       const pre = parts.prefix.join(" → ");
       const cyc = "(" + parts.cycle.join(" → ") + ")ω";
       return pre ? pre + " → " + cyc : cyc;
     }
+
+    // Typed entry highlights the graph as you go: a complete closed lasso paints
+    // via the strict validator, otherwise the longest valid open prefix lights up
+    // exactly as if those states had been clicked.
+    function statesFromText(text) {
+      const cleaned = String(text || "").replace(/[()]/g, " ").replace(/\^?ω|\^w/g, " ");
+      return tokenize(cleaned);
+    }
+
+    function applyLive(text) {
+      const raw = String(text || "").trim();
+      if (!raw) { reset(); return; }
+      if (/^[^()]*\([^()]*\)\s*(ω|\^ω|\^w|w)?\s*$/.test(raw) && applyText(raw, true)) return;
+      const tokens = statesFromText(raw);
+      const ids = [];
+      for (let i = 0; i < tokens.length; i++) {
+        const r = resolveToken(tokens[i]);
+        if (r === null || typeof r === "object") break;
+        if (i === 0 ? r !== initialId() : !successorsOf(ids[i - 1]).has(r)) break;
+        ids.push(r);
+      }
+      setState(ids, []);
+    }
+
+    function insertToken(tok) {
+      if (!textInput) return;
+      const start = textInput.selectionStart != null ? textInput.selectionStart : textInput.value.length;
+      const end = textInput.selectionEnd != null ? textInput.selectionEnd : textInput.value.length;
+      textInput.value = textInput.value.slice(0, start) + tok + textInput.value.slice(end);
+      const caret = start + tok.length;
+      textInput.focus();
+      textInput.setSelectionRange(caret, caret);
+      applyLive(textInput.value);
+    }
+
+    function chipClass(extra) {
+      return "px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono " + extra;
+    }
+
+    function buildBar(sel, items, klass, onPick) {
+      const bar = sel && document.querySelector(sel);
+      if (!bar) return;
+      items.forEach((it) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = it.label;
+        b.className = chipClass(klass);
+        b.addEventListener("click", () => onPick(it));
+        bar.appendChild(b);
+      });
+    }
+
+    if (textInput) {
+      textInput.addEventListener("input", () => applyLive(textInput.value));
+      textInput.addEventListener("change", () => {
+        if (textInput.value.indexOf("(") >= 0) applyText(textInput.value, false);
+      });
+    }
+    buildBar(config.symbolBar, [
+      { label: "→", tok: " → " },
+      { label: "(", tok: "(" },
+      { label: ")", tok: ")" },
+      { label: "ω", tok: "ω" },
+    ], "text-text-primary", (it) => insertToken(it.tok));
+    buildBar(config.stateBar,
+      realNodes().map((n) => ({ label: n.data("name") || n.id() })),
+      "text-text-primary", (it) => insertToken(it.label));
 
     cy.on("tap", "node", handleTap);
     paint();
@@ -297,6 +380,7 @@
       isClosed: function () { return closedAt >= 0; },
       setState: setState,
       applyText: applyText,
+      applyLive: applyLive,
       canonicalText: canonicalText,
     };
     window.TracePickers = window.TracePickers || {};

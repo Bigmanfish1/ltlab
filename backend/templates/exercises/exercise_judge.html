@@ -20,7 +20,7 @@
             </p>
         </div>
 
-        <div class="grid grid-cols-[60%_40%] gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-8">
             <div>
                 <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE MODEL</h2>
                 <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex" style="height: 460px;">
@@ -98,14 +98,13 @@ document.addEventListener('DOMContentLoaded', () => {
             cycleInput: '#trace-cycle',
             readout: '#trace-readout',
             textInput: '#trace-text',
+            symbolBar: '#trace-symbols',
+            stateBar: '#trace-states',
+            undoBtn: '#trace-undo',
+            resetBtn: '#trace-reset',
         });
         document.getElementById('trace-undo').addEventListener('click', () => picker.undo());
         document.getElementById('trace-reset').addEventListener('click', () => picker.reset());
-        const traceText = document.getElementById('trace-text');
-        traceText.addEventListener('input', () => picker.applyText(traceText.value, true));
-        traceText.addEventListener('change', () => {
-            if (traceText.value.trim()) picker.applyText(traceText.value, false);
-        });
     }
     boot();
 

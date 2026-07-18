@@ -2,7 +2,7 @@
 
 An educational web application for teaching Linear Temporal Logic (LTL) model checking to Computer Science students.
 
-Students build Kripke structures visually, write LTL formulas, and submit them for checking — returning a counterexample trace when a property does not hold.
+Students build Kripke structures visually, write LTL formulas, and submit them for checking — returning a counterexample trace when a property does not hold. Teachers author guided exercises in several formats (see [Exercise Types](#exercise-types)).
 
 ---
 
@@ -122,6 +122,26 @@ store (e.g. Firestore with native TTL).
 
 ---
 
+## Exercise Types
+
+Teachers author guided exercises in one of four types (module-grounded, MCL3/MCL8). A
+multi-part exercise stores `ExercisePart` rows and is complete only when **every** part is
+correct; the legacy partless type completes on any correct attempt. Editing a *published*
+exercise's grading-relevant content (graph, allowed operators, declared APs, or any part
+prompt/formula) resets that exercise's attempts so grades never drift.
+
+| Type | Student task | Graded by |
+|------|-------------|-----------|
+| `model_check` (legacy) | Write a formula that holds on the graph | `run_ltl_check` on the graph |
+| `english_to_formula` | Turn an English requirement into LTL (no graph; declared AP list) | `spot.are_equivalent` vs a hidden per-part target |
+| `path_exhibit` | Build a lasso `prefix·(cycle)ω` satisfying each formula | `run_trace_check` (path valid + formula holds on the ω-word) |
+| `judge` | Decide holds / doesn't-hold per formula; "doesn't" needs a counterexample lasso | Cached per-part verdict + `run_trace_check` on the counterexample |
+
+The LTL/equivalence/trace engine lives in `apps/checker/` (`equivalence.py`, `traces.py`,
+entries in `tasks.py`).
+
+---
+
 ## Project Structure
 
 ```
@@ -163,9 +183,9 @@ ltlab/
     │   │   ├── views.py           # OAuth init + callback + logout
     │   │   └── management/commands/set_role.py   # Promote/demote teacher role
     │   ├── home/          # Landing page + dashboards
-    │   ├── exercises/     # Guided exercises (mock data — no DB models yet)
+    │   ├── exercises/     # Guided exercises: models (Exercise/ExercisePart), builder, grading, analytics
     │   ├── kripke/        # Kripke structure persistence (models not implemented yet)
-    │   └── checker/       # LTL engine (SPOT) + synchronous run_ltl_check in tasks.py
+    │   └── checker/       # LTL/equivalence/trace engine (SPOT); run_ltl_check/run_equivalence_check/run_trace_check
     ├── static/
     ├── templates/
     │   ├── base.html
@@ -173,7 +193,7 @@ ltlab/
     │   ├── home.html
     │   ├── accounts/      # login.html
     │   ├── dashboard/     # student_dashboard.html, teacher_dashboard.html
-    │   ├── exercises/     # exercises.html, exercise_canvas.html
+    │   ├── exercises/     # exercise list + per-type canvases (english/path/judge), teacher builder, shared components/
     │   └── sandbox/       # sandbox.html, result.html, counterexample.html
     └── tests/             # Mirrors apps/ tree; kept out of prod packages
         └── accounts/      # test_auth.py
