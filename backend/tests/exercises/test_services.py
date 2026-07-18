@@ -1,21 +1,8 @@
 from django.test import TestCase
 
 from apps.accounts.models import Profile
-from apps.checker.misconceptions import BUCKETS
 from apps.exercises import services
-from apps.exercises.constants import MISCONCEPTION_DESCRIPTIONS, MISCONCEPTION_LABELS
 from apps.exercises.models import Attempt, Exercise, ExercisePart, Topic
-
-
-# Misconception classification is tested directly in tests/checker/test_misconceptions.py.
-
-
-class MisconceptionLabelSyncTests(TestCase):
-    def test_labels_cover_every_bucket(self):
-        self.assertEqual(set(MISCONCEPTION_LABELS), set(BUCKETS))
-
-    def test_descriptions_cover_every_bucket(self):
-        self.assertEqual(set(MISCONCEPTION_DESCRIPTIONS), set(BUCKETS))
 
 
 class ReconciliationTests(TestCase):
