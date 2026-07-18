@@ -184,7 +184,10 @@ def _build_kripke_canvas(request, exercise):
         "part_rows": part_rows,
         "declared_aps": list(exercise.declared_aps or []),
         "elements_json": _elements_json(last_graph),
-        "is_completed": bool(part_rows) and all(r["solved"] for r in part_rows),
+        # completion means one submitted model satisfied every requirement
+        "is_completed": Attempt.objects.filter(
+            exercise=exercise, student=request.profile, is_correct=True
+        ).exists(),
         "prev_exercise": prev_exercise,
         "next_exercise": next_exercise,
         "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
@@ -257,13 +260,18 @@ def submit_formula(request, exercise_id):
 def _grade_constraint(graph, formula):
     """Grade one required formula against the student's graph → (holds, message, trace).
 
-    Engine ValueError (e.g. a proposition the model never uses) is the model
-    failing the requirement, not a system fault — returned as holds=False.
+    An engine ValueError (e.g. the model never uses a proposition the formula
+    names) is the model failing the requirement, not a system fault.
     """
     try:
         result = run_ltl_check(graph, formula)
-    except ValueError as exc:
-        return False, str(exc), None
+    except ValueError:
+        return (
+            False,
+            "Your model does not satisfy this requirement — check that every "
+            "proposition it mentions appears on the right states.",
+            None,
+        )
     if result["result"] == "satisfied":
         return True, "", None
     return False, "Your model has a path that violates this requirement.", result.get("trace")
@@ -274,8 +282,9 @@ def _grade_constraint(graph, formula):
 def submit_kripke(request, exercise_id):
     """Model-check every required formula against the student's graph.
 
-    Correct := all hold (M ⊨A φ). Records one attempt per part so completion
-    and analytics reuse the per-part machinery.
+    Correct := all requirements hold on the one submitted model (M ⊨A φ).
+    Records a single whole-exercise attempt so completion means one structure
+    satisfied everything, never a piecemeal mix of models.
     """
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     if exercise.exercise_type != "build_kripke":
@@ -285,26 +294,30 @@ def submit_kripke(request, exercise_id):
         graph = json.loads(request.POST.get("graph_data") or "")
     except json.JSONDecodeError:
         return error_response(request, "The Kripke structure could not be read.")
-    if not isinstance(graph, dict) or not graph.get("elements", {}).get("nodes"):
+    elements = graph.get("elements") if isinstance(graph, dict) else None
+    if not isinstance(elements, dict) or not elements.get("nodes"):
         return error_response(request, "Draw a Kripke structure before checking.")
 
+    parts = list(exercise.parts.all())
     results = []
-    all_ok = True
-    for i, part in enumerate(exercise.parts.all(), start=1):
+    all_ok = bool(parts)
+    for i, part in enumerate(parts, start=1):
         holds, message, trace = _grade_constraint(graph, part.formula)
         all_ok = all_ok and holds
-        Attempt.objects.create(
-            exercise=exercise,
-            student=request.profile,
-            part=part,
-            answer={"graph": graph},
-            is_correct=holds,
-            hints_used=_clamped_hints(request, part.hints),
-        )
         results.append({
             "number": i, "formula": part.formula,
             "ok": holds, "message": message, "trace": trace,
         })
+
+    Attempt.objects.create(
+        exercise=exercise,
+        student=request.profile,
+        answer={"graph": graph},
+        is_correct=all_ok,
+        hints_used=_clamped_hints(
+            request, [h for p in parts for h in (p.hints or [])]
+        ),
+    )
 
     response = render(request, "exercises/kripke_result.html", {
         "results": results, "all_ok": all_ok,
@@ -696,7 +709,7 @@ def _save_exercise(request, exercise):
             f"Editing the graph or formulas reset {reset} student "
             f"submission{'s' if reset != 1 else ''} — students will resubmit.",
         )
-    if not form["allowed_operators"]:
+    if not form["allowed_operators"] and saved.exercise_type != "build_kripke":
         messages.warning(request, "No operators are enabled — students can only submit atomic propositions.")
     if publishing and saved.exercise_type == "judge":
         key = ", ".join(

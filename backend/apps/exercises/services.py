@@ -221,6 +221,12 @@ def solved_exercise_ids(student, exercises=None):
         .annotate(n=Count("id"))
         .values_list("exercise_id", "n")
     )
+    # build_kripke stores requirements as parts but is graded as one whole
+    # model, so completion is a single correct (partless) attempt, not per-part
+    whole_exercise_ids = set(
+        Exercise.objects.filter(id__in=ids, exercise_type="build_kripke")
+        .values_list("id", flat=True)
+    )
     correct = (
         Attempt.objects.filter(student=student, exercise_id__in=ids, is_correct=True)
         .values_list("exercise_id", "part_id")
@@ -236,7 +242,7 @@ def solved_exercise_ids(student, exercises=None):
     solved = set()
     for ex_id in ids:
         n = part_counts.get(ex_id, 0)
-        if n:
+        if n and ex_id not in whole_exercise_ids:
             if len(parts_solved.get(ex_id, ())) >= n:
                 solved.add(ex_id)
         elif ex_id in whole:

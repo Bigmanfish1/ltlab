@@ -43,13 +43,8 @@
                 <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">REQUIREMENTS</h2>
                 <div class="space-y-3 mb-5">
                     {% for row in part_rows %}
-                    <div class="bg-bg-secondary border {% if row.solved %}border-accent-lime{% else %}border-border-primary{% endif %} rounded p-4">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">REQUIREMENT {{ row.number }}</span>
-                            {% if row.solved %}
-                            <span class="font-mono text-[11px] text-accent-lime">✓ HOLDS</span>
-                            {% endif %}
-                        </div>
+                    <div class="bg-bg-secondary border border-border-primary rounded p-4">
+                        <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-2">REQUIREMENT {{ row.number }}</div>
                         <div class="font-mono text-base text-text-primary">M ⊨ {{ row.part.formula }}</div>
                     </div>
                     {% endfor %}
