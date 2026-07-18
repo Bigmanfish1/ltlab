@@ -320,12 +320,6 @@
       applyLive(textInput.value);
     }
 
-    function insertState(label) {
-      const start = textInput && textInput.selectionStart != null ? textInput.selectionStart : (textInput ? textInput.value.length : 0);
-      const prev = textInput ? textInput.value.slice(0, start).replace(/\s+$/, "").slice(-1) : "";
-      insertToken((prev && prev !== "(" ? " → " : "") + label);
-    }
-
     function chipClass(extra) {
       return "px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono " + extra;
     }
@@ -357,7 +351,7 @@
     ], "text-text-secondary", (it) => insertToken(it.tok));
     buildBar(config.stateBar,
       realNodes().map((n) => ({ label: n.data("name") || n.id() })),
-      "text-text-primary", (it) => insertState(it.label));
+      "text-text-primary", (it) => insertToken(it.label));
 
     cy.on("tap", "node", handleTap);
     paint();
