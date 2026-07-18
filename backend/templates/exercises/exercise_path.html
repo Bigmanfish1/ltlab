@@ -75,15 +75,12 @@ document.addEventListener('DOMContentLoaded', () => {
             cycleInput: '#trace-cycle',
             readout: '#trace-readout',
             textInput: '#trace-text',
+            symbolBar: '#trace-symbols',
+            stateBar: '#trace-states',
         });
 
         document.getElementById('trace-undo').addEventListener('click', () => picker.undo());
         document.getElementById('trace-reset').addEventListener('click', () => picker.reset());
-        const traceText = document.getElementById('trace-text');
-        traceText.addEventListener('input', () => picker.applyText(traceText.value, true));
-        traceText.addEventListener('change', () => {
-            if (traceText.value.trim()) picker.applyText(traceText.value, false);
-        });
     }
     boot();
 

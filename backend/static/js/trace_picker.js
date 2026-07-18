@@ -286,6 +286,79 @@
       return pre ? pre + " → " + cyc : cyc;
     }
 
+    // Typed entry highlights the graph as you go: a complete closed lasso paints
+    // via the strict validator, otherwise the longest valid open prefix lights up
+    // exactly as if those states had been clicked.
+    function statesFromText(text) {
+      const cleaned = String(text || "").replace(/[()]/g, " ").replace(/\^?ω|\^w/g, " ");
+      return tokenize(cleaned);
+    }
+
+    function applyLive(text) {
+      const raw = String(text || "").trim();
+      if (!raw) { reset(); return; }
+      if (/^[^()]*\([^()]*\)\s*(ω|\^ω|\^w|w)?\s*$/.test(raw) && applyText(raw, true)) return;
+      const tokens = statesFromText(raw);
+      const ids = [];
+      for (let i = 0; i < tokens.length; i++) {
+        const r = resolveToken(tokens[i]);
+        if (r === null || typeof r === "object") break;
+        if (i === 0 ? r !== initialId() : !successorsOf(ids[i - 1]).has(r)) break;
+        ids.push(r);
+      }
+      setState(ids, []);
+    }
+
+    function insertToken(tok) {
+      if (!textInput) return;
+      const start = textInput.selectionStart != null ? textInput.selectionStart : textInput.value.length;
+      const end = textInput.selectionEnd != null ? textInput.selectionEnd : textInput.value.length;
+      textInput.value = textInput.value.slice(0, start) + tok + textInput.value.slice(end);
+      const caret = start + tok.length;
+      textInput.focus();
+      textInput.setSelectionRange(caret, caret);
+      applyLive(textInput.value);
+    }
+
+    function insertState(label) {
+      const start = textInput && textInput.selectionStart != null ? textInput.selectionStart : (textInput ? textInput.value.length : 0);
+      const prev = textInput ? textInput.value.slice(0, start).replace(/\s+$/, "").slice(-1) : "";
+      insertToken((prev && prev !== "(" ? " → " : "") + label);
+    }
+
+    function chipClass(extra) {
+      return "px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono " + extra;
+    }
+
+    function buildBar(sel, items, klass, onPick) {
+      const bar = sel && document.querySelector(sel);
+      if (!bar) return;
+      items.forEach((it) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = it.label;
+        b.className = chipClass(klass);
+        b.addEventListener("click", () => onPick(it));
+        bar.appendChild(b);
+      });
+    }
+
+    if (textInput) {
+      textInput.addEventListener("input", () => applyLive(textInput.value));
+      textInput.addEventListener("change", () => {
+        if (textInput.value.indexOf("(") >= 0) applyText(textInput.value, false);
+      });
+    }
+    buildBar(config.symbolBar, [
+      { label: "→", tok: " → " },
+      { label: "(", tok: "(" },
+      { label: ")", tok: ")" },
+      { label: "ω", tok: "ω" },
+    ], "text-text-secondary", (it) => insertToken(it.tok));
+    buildBar(config.stateBar,
+      realNodes().map((n) => ({ label: n.data("name") || n.id() })),
+      "text-text-primary", (it) => insertState(it.label));
+
     cy.on("tap", "node", handleTap);
     paint();
     sync();
@@ -297,6 +370,7 @@
       isClosed: function () { return closedAt >= 0; },
       setState: setState,
       applyText: applyText,
+      applyLive: applyLive,
       canonicalText: canonicalText,
     };
     window.TracePickers = window.TracePickers || {};
