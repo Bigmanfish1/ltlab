@@ -1,38 +1,21 @@
-  <header class="relative border-b border-slate-800 px-6 h-12 flex items-center justify-between bg-bg-primary">
-      <div class="font-mono text-sm font-semibold tracking-tight text-text-primary">
+  <header class="relative border-b border-slate-800 px-6 h-12 flex items-center justify-between gap-4 bg-bg-primary">
+      <div class="font-mono text-sm font-semibold tracking-tight text-text-primary shrink-0">
           LTLab
       </div>
-      <nav class="hidden lg:flex flex-1 justify-center items-center gap-8 min-w-0">
-          {% include "components/nav_links.html" %}
-      </nav>
-      <div class="flex items-center gap-3">
-          <div class="hidden lg:flex items-center gap-3">
-              {% if request.supabase_user %}
-              <span class="font-mono text-[11px] text-text-secondary">{{ request.supabase_user.email }}</span>
-              <form method="post" action="{% url 'accounts:logout' %}" class="flex items-center">
-                  {% csrf_token %}
-                  <button type="submit" class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-accent-orange transition-colors cursor-pointer">
-                      Logout
-                  </button>
-              </form>
-              {% else %}
-              <a href="{% url 'accounts:login' %}" class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-text-primary transition-colors">
-                  Login
-              </a>
-              {% endif %}
+      <nav id="primary-nav" class="flex-1 flex items-center gap-6 min-w-0 overflow-hidden">
+          {% include "components/nav_links.html" with link_extra="shrink-0" %}
+          <div id="nav-more" class="relative hidden shrink-0">
+              <button type="button" id="nav-more-btn" aria-haspopup="true" aria-expanded="false"
+                  class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
+                  More ▾
+              </button>
+              <div id="nav-more-menu" class="hidden absolute right-0 top-full mt-2 min-w-[180px] flex-col bg-bg-primary border border-slate-800 rounded shadow-lg py-1 z-50"></div>
           </div>
-          <button type="button" id="nav-toggle" aria-label="Menu" aria-expanded="false"
-              class="lg:hidden font-mono text-lg leading-none text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
-              ☰
-          </button>
-      </div>
-  </header>
-  <div id="nav-menu" class="hidden lg:hidden border-b border-slate-800 bg-bg-primary px-6 py-3 flex-col gap-3">
-      {% include "components/nav_links.html" with link_extra="block py-1" %}
-      <div class="border-t border-slate-800 pt-3 flex flex-col gap-3">
+      </nav>
+      <div class="flex items-center gap-3 shrink-0">
           {% if request.supabase_user %}
-          <span class="font-mono text-[11px] text-text-secondary break-all">{{ request.supabase_user.email }}</span>
-          <form method="post" action="{% url 'accounts:logout' %}">
+          <span class="hidden sm:block font-mono text-[11px] text-text-secondary truncate max-w-[160px]">{{ request.supabase_user.email }}</span>
+          <form method="post" action="{% url 'accounts:logout' %}" class="flex items-center">
               {% csrf_token %}
               <button type="submit" class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-accent-orange transition-colors cursor-pointer">
                   Logout
@@ -44,16 +27,55 @@
           </a>
           {% endif %}
       </div>
-  </div>
+  </header>
   <script>
       (function () {
-          var btn = document.getElementById('nav-toggle');
-          var menu = document.getElementById('nav-menu');
-          if (!btn || !menu) return;
-          btn.addEventListener('click', function () {
-              var open = menu.classList.toggle('hidden') === false;
-              menu.classList.toggle('flex', open);
-              btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          var nav = document.getElementById('primary-nav');
+          var more = document.getElementById('nav-more');
+          var moreBtn = document.getElementById('nav-more-btn');
+          var moreMenu = document.getElementById('nav-more-menu');
+          if (!nav || !more) return;
+          // original link order, captured once
+          var links = Array.prototype.slice.call(nav.querySelectorAll(':scope > a'));
+          var menuOnly = ['block', 'w-full', 'px-4', 'py-2'];
+
+          function closeMenu() {
+              moreMenu.classList.add('hidden');
+              moreMenu.classList.remove('flex');
+              moreBtn.setAttribute('aria-expanded', 'false');
+          }
+
+          // Priority+: keep every link that fits, overflow the rest into More.
+          function layout() {
+              links.forEach(function (a) {
+                  a.classList.remove.apply(a.classList, menuOnly);
+                  nav.insertBefore(a, more);
+              });
+              more.classList.add('hidden');
+              closeMenu();
+              var i = links.length - 1;
+              while (nav.scrollWidth > nav.clientWidth && i >= 0) {
+                  more.classList.remove('hidden');
+                  var a = links[i];
+                  a.classList.add.apply(a.classList, menuOnly);
+                  moreMenu.insertBefore(a, moreMenu.firstChild);
+                  i--;
+              }
+          }
+
+          var t;
+          window.addEventListener('resize', function () {
+              clearTimeout(t);
+              t = setTimeout(layout, 100);
           });
+          moreBtn.addEventListener('click', function (e) {
+              e.stopPropagation();
+              var open = moreMenu.classList.toggle('hidden') === false;
+              moreMenu.classList.toggle('flex', open);
+              moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          });
+          moreMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+          document.addEventListener('click', closeMenu);
+          layout();
       })();
   </script>
