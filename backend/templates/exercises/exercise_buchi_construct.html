@@ -35,7 +35,7 @@
             <div>
                 <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR BÜCHI AUTOMATON</h2>
                 <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex" style="height: 460px;">
-                    {% include "components/buchi_editor.html" with id="draw" input_name="automaton_data" height="460px" elements_json=elements_json %}
+                    {% include "components/buchi_editor.html" with id="draw" input_name="automaton_data" height="460px" elements_json=elements_json storage_key=autosave_key %}
                 </div>
                 <div id="draw-warning" class="mt-3 hidden"></div>
             </div>

@@ -145,9 +145,27 @@
     const editable = config.editable !== false;
     const useKeyboard = config.keyboard !== false && editable;
     const fitOnLoad = config.fitOnLoad !== false;
+    // Autosave: when a storageKey is given, the working canvas is mirrored to
+    // localStorage on every change so a reload keeps in-progress edits even
+    // when nothing was submitted. A non-empty autosave wins over the server-
+    // restored elements; an absent/empty one falls through to them.
+    const storageKey = config.storageKey || null;
+    function loadAutosave() {
+      if (!storageKey) return null;
+      try {
+        const parsed = JSON.parse(localStorage.getItem(storageKey) || "null");
+        const els = parsed && parsed.elements;
+        const arr = els ? (els.nodes || []).concat(els.edges || []) : null;
+        return arr && arr.length ? arr : null;
+      } catch (e) {
+        return null;
+      }
+    }
     // An explicit array (even empty) is honoured, so a caller can start blank;
     // only a wholly absent `elements` falls back to the demo automaton.
-    const elements = Array.isArray(config.elements) ? config.elements : DEFAULT_ELEMENTS;
+    const elements =
+      loadAutosave() ||
+      (Array.isArray(config.elements) ? config.elements : DEFAULT_ELEMENTS);
 
     let currentTool = "node";
     let edgeSource = null;
@@ -201,7 +219,15 @@
     }
 
     function syncGraphData() {
-      if (input) input.value = JSON.stringify(getCleanGraphJson());
+      const clean = getCleanGraphJson();
+      if (input) input.value = JSON.stringify(clean);
+      if (storageKey && editable) {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(clean));
+        } catch (e) {
+          /* storage full / disabled — autosave is best-effort */
+        }
+      }
       emitChange();
     }
 

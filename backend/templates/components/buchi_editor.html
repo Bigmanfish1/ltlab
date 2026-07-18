@@ -18,6 +18,7 @@
     readonly       Truthy → non-editable viewer (no toolbar).  Default editable
     show_toolbar   Explicitly show/hide the toolbar.           Default: shown unless readonly
     height         Explicit CSS height (e.g. "420px").         Default: fills parent.
+    storage_key    localStorage key to autosave the canvas.    Default: no autosave
 
   Emits bubbling DOM events on its mount element:
     buchi:warn   (detail.html)  — a user-facing warning to display
@@ -170,6 +171,7 @@
 
   function boot() {
     var cfg = { id: ID, editable: {% if readonly %}false{% else %}true{% endif %} };
+    {% if storage_key %}cfg.storageKey = "{{ storage_key|escapejs }}";{% endif %}
     var elTag = document.getElementById(ID + "-elements");
     if (elTag) {
       try { cfg.elements = JSON.parse(elTag.textContent); } catch (e) {}

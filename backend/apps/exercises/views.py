@@ -217,6 +217,7 @@ def _buchi_construct_canvas(request, exercise):
         # start blank for a fresh student (the editor's demo is an answer-shaped
         # automaton); restore their saved drawing on return
         "elements_json": _elements_json(last_automaton) or "[]",
+        "autosave_key": f"buchi:{request.profile.id}:{exercise.id}",
         "is_completed": Attempt.objects.filter(
             exercise=exercise, student=request.profile, is_correct=True
         ).exists(),
