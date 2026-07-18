@@ -1,3 +1,9 @@
+from .buchi import (
+    check_buchi_equivalence,
+    is_deterministic,
+    target_automaton_states,
+    word_accepted,
+)
 from .engine import analyze_lasso, check_ltl, cytoscape_to_kripke, validate_request
 from .equivalence import (
     check_equivalence,
@@ -97,3 +103,40 @@ def run_model_solvable_check(formulas: list[str], declared_aps: list[str]) -> di
     ValueError on an invalid formula. Returns {"solvable": bool}.
     """
     return {"solvable": formulas_jointly_satisfiable(formulas, declared_aps)}
+
+
+def run_buchi_equivalence_check(automaton: dict, target: str, declared_aps: list[str]) -> dict:
+    """Grade a drawn Büchi automaton against a target LTL by language equivalence.
+
+    A malformed automaton (bad label, no initial state, over cap) is a
+    teacher/system fault and raises ValueError. A well-formed but wrong student
+    automaton returns {"equivalent": False}.
+    """
+    return {"equivalent": check_buchi_equivalence(automaton, target, declared_aps)}
+
+
+def run_buchi_determinism_check(automaton: dict, declared_aps: list[str]) -> dict:
+    """Whether the drawn automaton is deterministic. Returns {"deterministic": bool}."""
+    return {"deterministic": is_deterministic(automaton, declared_aps)}
+
+
+def run_buchi_word_check(automaton: dict, word: str, declared_aps: list[str]) -> dict:
+    """Grade a typed lasso word against a fixed automaton by membership.
+
+    The automaton is teacher data (raises on a bad one); the word is student
+    data. Returns {"accepted": bool, "word_error": str | None} — a rejected or
+    unreadable word is accepted=False with a user-facing word_error.
+    """
+    accepted, message = word_accepted(automaton, word, declared_aps)
+    return {"accepted": accepted, "word_error": message or None}
+
+
+def run_buchi_target_check(target: str, declared_aps: list[str]) -> dict:
+    """Publish gate / builder Test for a buchi_construct target LTL formula.
+
+    Validates the target parses and stays within the formula caps and the
+    declared alphabet (ValueError on violation), and reports the target
+    automaton's state count for teacher feedback. Returns {"states": int}.
+    """
+    validate_formula_submission(target, declared_aps)
+    return {"states": target_automaton_states(target)}

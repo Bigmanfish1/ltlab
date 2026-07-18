@@ -137,6 +137,12 @@ def _translate_target(target):
         raise ValueError(f"Invalid target formula: {exc}") from exc
 
 
+def target_automaton_states(target):
+    """Number of states in the target LTL's Büchi automaton (teacher feedback)."""
+    _require_spot()
+    return _translate_target(target).num_states()
+
+
 def check_buchi_equivalence(automaton_json, target, declared_aps):
     """True iff the drawn automaton has the same language as the target LTL."""
     _require_spot()
