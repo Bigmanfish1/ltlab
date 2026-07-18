@@ -1,5 +1,9 @@
 from .engine import analyze_lasso, check_ltl, cytoscape_to_kripke, validate_request
-from .equivalence import check_equivalence, validate_formula_submission
+from .equivalence import (
+    check_equivalence,
+    formulas_jointly_satisfiable,
+    validate_formula_submission,
+)
 from .traces import evaluate_lasso, validate_lasso
 
 
@@ -84,3 +88,12 @@ def run_equivalence_check(target: str, submitted: str, declared_aps: list[str]) 
         "equivalent": check_equivalence(target, submitted),
         "formula": submitted,
     }
+
+
+def run_model_solvable_check(formulas: list[str], declared_aps: list[str]) -> dict:
+    """Whether some Kripke structure can satisfy every required formula at once.
+
+    Backs the build_kripke publish gate and the builder Test button. Raises
+    ValueError on an invalid formula. Returns {"solvable": bool}.
+    """
+    return {"solvable": formulas_jointly_satisfiable(formulas, declared_aps)}

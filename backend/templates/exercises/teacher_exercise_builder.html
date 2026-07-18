@@ -72,6 +72,10 @@
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
                             ∀ Model Checking
                         </button>
+                        <button type="button" data-type="build_kripke" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
+                            Model a Property
+                        </button>
                     </div>
                     {% if type_locked %}
                     <div class="text-[11px] text-text-secondary mt-1">Type is locked once the exercise has been published or attempted.</div>
@@ -118,17 +122,19 @@
                     <p class="field-error text-[11px] text-accent-orange" data-error-for="topic"></p>
                 </div>
 
-                <label class="block text-[13px] text-text-primary mb-2">Allowed Operators</label>
-                <input type="hidden" name="allowed_operators" id="allowed-input" value="" />
-                <div class="flex flex-wrap gap-2 mb-1" id="operator-toggle" data-selected="{{ allowed_operators|join:',' }}">
-                    {% for op in operators %}
-                    <button type="button" data-op="{{ op }}"
-                        class="operator-btn min-w-9 h-9 px-2 font-mono text-[13px] border border-border-primary text-text-secondary rounded transition-colors whitespace-nowrap">
-                        {% if op == "∨" %}∨ / |{% else %}{{ op }}{% endif %}
-                    </button>
-                    {% endfor %}
+                <div data-type-section="model_check english_to_formula path_exhibit judge">
+                    <label class="block text-[13px] text-text-primary mb-2">Allowed Operators</label>
+                    <input type="hidden" name="allowed_operators" id="allowed-input" value="" />
+                    <div class="flex flex-wrap gap-2 mb-1" id="operator-toggle" data-selected="{{ allowed_operators|join:',' }}">
+                        {% for op in operators %}
+                        <button type="button" data-op="{{ op }}"
+                            class="operator-btn min-w-9 h-9 px-2 font-mono text-[13px] border border-border-primary text-text-secondary rounded transition-colors whitespace-nowrap">
+                            {% if op == "∨" %}∨ / |{% else %}{{ op }}{% endif %}
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <div class="text-[11px] text-text-secondary mb-6">Disabled operators are hidden from students.</div>
                 </div>
-                <div class="text-[11px] text-text-secondary mb-6">Disabled operators are hidden from students.</div>
 
                 <div data-type-section="model_check">
                     <label class="block text-[13px] text-text-primary mb-2">Progressive Hints</label>
@@ -167,22 +173,36 @@
                     </button>
                 </div>
 
-                <div data-type-section="english_to_formula" class="hidden">
+                <div data-type-section="english_to_formula build_kripke" class="hidden">
                     <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">ATOMIC PROPOSITIONS</div>
-                    <div class="text-[12px] text-text-secondary mb-3">The propositions students may use in their formulas.</div>
+                    <div class="text-[12px] text-text-secondary mb-3" data-type-hint="english_to_formula">The propositions students may use in their formulas.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="build_kripke">The propositions students may label states with — the requirement formulas may use only these.</div>
                     <input type="hidden" name="declared_aps" id="aps-input" value="" />
                     <div class="flex flex-wrap items-center gap-2 mb-6" id="ap-chips">
                         <input type="text" id="ap-entry" placeholder="add proposition + Enter"
                             class="bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[12px] px-3 py-1.5 rounded focus:border-border-secondary focus:outline-none transition-colors w-56" />
                     </div>
+                </div>
 
+                <input type="hidden" name="parts" id="parts-input" value="" />
+
+                <div data-type-section="english_to_formula" class="hidden">
                     <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">REQUIREMENTS</div>
                     <div class="text-[12px] text-text-secondary mb-3">Each requirement is graded against its hidden target formula by semantic equivalence — any equivalent phrasing counts.</div>
-                    <input type="hidden" name="parts" id="parts-input" value="" />
                     <div class="space-y-4 mb-4" id="parts-rows"></div>
                     <button type="button" id="part-add"
                         class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
                         + Add Requirement
+                    </button>
+                </div>
+
+                <div data-type-section="build_kripke" class="hidden">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">REQUIRED FORMULAS</div>
+                    <div class="text-[12px] text-text-secondary mb-3">Students build a Kripke structure whose every path satisfies all of these. Publishing checks they are jointly satisfiable — that some model can satisfy them all. Test checks one formula in isolation.</div>
+                    <div class="space-y-3 mb-4" id="kripke-parts-rows"></div>
+                    <button type="button" id="kripke-part-add"
+                        class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
+                        + Add Formula
                     </button>
                 </div>
             </div>
@@ -299,6 +319,11 @@
                 template: document.getElementById('path-part-row-template'),
                 label: 'FORMULA ',
             },
+            build_kripke: {
+                rows: document.getElementById('kripke-parts-rows'),
+                template: document.getElementById('path-part-row-template'),
+                label: 'REQUIREMENT ',
+            },
         };
         containers.judge = containers.path_exhibit;
         function activeContainer() { return containers[typeInput.value] || null; }
@@ -353,6 +378,9 @@
         document.getElementById('path-part-add').addEventListener('click', function () {
             addPartRow(containers.path_exhibit, null);
         });
+        document.getElementById('kripke-part-add').addEventListener('click', function () {
+            addPartRow(containers.build_kripke, null);
+        });
         typeBtns.forEach(function (b) { b.addEventListener('click', syncParts); });
         function insertIntoFormula(row, text) {
             const input = row.querySelector('[data-part-field="formula"]');
@@ -376,20 +404,24 @@
             unsatisfiable: [false, 'No satisfying path on this model — students could never solve it.'],
             holds: [true, 'Holds on this model.'],
             violated: [false, 'Does not hold on this model — students must give a counterexample.'],
+            solvable: [true, 'Satisfiable — some Kripke structure can satisfy this requirement.'],
+            unsolvable: [false, 'Unsatisfiable — no Kripke structure can ever satisfy this.'],
         };
         function runFormulaTest(row) {
             const formula = row.querySelector('[data-part-field="formula"]').value.trim();
             const graphField = document.querySelector('input[name="graph_data"]');
             let graph = null;
             try { graph = graphField && graphField.value ? JSON.parse(graphField.value) : null; } catch (e) { graph = null; }
-            const mode = typeInput.value === 'judge' ? 'holds' : 'satisfiable';
+            let mode = 'satisfiable';
+            if (typeInput.value === 'judge') mode = 'holds';
+            else if (typeInput.value === 'build_kripke') mode = 'solvable';
             fetch("{% url 'test_formula' %}", {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': document.querySelector('input[name="csrfmiddlewaretoken"]').value,
                 },
-                body: JSON.stringify({ graph: graph, formula: formula, mode: mode }),
+                body: JSON.stringify({ graph: graph, formula: formula, mode: mode, declared_aps: apsInput.value ? JSON.parse(apsInput.value) : [] }),
             }).then(function (r) { return r.json(); }).then(function (data) {
                 if (!data.ok) { showTestResult(row, false, data.error); return; }
                 const m = TEST_MESSAGES[data.result] || [false, data.result];
@@ -398,7 +430,7 @@
                 showTestResult(row, false, 'The test request failed — try again.');
             });
         }
-        [containers.english_to_formula.rows, containers.path_exhibit.rows].forEach(function (rows) {
+        [containers.english_to_formula.rows, containers.path_exhibit.rows, containers.build_kripke.rows].forEach(function (rows) {
             rows.addEventListener('click', function (e) {
                 const opBtn = e.target.closest('.part-op');
                 if (opBtn) {

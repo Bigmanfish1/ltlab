@@ -210,6 +210,24 @@ ATTEMPTS = [
     (2, [("Grant is followed by idle", "X idle", False)]),  # s0's successors aren't both idle
 ]
 
+# Build-a-Kripke exercise (MCL3 p.27). Requirements verified jointly satisfiable.
+BUILD_KRIPKE_EXERCISE = {
+    "title": "Build a request–grant model",
+    "description": (
+        "Build a Kripke structure over the propositions req and grant whose "
+        "every path satisfies both requirements: requests recur forever, and "
+        "every request is eventually granted."
+    ),
+    "difficulty": "intermediate",
+    "declared_aps": ["req", "grant"],
+    "parts": [
+        ("G F req",
+         ["Some state must be labelled req, and every path must keep returning to it."]),
+        ("G (req -> F grant)",
+         ["From every req state, a grant state must be reachable on every path."]),
+    ],
+}
+
 
 class Command(BaseCommand):
     help = "Seed a minimal dataset for local development (teacher, students, modules, attempts)."
@@ -343,6 +361,31 @@ class Command(BaseCommand):
         for position, (formula, hints) in enumerate(JUDGE_EXERCISE["parts"]):
             part, _ = ExercisePart.objects.get_or_create(
                 exercise=judge_ex,
+                position=position,
+                defaults={"formula": formula, "hints": hints},
+            )
+            if part.hints != hints:
+                part.hints = hints
+                part.save(update_fields=["hints"])
+
+        build_ex, _ = Exercise.objects.get_or_create(
+            title=BUILD_KRIPKE_EXERCISE["title"],
+            topic=ltl_topic,
+            defaults={
+                "description": BUILD_KRIPKE_EXERCISE["description"],
+                "difficulty": BUILD_KRIPKE_EXERCISE["difficulty"],
+                "hint": "",
+                "is_published": True,
+                "ever_published": True,
+                "position": 4,
+                "exercise_type": "build_kripke",
+                "declared_aps": BUILD_KRIPKE_EXERCISE["declared_aps"],
+                "allowed_operators": list(BUILDER_OPERATORS),
+            },
+        )
+        for position, (formula, hints) in enumerate(BUILD_KRIPKE_EXERCISE["parts"]):
+            part, _ = ExercisePart.objects.get_or_create(
+                exercise=build_ex,
                 position=position,
                 defaults={"formula": formula, "hints": hints},
             )

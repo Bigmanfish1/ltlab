@@ -12,7 +12,12 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.operators import disallowed_operators
-from apps.checker.tasks import run_equivalence_check, run_ltl_check, run_trace_check
+from apps.checker.tasks import (
+    run_equivalence_check,
+    run_ltl_check,
+    run_model_solvable_check,
+    run_trace_check,
+)
 from apps.checker.views import MAX_FORMULA_CHARS, build_result_context, error_response
 
 from .constants import (
@@ -107,6 +112,8 @@ def exercise_canvas(request, exercise_id):
         return _part_canvas(request, exercise, "exercises/exercise_path.html")
     if exercise.exercise_type == "judge":
         return _part_canvas(request, exercise, "exercises/exercise_judge.html")
+    if exercise.exercise_type == "build_kripke":
+        return _build_kripke_canvas(request, exercise)
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
@@ -158,6 +165,34 @@ def _part_canvas(request, exercise, template, **extra):
         **extra,
     }
     return render(request, template, context)
+
+
+def _build_kripke_canvas(request, exercise):
+    """Student page for build_kripke — editable editor plus the required formulas."""
+    part_rows = _part_rows(exercise, request.profile)
+    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
+    # restore the last submitted graph so a reload doesn't revert to the demo
+    last = (
+        Attempt.objects.filter(exercise=exercise, student=request.profile)
+        .order_by("-created_at")
+        .first()
+    )
+    last_graph = last.answer.get("graph") if last and isinstance(last.answer, dict) else None
+    context = {
+        "exercise": exercise,
+        "exercise_number": exercise_number,
+        "part_rows": part_rows,
+        "declared_aps": list(exercise.declared_aps or []),
+        "elements_json": _elements_json(last_graph),
+        # completion means one submitted model satisfied every requirement
+        "is_completed": Attempt.objects.filter(
+            exercise=exercise, student=request.profile, is_correct=True
+        ).exists(),
+        "prev_exercise": prev_exercise,
+        "next_exercise": next_exercise,
+        "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
+    }
+    return render(request, "exercises/exercise_build_kripke.html", context)
 
 
 @supabase_login_required
@@ -220,6 +255,74 @@ def submit_formula(request, exercise_id):
     if is_correct:
         response["HX-Trigger"] = "exerciseSolved"
     return response
+
+
+def _grade_constraint(graph, formula):
+    """Grade one required formula against the student's graph → (holds, message, trace).
+
+    An engine ValueError (e.g. the model never uses a proposition the formula
+    names) is the model failing the requirement, not a system fault.
+    """
+    try:
+        result = run_ltl_check(graph, formula)
+    except ValueError:
+        return (
+            False,
+            "Your model does not satisfy this requirement — check that every "
+            "proposition it mentions appears on the right states.",
+            None,
+        )
+    if result["result"] == "satisfied":
+        return True, "", None
+    return False, "Your model has a path that violates this requirement.", result.get("trace")
+
+
+@supabase_login_required
+@require_POST
+def submit_kripke(request, exercise_id):
+    """Model-check every required formula against the student's graph.
+
+    Correct := all requirements hold on the one submitted model (M ⊨A φ).
+    Records a single whole-exercise attempt so completion means one structure
+    satisfied everything, never a piecemeal mix of models.
+    """
+    exercise = get_object_or_404(published_exercises(), id=exercise_id)
+    if exercise.exercise_type != "build_kripke":
+        return error_response(request, "This exercise is not a build-a-model task.")
+
+    try:
+        graph = json.loads(request.POST.get("graph_data") or "")
+    except json.JSONDecodeError:
+        return error_response(request, "The Kripke structure could not be read.")
+    elements = graph.get("elements") if isinstance(graph, dict) else None
+    if not isinstance(elements, dict) or not elements.get("nodes"):
+        return error_response(request, "Draw a Kripke structure before checking.")
+
+    parts = list(exercise.parts.all())
+    results = []
+    all_ok = bool(parts)
+    for i, part in enumerate(parts, start=1):
+        holds, message, trace = _grade_constraint(graph, part.formula)
+        all_ok = all_ok and holds
+        results.append({
+            "number": i, "formula": part.formula,
+            "ok": holds, "message": message, "trace": trace,
+        })
+
+    Attempt.objects.create(
+        exercise=exercise,
+        student=request.profile,
+        answer={"graph": graph},
+        is_correct=all_ok,
+        hints_used=_clamped_hints(
+            request, [h for p in parts for h in (p.hints or [])]
+        ),
+    )
+
+    response = render(request, "exercises/kripke_result.html", {
+        "results": results, "all_ok": all_ok,
+    })
+    return _completion_trigger(response, request, exercise)
 
 
 def _part_result(request, part, status, message):
@@ -606,7 +709,7 @@ def _save_exercise(request, exercise):
             f"Editing the graph or formulas reset {reset} student "
             f"submission{'s' if reset != 1 else ''} — students will resubmit.",
         )
-    if not form["allowed_operators"]:
+    if not form["allowed_operators"] and saved.exercise_type != "build_kripke":
         messages.warning(request, "No operators are enabled — students can only submit atomic propositions.")
     if publishing and saved.exercise_type == "judge":
         key = ", ".join(
@@ -634,10 +737,20 @@ def test_formula(request):
     graph = payload.get("graph")
     formula = str(payload.get("formula") or "").strip()
     mode = payload.get("mode")
-    if mode not in ("satisfiable", "holds"):
+    if mode not in ("satisfiable", "holds", "solvable"):
         return JsonResponse({"ok": False, "error": "Unknown test mode."})
     if not formula:
         return JsonResponse({"ok": False, "error": "Enter a formula to test."})
+    # build_kripke has no memo graph — test satisfiability instead
+    if mode == "solvable":
+        declared_aps = payload.get("declared_aps")
+        if not isinstance(declared_aps, list):
+            declared_aps = []
+        try:
+            solvable = run_model_solvable_check([formula], declared_aps)["solvable"]
+        except ValueError as exc:
+            return JsonResponse({"ok": False, "error": str(exc)})
+        return JsonResponse({"ok": True, "result": "solvable" if solvable else "unsolvable"})
     if not isinstance(graph, dict) or not graph:
         return JsonResponse({"ok": False, "error": "Draw a Kripke structure first."})
     try:

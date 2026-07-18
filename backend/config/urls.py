@@ -9,6 +9,7 @@ from apps.exercises.views import (
     exercises,
     manage,
     submit_formula,
+    submit_kripke,
     submit_part,
     teacher_exercises,
     test_formula,
@@ -28,6 +29,7 @@ urlpatterns = [
     path("exercises/", exercises, name="exercises"),
     path("exercises/<uuid:exercise_id>/", exercise_canvas, name="exercise_canvas"),
     path('exercises/<uuid:exercise_id>/submit/', submit_formula, name='submit_formula'),
+    path('exercises/<uuid:exercise_id>/submit-model/', submit_kripke, name='submit_kripke'),
     path(
         "exercises/<uuid:exercise_id>/parts/<uuid:part_id>/submit/",
         submit_part,

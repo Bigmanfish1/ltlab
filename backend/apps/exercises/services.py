@@ -11,7 +11,7 @@ from apps.accounts.models import Profile
 from apps.checker.engine import validate_request
 from apps.checker.equivalence import validate_formula_submission
 from apps.checker.operators import disallowed_operators
-from apps.checker.tasks import run_ltl_check
+from apps.checker.tasks import run_ltl_check, run_model_solvable_check
 from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
 
 from .constants import (
@@ -23,7 +23,9 @@ from .constants import (
 )
 from .models import Attempt, Exercise, ExercisePart, Topic
 
-BUILDER_EXERCISE_TYPES = ("model_check", "english_to_formula", "path_exhibit", "judge")
+BUILDER_EXERCISE_TYPES = (
+    "model_check", "english_to_formula", "path_exhibit", "judge", "build_kripke",
+)
 
 
 def enrolled_students():
@@ -219,6 +221,12 @@ def solved_exercise_ids(student, exercises=None):
         .annotate(n=Count("id"))
         .values_list("exercise_id", "n")
     )
+    # build_kripke stores requirements as parts but is graded as one whole
+    # model, so completion is a single correct (partless) attempt, not per-part
+    whole_exercise_ids = set(
+        Exercise.objects.filter(id__in=ids, exercise_type="build_kripke")
+        .values_list("id", flat=True)
+    )
     correct = (
         Attempt.objects.filter(student=student, exercise_id__in=ids, is_correct=True)
         .values_list("exercise_id", "part_id")
@@ -234,7 +242,7 @@ def solved_exercise_ids(student, exercises=None):
     solved = set()
     for ex_id in ids:
         n = part_counts.get(ex_id, 0)
-        if n:
+        if n and ex_id not in whole_exercise_ids:
             if len(parts_solved.get(ex_id, ())) >= n:
                 solved.add(ex_id)
         elif ex_id in whole:
@@ -609,6 +617,31 @@ def _validate_path_parts(form, graph, errors):
             )
 
 
+def _validate_build_kripke_parts(form, errors):
+    """Require ≥1 formula, all over the declared APs and jointly satisfiable."""
+    if not form["parts"]:
+        errors.append("Add at least one formula the student's model must satisfy.")
+        return
+    formulas = []
+    for i, part in enumerate(form["parts"], start=1):
+        if not part["formula"]:
+            errors.append(f"Formula {i} is empty.")
+            continue
+        formulas.append(part["formula"])
+    if len(formulas) != len(form["parts"]):
+        return
+    try:
+        solvable = run_model_solvable_check(formulas, form["declared_aps"])["solvable"]
+    except ValueError as exc:
+        errors.append(str(exc))
+        return
+    if not solvable:
+        errors.append(
+            "These requirements contradict each other — no Kripke structure can "
+            "satisfy them all, so students could never solve the exercise."
+        )
+
+
 def _has_attempts(exercise):
     # memoised per instance — type_locked and persist both need it within one
     # request, and the exercise object is shared across them
@@ -661,6 +694,10 @@ def validate_exercise_form(form, exercise, publishing):
         if exercise_type == "english_to_formula":
             _validate_declared_aps(form["declared_aps"], errors)
             _validate_english_parts(form, errors)
+        elif exercise_type == "build_kripke":
+            # student supplies the graph; validate the required formulas instead
+            _validate_declared_aps(form["declared_aps"], errors)
+            _validate_build_kripke_parts(form, errors)
         elif not graph:
             # Students are graded against this graph (model-checking their
             # formula, or walking their path on it), so publishing needs one.
@@ -748,7 +785,8 @@ def persist_exercise(exercise, form, graph, publishing):
     exercise.hint = next((h for h in global_hints if h), "")
     exercise.allowed_operators = form["allowed_operators"]
     exercise.declared_aps = form["declared_aps"]
-    exercise.kripke_structure = graph
+    # build_kripke is student-built — never persist the builder's hidden editor
+    exercise.kripke_structure = None if exercise.exercise_type == "build_kripke" else graph
     exercise.is_published = publishing
     if publishing:
         exercise.ever_published = True
