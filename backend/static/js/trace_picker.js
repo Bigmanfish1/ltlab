@@ -348,7 +348,7 @@
       { label: "(", tok: "(" },
       { label: ")", tok: ")" },
       { label: "ω", tok: "ω" },
-    ], "text-text-secondary", (it) => insertToken(it.tok));
+    ], "text-text-primary", (it) => insertToken(it.tok));
     buildBar(config.stateBar,
       realNodes().map((n) => ({ label: n.data("name") || n.id() })),
       "text-text-primary", (it) => insertToken(it.label));
