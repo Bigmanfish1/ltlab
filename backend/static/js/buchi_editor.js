@@ -4,8 +4,8 @@
  * Sibling of kripke_editor.js, adapted for Büchi automata (MCL5 p.13-19):
  *   - states carry no propositions; instead each state can be marked ACCEPTING
  *     (rendered as a double ring), and MORE THAN ONE state may be INITIAL (I⊆Q);
- *   - every transition carries an editable boolean-expression LABEL over the
- *     alphabet (e.g. `a & !b`, or `1` for true).
+ *   - every transition carries an editable LABEL: a symbol from the alphabet Σ
+ *     (e.g. `a`) or a comma-set of symbols (e.g. `a,b` = "on a or b").
  *
  * Otherwise the interaction model matches the Kripke editor: add/remove states
  * and transitions, undo/redo, right-click context menu, keyboard shortcuts, and
@@ -109,13 +109,14 @@
     },
   ];
 
-  // Default automaton: "infinitely often a" (G F a) — a familiar Büchi example.
+  // Default automaton: "b infinitely often" over Σ={a,b} (MCL5 p.17).
   const DEFAULT_ELEMENTS = [
     { data: { id: "s0", name: "s0", initial: true, accepting: false }, position: { x: 240, y: 240 } },
     { data: { id: "s1", name: "s1", initial: false, accepting: true }, position: { x: 470, y: 240 } },
-    { data: { id: "e0", source: "s0", target: "s0", label: "1" } },
-    { data: { id: "e1", source: "s0", target: "s1", label: "a" } },
-    { data: { id: "e2", source: "s1", target: "s0", label: "1" } },
+    { data: { id: "e0", source: "s0", target: "s0", label: "a" } },
+    { data: { id: "e1", source: "s0", target: "s1", label: "b" } },
+    { data: { id: "e2", source: "s1", target: "s1", label: "b" } },
+    { data: { id: "e3", source: "s1", target: "s0", label: "a" } },
   ];
 
   function resolve(sel) {
@@ -454,12 +455,12 @@
       lbl.textContent = "TRANSITION LABEL";
       lbl.style.cssText = FIELD_LABEL;
       const hint = document.createElement("div");
-      hint.textContent = "boolean over the alphabet, e.g.  a & !b   or   1";
+      hint.textContent = "a symbol, e.g.  a   — or a set, e.g.  a,b";
       hint.style.cssText = "font-family:monospace;font-size:9px;color:#3A3A3A;line-height:1.4;";
       const labelInput = document.createElement("input");
       labelInput.type = "text";
       labelInput.value = edge.data("label") || "";
-      labelInput.placeholder = "a & !b";
+      labelInput.placeholder = "a  or  a,b";
       labelInput.style.cssText = INPUT_STYLE;
 
       panel.appendChild(lbl);
@@ -544,7 +545,7 @@
               return;
             }
             saveSnapshot();
-            cy.add({ group: "edges", data: { id: "e" + node.id() + "_self_" + Date.now(), source: node.id(), target: node.id(), label: "1" } });
+            cy.add({ group: "edges", data: { id: "e" + node.id() + "_self_" + Date.now(), source: node.id(), target: node.id(), label: "" } });
             syncGraphData();
           },
         },
@@ -589,7 +590,7 @@
               warn("A self-loop already exists on state <b>" + (node.data("name") || node.id()) + "</b>.");
             } else {
               saveSnapshot();
-              cy.add({ group: "edges", data: { id: "e" + node.id() + "_self_" + Date.now(), source: node.id(), target: node.id(), label: "1" } });
+              cy.add({ group: "edges", data: { id: "e" + node.id() + "_self_" + Date.now(), source: node.id(), target: node.id(), label: "" } });
               syncGraphData();
             }
             edgeSource.removeClass("edge-source");
@@ -602,7 +603,7 @@
               warn("A transition from <b>" + (edgeSource.data("name") || srcId) + "</b> to <b>" + (node.data("name") || tgtId) + "</b> already exists.");
             } else {
               saveSnapshot();
-              cy.add({ group: "edges", data: { id: "e" + srcId + "_" + tgtId + "_" + Date.now(), source: srcId, target: tgtId, label: "1" } });
+              cy.add({ group: "edges", data: { id: "e" + srcId + "_" + tgtId + "_" + Date.now(), source: srcId, target: tgtId, label: "" } });
               syncGraphData();
             }
             edgeSource.removeClass("edge-source");
@@ -771,7 +772,7 @@
         .filter((e) => !e.data("phantom"))
         .filter((e) => !(e.data("label") || "").trim());
       if (unlabelled.length > 0) {
-        return "Every transition needs a boolean label (e.g. a, a & !b, or 1). Some are empty.";
+        return "Every transition needs a symbol label (e.g. a, or a,b). Some are empty.";
       }
       return null;
     }

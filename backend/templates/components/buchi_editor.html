@@ -6,8 +6,9 @@
   fixed automaton for a buchi_word exercise. Each instance is independent; give
   each a distinct `id` if more than one appears on a page.
 
-  The editor keeps a hidden <input name="{input_name}"> synced with the
-  serialized automaton (phantom-stripped cy.json()), so placing this inside a
+  Transition labels are alphabet symbols (`a`) or comma-sets (`a,b`), not boolean
+  propositions. The editor keeps a hidden <input name="{input_name}"> synced with
+  the serialized automaton (phantom-stripped cy.json()), so placing this inside a
   <form> submits the drawing with no extra wiring — the shape
   apps/checker/buchi.py:build_buchi consumes.
 

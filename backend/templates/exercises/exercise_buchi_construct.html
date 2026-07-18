@@ -16,10 +16,11 @@
             <p class="text-text-secondary text-sm mt-2">
                 Draw a Büchi automaton that accepts exactly the language of the target formula.
                 Double-click the canvas to add a state, use the edge tool to connect states and press
-                <span class="font-mono text-text-primary">L</span> to label a transition with a boolean
-                expression, <span class="font-mono text-text-primary">I</span> to mark an initial state
+                <span class="font-mono text-text-primary">L</span> to label a transition with a symbol
+                (or a set like <span class="font-mono text-text-primary">a,b</span>),
+                <span class="font-mono text-text-primary">I</span> to mark an initial state
                 (you may have more than one), and <span class="font-mono text-text-primary">A</span> to
-                mark an accepting state (double ring).
+                mark an accepting state (double ring). Each step of a word is exactly one symbol.
             </p>
             {% if declared_aps %}
             <div class="flex items-center gap-2 mt-3">
