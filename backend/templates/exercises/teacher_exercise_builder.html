@@ -47,15 +47,15 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-[38%_62%] gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-[38%_62%] gap-8">
 
-            <div>
+            <div class="min-w-0">
                 <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">EXERCISE DETAILS</div>
 
                 <div class="mb-6">
                     <label class="block text-[13px] text-text-primary mb-2">Exercise Type</label>
                     <input type="hidden" name="exercise_type" id="type-input" value="{{ exercise_type }}" />
-                    <div class="flex gap-2" id="type-toggle">
+                    <div class="flex flex-wrap gap-2" id="type-toggle">
                         <button type="button" data-type="model_check" {% if type_locked %}disabled{% endif %}
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
                             Formalise a Property
@@ -96,7 +96,7 @@
                 <div class="mb-6">
                     <label class="block text-[13px] text-text-primary mb-2">Difficulty</label>
                     <input type="hidden" name="difficulty" id="difficulty-input" value="{% if prefill %}{{ prefill.difficulty }}{% endif %}" />
-                    <div class="flex gap-2" id="difficulty-toggle">
+                    <div class="flex flex-wrap gap-2" id="difficulty-toggle">
                         {% for level in difficulties %}
                         <button type="button" data-difficulty="{{ level }}"
                             class="difficulty-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">
@@ -142,7 +142,7 @@
                 </div>
             </div>
 
-            <div>
+            <div class="min-w-0">
                 <div data-type-section="model_check path_exhibit judge">
                     <div class="flex items-center justify-between mb-5">
                         <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">KRIPKE STRUCTURE</div>
