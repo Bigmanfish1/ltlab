@@ -100,6 +100,8 @@ document.addEventListener('DOMContentLoaded', () => {
             textInput: '#trace-text',
             symbolBar: '#trace-symbols',
             stateBar: '#trace-states',
+            undoBtn: '#trace-undo',
+            resetBtn: '#trace-reset',
         });
         document.getElementById('trace-undo').addEventListener('click', () => picker.undo());
         document.getElementById('trace-reset').addEventListener('click', () => picker.reset());

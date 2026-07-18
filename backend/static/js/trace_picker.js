@@ -62,6 +62,8 @@
     const cycleInput = document.querySelector(config.cycleInput);
     const readoutEl = config.readout ? document.querySelector(config.readout) : null;
     const textInput = config.textInput ? document.querySelector(config.textInput) : null;
+    const undoBtn = config.undoBtn ? document.querySelector(config.undoBtn) : null;
+    const resetBtn = config.resetBtn ? document.querySelector(config.resetBtn) : null;
 
     const styles = cy.style().json().concat(PICKER_STYLES);
     cy.style().fromJson(styles).update();
@@ -105,7 +107,21 @@
       if (textInput && document.activeElement !== textInput) {
         textInput.value = canonicalText();
       }
+      updateControls();
       if (config.onChange) config.onChange(getState());
+    }
+
+    // Undo/Reset only do something once the path has a state — reflect that.
+    function updateControls() {
+      const active = path.length > 0;
+      [undoBtn, resetBtn].forEach((b) => {
+        if (!b) return;
+        b.disabled = !active;
+        b.classList.toggle("text-text-primary", active);
+        b.classList.toggle("text-text-secondary", !active);
+        b.classList.toggle("opacity-50", !active);
+        b.classList.toggle("cursor-not-allowed", !active);
+      });
     }
 
     function renderReadout(parts) {
