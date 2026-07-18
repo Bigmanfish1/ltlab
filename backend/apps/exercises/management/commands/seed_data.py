@@ -228,16 +228,18 @@ BUILD_KRIPKE_EXERCISE = {
     ],
 }
 
-# Draw-a-Büchi-automaton exercise (MCL5 p.17/p.19). Target = "a infinitely often".
+# Draw-a-Büchi-automaton exercise (MCL5 p.17). Alphabet Σ={a,b} of exclusive
+# symbols; target = "b infinitely often" (G F b).
 BUCHI_CONSTRUCT_EXERCISE = {
-    "title": "Draw an automaton for “a infinitely often”",
+    "title": "Draw an automaton for “b infinitely often”",
     "description": (
-        "Draw a Büchi automaton over the alphabet {a} that accepts exactly the "
-        "words in which a holds infinitely often — the language of G F a."
+        "Draw a Büchi automaton over the alphabet Σ = {a, b} that accepts exactly "
+        "the words in which the symbol b occurs infinitely often — the language "
+        "of G F b. Each step of a word is exactly one symbol."
     ),
     "difficulty": "intermediate",
-    "declared_aps": ["a"],
-    "target_formula": "G F a",
+    "declared_aps": ["a", "b"],
+    "target_formula": "G F b",
 }
 
 
