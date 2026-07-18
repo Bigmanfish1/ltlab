@@ -228,6 +228,18 @@ BUILD_KRIPKE_EXERCISE = {
     ],
 }
 
+# Draw-a-Büchi-automaton exercise (MCL5 p.17/p.19). Target = "a infinitely often".
+BUCHI_CONSTRUCT_EXERCISE = {
+    "title": "Draw an automaton for “a infinitely often”",
+    "description": (
+        "Draw a Büchi automaton over the alphabet {a} that accepts exactly the "
+        "words in which a holds infinitely often — the language of G F a."
+    ),
+    "difficulty": "intermediate",
+    "declared_aps": ["a"],
+    "target_formula": "G F a",
+}
+
 
 class Command(BaseCommand):
     help = "Seed a minimal dataset for local development (teacher, students, modules, attempts)."
@@ -392,6 +404,23 @@ class Command(BaseCommand):
             if part.hints != hints:
                 part.hints = hints
                 part.save(update_fields=["hints"])
+
+        Exercise.objects.get_or_create(
+            title=BUCHI_CONSTRUCT_EXERCISE["title"],
+            topic=ltl_topic,
+            defaults={
+                "description": BUCHI_CONSTRUCT_EXERCISE["description"],
+                "difficulty": BUCHI_CONSTRUCT_EXERCISE["difficulty"],
+                "hint": "",
+                "is_published": True,
+                "ever_published": True,
+                "position": 5,
+                "exercise_type": "buchi_construct",
+                "declared_aps": BUCHI_CONSTRUCT_EXERCISE["declared_aps"],
+                "target_formula": BUCHI_CONSTRUCT_EXERCISE["target_formula"],
+                "allowed_operators": list(BUILDER_OPERATORS),
+            },
+        )
 
         created = 0
         for student_idx, rows in ATTEMPTS:
