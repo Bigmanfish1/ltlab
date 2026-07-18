@@ -12,7 +12,12 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.operators import disallowed_operators
-from apps.checker.tasks import run_equivalence_check, run_ltl_check, run_trace_check
+from apps.checker.tasks import (
+    run_equivalence_check,
+    run_ltl_check,
+    run_model_solvable_check,
+    run_trace_check,
+)
 from apps.checker.views import MAX_FORMULA_CHARS, build_result_context, error_response
 
 from .constants import (
@@ -107,6 +112,8 @@ def exercise_canvas(request, exercise_id):
         return _part_canvas(request, exercise, "exercises/exercise_path.html")
     if exercise.exercise_type == "judge":
         return _part_canvas(request, exercise, "exercises/exercise_judge.html")
+    if exercise.exercise_type == "build_kripke":
+        return _build_kripke_canvas(request, exercise)
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
@@ -158,6 +165,25 @@ def _part_canvas(request, exercise, template, **extra):
         **extra,
     }
     return render(request, template, context)
+
+
+def _build_kripke_canvas(request, exercise):
+    """Student page for build_kripke — an editable Kripke editor plus the list
+    of formulas the built model must satisfy. One 'Check Model' submit grades
+    every requirement at once (submit_kripke)."""
+    part_rows = _part_rows(exercise, request.profile)
+    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
+    context = {
+        "exercise": exercise,
+        "exercise_number": exercise_number,
+        "part_rows": part_rows,
+        "declared_aps": list(exercise.declared_aps or []),
+        "is_completed": bool(part_rows) and all(r["solved"] for r in part_rows),
+        "prev_exercise": prev_exercise,
+        "next_exercise": next_exercise,
+        "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
+    }
+    return render(request, "exercises/exercise_build_kripke.html", context)
 
 
 @supabase_login_required
@@ -220,6 +246,65 @@ def submit_formula(request, exercise_id):
     if is_correct:
         response["HX-Trigger"] = "exerciseSolved"
     return response
+
+
+def _grade_constraint(graph, formula):
+    """Grade one required formula against the student's graph.
+
+    Returns (holds, message, trace). A formula the student's model never
+    exercises (unknown proposition, deadlock, etc.) raises ValueError in the
+    engine — here that is the student's model failing the requirement, not a
+    system fault, so it comes back as holds=False with the reason."""
+    try:
+        result = run_ltl_check(graph, formula)
+    except ValueError as exc:
+        return False, str(exc), None
+    if result["result"] == "satisfied":
+        return True, "", None
+    return False, "Your model has a path that violates this requirement.", result.get("trace")
+
+
+@supabase_login_required
+@require_POST
+def submit_kripke(request, exercise_id):
+    """Grade a build_kripke submission: model-check every required formula
+    against the student's own graph. Correct := all requirements hold (M ⊨A φ).
+
+    Records one attempt per requirement (part) so completion and analytics
+    reuse the existing per-part machinery; a single graph grades them all."""
+    exercise = get_object_or_404(published_exercises(), id=exercise_id)
+    if exercise.exercise_type != "build_kripke":
+        return error_response(request, "This exercise is not a build-a-model task.")
+
+    try:
+        graph = json.loads(request.POST.get("graph_data") or "")
+    except json.JSONDecodeError:
+        return error_response(request, "The Kripke structure could not be read.")
+    if not isinstance(graph, dict) or not graph.get("elements", {}).get("nodes"):
+        return error_response(request, "Draw a Kripke structure before checking.")
+
+    results = []
+    all_ok = True
+    for i, part in enumerate(exercise.parts.all(), start=1):
+        holds, message, trace = _grade_constraint(graph, part.formula)
+        all_ok = all_ok and holds
+        Attempt.objects.create(
+            exercise=exercise,
+            student=request.profile,
+            part=part,
+            answer={"graph": graph},
+            is_correct=holds,
+            hints_used=_clamped_hints(request, part.hints),
+        )
+        results.append({
+            "number": i, "formula": part.formula,
+            "ok": holds, "message": message, "trace": trace,
+        })
+
+    response = render(request, "exercises/kripke_result.html", {
+        "results": results, "all_ok": all_ok,
+    })
+    return _completion_trigger(response, request, exercise)
 
 
 def _part_result(request, part, status, message):
@@ -634,10 +719,21 @@ def test_formula(request):
     graph = payload.get("graph")
     formula = str(payload.get("formula") or "").strip()
     mode = payload.get("mode")
-    if mode not in ("satisfiable", "holds"):
+    if mode not in ("satisfiable", "holds", "solvable"):
         return JsonResponse({"ok": False, "error": "Unknown test mode."})
     if not formula:
         return JsonResponse({"ok": False, "error": "Enter a formula to test."})
+    # build_kripke has no memo graph — the student supplies it — so "solvable"
+    # asks only whether some model could satisfy this requirement at all
+    if mode == "solvable":
+        declared_aps = payload.get("declared_aps")
+        if not isinstance(declared_aps, list):
+            declared_aps = []
+        try:
+            solvable = run_model_solvable_check([formula], declared_aps)["solvable"]
+        except ValueError as exc:
+            return JsonResponse({"ok": False, "error": str(exc)})
+        return JsonResponse({"ok": True, "result": "solvable" if solvable else "unsolvable"})
     if not isinstance(graph, dict) or not graph:
         return JsonResponse({"ok": False, "error": "Draw a Kripke structure first."})
     try:
