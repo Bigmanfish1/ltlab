@@ -21,7 +21,7 @@
         <div class="h-full bg-accent-lime transition-all duration-300" style="width: {{ overall_progress }}%;"></div>
     </div>
 
-    <div class="grid grid-cols-4 gap-4 mb-16">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
         {% for module in modules %}
         <a 
             href="{% if module.status != 'locked' %}#{% else %}javascript:void(0){% endif %}" 
@@ -51,7 +51,7 @@
         {% endfor %}
     </div>
 
-    <div class="grid grid-cols-3 border-t border-border-primary pt-6">
+    <div class="grid grid-cols-1 sm:grid-cols-3 border-t border-border-primary pt-6">
         <div>
             <div class="font-mono text-[11px] text-text-secondary tracking-[0.12em] mb-2">
                 EXERCISES SOLVED

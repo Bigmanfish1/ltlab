@@ -10,7 +10,7 @@
     </h1>
     <div class="text-sm text-text-secondary mb-10">Here's how your class is doing.</div>
 
-    <div class="grid grid-cols-3 gap-4 mb-12">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
         {% for stat in stats %}
         <{% if stat.href %}a href="{{ stat.href }}"{% else %}div{% endif %} class="block bg-bg-secondary border border-border-primary p-6 rounded {% if stat.href %}hover:border-accent-orange transition-colors{% endif %}">
             <div class="font-mono text-[11px] text-text-secondary tracking-[0.12em] mb-3">{{ stat.label }}</div>
@@ -24,7 +24,7 @@
         {% endfor %}
     </div>
 
-    <div class="grid grid-cols-[65%_35%] gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-[65%_35%] gap-8">
         <div>
             <div class="text-[13px] text-text-secondary tracking-[0.12em] mb-4">RECENT ACTIVITY</div>
             <div>
@@ -34,7 +34,7 @@
                         {{ item.initials }}
                     </div>
                     <span class="w-1.5 h-1.5 rounded-full {% if item.type == 'done' %}bg-accent-lime{% else %}bg-accent-orange{% endif %}"></span>
-                    <div class="flex-1 text-[13px] text-text-primary">{{ item.text }}</div>
+                    <div class="flex-1 min-w-0 text-[13px] text-text-primary">{{ item.text }}</div>
                     <div class="text-xs text-text-secondary font-mono">{{ item.time }}</div>
                 </a>
                 {% endfor %}

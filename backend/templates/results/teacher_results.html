@@ -14,7 +14,7 @@
         </div>
 
         <!-- Metric cards -->
-        <div class="grid grid-cols-4 gap-4 mb-12">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
             {% for metric in metrics %}
             <div class="bg-bg-secondary border border-border-primary rounded p-6">
                 <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-3">{{ metric.label }}</div>
@@ -24,7 +24,7 @@
         </div>
 
         <!-- Left column (module completion + misconceptions) · Right column (struggled) -->
-        <div class="grid grid-cols-[62%_38%] gap-8 mb-12">
+        <div class="grid grid-cols-1 lg:grid-cols-[62%_38%] gap-8 mb-12">
 
             <!-- LEFT -->
             <div class="space-y-12">
@@ -52,7 +52,7 @@
                         {% for item in misconceptions %}
                         <div class="flex items-center gap-4 py-4 border-b border-border-primary last:border-b-0">
                             <span class="font-mono text-[13px] text-text-primary w-44 shrink-0">{{ item.label }}</span>
-                            <span class="flex-1 text-[13px] text-text-secondary">{{ item.description }}</span>
+                            <span class="flex-1 min-w-0 text-[13px] text-text-secondary">{{ item.description }}</span>
                             <span class="font-mono text-[15px] text-accent-orange font-bold shrink-0">{{ item.percentage }}%</span>
                         </div>
                         {% endfor %}
