@@ -782,7 +782,9 @@ def persist_exercise(exercise, form, graph, publishing):
     exercise.hint = next((h for h in global_hints if h), "")
     exercise.allowed_operators = form["allowed_operators"]
     exercise.declared_aps = form["declared_aps"]
-    exercise.kripke_structure = graph
+    # build_kripke has no teacher memo — the student supplies the graph — so
+    # never persist the (hidden) builder editor's contents for this type
+    exercise.kripke_structure = None if exercise.exercise_type == "build_kripke" else graph
     exercise.is_published = publishing
     if publishing:
         exercise.ever_published = True
