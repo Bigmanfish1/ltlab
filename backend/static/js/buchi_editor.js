@@ -145,7 +145,9 @@
     const editable = config.editable !== false;
     const useKeyboard = config.keyboard !== false && editable;
     const fitOnLoad = config.fitOnLoad !== false;
-    const elements = config.elements && config.elements.length ? config.elements : DEFAULT_ELEMENTS;
+    // An explicit array (even empty) is honoured, so a caller can start blank;
+    // only a wholly absent `elements` falls back to the demo automaton.
+    const elements = Array.isArray(config.elements) ? config.elements : DEFAULT_ELEMENTS;
 
     let currentTool = "node";
     let edgeSource = null;

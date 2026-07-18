@@ -214,7 +214,9 @@ def _buchi_construct_canvas(request, exercise):
         "exercise": exercise,
         "exercise_number": exercise_number,
         "declared_aps": list(exercise.declared_aps or []),
-        "elements_json": _elements_json(last_automaton),
+        # start blank for a fresh student (the editor's demo is an answer-shaped
+        # automaton); restore their saved drawing on return
+        "elements_json": _elements_json(last_automaton) or "[]",
         "is_completed": Attempt.objects.filter(
             exercise=exercise, student=request.profile, is_correct=True
         ).exists(),
