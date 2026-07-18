@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ exercise.title }} - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<div class="min-h-screen bg-bg-primary">
+    {% include "header.html" %}
+    {% include "components/exercise_header.html" %}
+
+    <div class="max-w-[1280px] mx-auto px-12 py-8">
+        <div class="mb-6">
+            <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">TASK</h2>
+            <p class="text-text-primary text-base leading-relaxed">{{ exercise.description }}</p>
+            <p class="text-text-secondary text-sm mt-2">
+                Build a Kripke structure whose <em>every</em> path satisfies the requirements on the right.
+                Double-click the canvas to add a state, use the edge tool to connect states, and press
+                <span class="font-mono text-text-primary">L</span> to label a state with propositions and
+                <span class="font-mono text-text-primary">I</span> to mark the initial state. Every state
+                needs at least one outgoing transition.
+            </p>
+            {% if declared_aps %}
+            <div class="flex items-center gap-2 mt-3">
+                <span class="font-mono text-[11px] text-text-secondary tracking-[0.12em]">PROPOSITIONS</span>
+                {% for ap in declared_aps %}
+                <span class="font-mono text-[11px] px-2 py-1 bg-bg-secondary border border-border-secondary text-text-primary rounded">{{ ap }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-8">
+            <div>
+                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR KRIPKE MODEL</h2>
+                <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex" style="height: 460px;">
+                    {% include "components/kripke_editor.html" with id="build" input_name="graph_data" height="460px" %}
+                </div>
+                <div id="build-warning" class="mt-3 hidden"></div>
+            </div>
+
+            <div>
+                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">REQUIREMENTS</h2>
+                <div class="space-y-3 mb-5">
+                    {% for row in part_rows %}
+                    <div class="bg-bg-secondary border {% if row.solved %}border-accent-lime{% else %}border-border-primary{% endif %} rounded p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">REQUIREMENT {{ row.number }}</span>
+                            {% if row.solved %}
+                            <span class="font-mono text-[11px] text-accent-lime">✓ HOLDS</span>
+                            {% endif %}
+                        </div>
+                        <div class="font-mono text-base text-text-primary">M ⊨ {{ row.part.formula }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <button type="button" id="check-model-btn"
+                    hx-post="{% url 'submit_kripke' exercise.id %}"
+                    hx-target="#model-result"
+                    hx-swap="innerHTML"
+                    hx-include="#build-graph-data"
+                    hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                    class="w-full px-5 py-2.5 bg-accent-orange hover:opacity-90 transition-opacity rounded text-sm font-medium text-text-primary">
+                    Check Model
+                </button>
+
+                <div id="model-result" class="mt-4"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('check-model-btn');
+
+    function editor() {
+        return (window.KripkeEditors || {})['build'];
+    }
+
+    function showWarning(msg) {
+        const box = document.getElementById('build-warning');
+        box.innerHTML = '<div class="flex items-start gap-2 p-3 bg-bg-primary border border-border-secondary rounded">'
+            + '<span class="font-mono text-xs text-text-secondary shrink-0">! CHECK</span>'
+            + '<span class="text-xs text-text-primary">' + msg + '</span></div>';
+        box.classList.remove('hidden');
+    }
+
+    // Pre-submit structural validation, mirroring the sandbox: catch an
+    // incomplete model (no initial state, a deadlock state) before the round-trip.
+    btn.addEventListener('htmx:beforeRequest', (e) => {
+        const ed = editor();
+        if (!ed) return;
+        const error = ed.validateStructure();
+        if (error) {
+            e.preventDefault();
+            showWarning(error);
+        } else {
+            document.getElementById('build-warning').classList.add('hidden');
+        }
+    });
+
+    let warnTimer = null;
+    document.addEventListener('kripke:warn', (e) => {
+        if (!(e.detail && e.detail.html)) return;
+        showWarning(e.detail.html);
+        clearTimeout(warnTimer);
+        warnTimer = setTimeout(() => document.getElementById('build-warning').classList.add('hidden'), 3000);
+    });
+
+    document.body.addEventListener('exerciseSolved', () => {
+        setTimeout(() => location.reload(), 1400);
+    });
+});
+</script>
+{% endblock %}
