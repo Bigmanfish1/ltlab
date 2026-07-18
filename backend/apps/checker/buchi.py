@@ -1,11 +1,16 @@
 """Grade Büchi-automaton exercises (MCL5 p.13-19).
 
+The alphabet Σ is a set of atomic, mutually-exclusive SYMBOLS (MCL5 p.17-19):
+exactly one symbol occurs at each word position. A transition is labelled with a
+symbol (`a`) or a comma-set of symbols (`a,b` = "on a or on b"), never a boolean
+proposition guard. Each symbol is compiled to a one-hot conjunction over Σ — for
+Σ={a,b,c}, `a` becomes `a & !b & !c` — so SPOT's propositional automata operate on
+exactly one symbol per step and language equivalence over 2^AP coincides with the
+symbol-alphabet language (both automata reject any non-one-hot letter).
+
 Two student tasks share this engine. buchi_construct grades a drawn automaton
-against a target LTL formula by language equivalence (spot.are_equivalent vs
-spot.translate(target, 'BA', 'sbacc')). buchi_word grades a typed lasso word
-against a fixed automaton by membership (spot.contains). The automaton is
-Cytoscape JSON: nodes carry `initial`/`accepting`, edges carry a boolean-
-expression `label` over the declared alphabet.
+against a target LTL formula by equivalence to `translate(target) ∩ one-hot`.
+buchi_word grades a typed lasso word (one symbol per step) by membership.
 
 Error contract mirrors traces.py: ValueError is a teacher/system fault (a
 malformed label, an over-cap or ill-formed automaton, an unparseable target).
@@ -13,15 +18,21 @@ A wrong student automaton is a False return; a rejected word is a user-facing
 message — neither is an exception.
 """
 
+import re
+
 from .engine import _normalize_formula, _require_spot
 
 try:
     import spot  # type: ignore[import]
+    import buddy  # type: ignore[import]
 except ImportError:  # pragma: no cover - mirrors engine's optional import
     spot = None
+    buddy = None
 
 MAX_BUCHI_STATES = 60
 MAX_BUCHI_EDGES = 120
+
+_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _real_elements(automaton_json):
@@ -37,44 +48,51 @@ def _real_elements(automaton_json):
     return nodes, edges
 
 
-def _parse_label(label, declared_set):
-    """A boolean edge-label string → validated spot.formula. ValueError on bad."""
-    text = (label or "").strip()
-    if not text:
-        raise ValueError(
-            "A transition has no label — label every edge with a boolean "
-            "expression over the alphabet (or 'true')."
-        )
-    try:
-        f = spot.formula(_normalize_formula(text))
-    except (SyntaxError, RuntimeError) as exc:
-        raise ValueError(f"Invalid transition label '{label}': {exc}") from exc
-    if not f.is_boolean():
-        raise ValueError(
-            f"Transition label '{label}' is not a boolean expression — "
-            "temporal operators are not allowed on edges."
-        )
-    undeclared = {ap.ap_name() for ap in spot.atomic_prop_collect(f)} - declared_set
-    if undeclared:
-        names = ", ".join(sorted(undeclared))
-        raise ValueError(
-            f"Transition label '{label}' uses proposition(s) not in the "
-            f"alphabet: {names}."
-        )
-    return f
+def _onehot_terms(symbols):
+    """One-hot boolean term per symbol: `a` → `(a & !b & !c)` over Σ={a,b,c}."""
+    terms = {}
+    for s in symbols:
+        conj = [s] + [f"!{o}" for o in symbols if o != s]
+        terms[s] = "(" + " & ".join(conj) + ")"
+    return terms
 
 
-def build_buchi(automaton_json, declared_aps):
+def _symbol_guard(label, symbols, g):
+    """A symbol / comma-set edge label → its one-hot BDD guard. ValueError on bad."""
+    tokens = [t.strip() for t in (label or "").split(",") if t.strip()]
+    if not tokens:
+        raise ValueError(
+            "A transition has no label — label it with a symbol (e.g. a) "
+            "or a set (e.g. a,b)."
+        )
+    guard = buddy.bddfalse
+    for t in tokens:
+        if t not in symbols:
+            raise ValueError(
+                f"Transition label '{label}' uses '{t}', which is not in the "
+                f"alphabet {{{', '.join(symbols)}}}."
+            )
+        term = buddy.bddtrue
+        for s in symbols:
+            v = buddy.bdd_ithvar(g.register_ap(s))
+            term = term & (v if s == t else -v)
+        guard = guard | term
+    return guard
+
+
+def build_buchi(automaton_json, symbols):
     """Compile the automaton JSON into a state-based Büchi twa_graph.
 
-    Multiple initial states are allowed (Büchi I⊆Q): SPOT's set_init_state
-    takes only one, so a fresh initial state is synthesized whose out-edges copy
-    every declared-initial state's out-edges. It is visited once, so it does not
-    change which states are seen infinitely often — the acceptance is preserved.
+    Edge labels are symbol / comma-set strings over Σ (`symbols`), compiled to
+    one-hot guards. Multiple initial states are allowed (Büchi I⊆Q): SPOT's
+    set_init_state takes only one, so a fresh initial state is synthesized whose
+    out-edges copy every declared-initial state's out-edges. It is visited once,
+    so it does not change which states are seen infinitely often.
     """
     _require_spot()
     if not isinstance(automaton_json, dict):
         raise ValueError("The automaton could not be read.")
+    symbols = list(symbols or [])
 
     nodes, edges = _real_elements(automaton_json)
     if not nodes:
@@ -90,11 +108,10 @@ def build_buchi(automaton_json, declared_aps):
             f"at most {MAX_BUCHI_EDGES} are supported."
         )
 
-    declared_set = set(declared_aps or [])
     g = spot.make_twa_graph()
     g.set_buchi()
-    for ap in declared_aps or []:
-        g.register_ap(ap)
+    for s in symbols:
+        g.register_ap(s)
 
     index = {n["data"]["id"]: g.new_state() for n in nodes}
 
@@ -108,15 +125,14 @@ def build_buchi(automaton_json, declared_aps):
         src, tgt = d.get("source"), d.get("target")
         if src not in index or tgt not in index:
             raise ValueError("A transition refers to a missing state.")
-        cond = spot.formula_to_bdd(_parse_label(d.get("label"), declared_set), g.get_dict(), g)
+        guard = _symbol_guard(d.get("label"), symbols, g)
         # state-based acceptance: an accepting state's out-edges carry mark 0
         acc = [0] if src in accepting_ids else []
-        g.new_edge(index[src], index[tgt], cond, acc)
+        g.new_edge(index[src], index[tgt], guard, acc)
 
     if len(initial) == 1:
         g.set_init_state(index[initial[0]["data"]["id"]])
     else:
-        # snapshot before adding, so appending synth edges cannot invalidate iteration
         copies = [
             (e.dst, e.cond, e.acc)
             for init_node in initial
@@ -130,6 +146,13 @@ def build_buchi(automaton_json, declared_aps):
     return g
 
 
+def _onehot_automaton(symbols):
+    """Automaton accepting exactly the words with one symbol of Σ at every step."""
+    terms = _onehot_terms(symbols)
+    formula = "G(" + " | ".join(terms[s] for s in symbols) + ")"
+    return spot.translate(formula, "BA", "sbacc")
+
+
 def _translate_target(target):
     try:
         return spot.translate(_normalize_formula(target), "BA", "sbacc")
@@ -137,46 +160,78 @@ def _translate_target(target):
         raise ValueError(f"Invalid target formula: {exc}") from exc
 
 
-def target_automaton_states(target):
-    """Number of states in the target LTL's Büchi automaton (teacher feedback)."""
+def _reference(target, symbols):
+    """The target language restricted to the one-symbol-per-step alphabet."""
+    return spot.product(_translate_target(target), _onehot_automaton(symbols))
+
+
+def target_automaton_states(target, symbols):
+    """State count of the (one-hot-restricted) target automaton — teacher feedback."""
     _require_spot()
-    return _translate_target(target).num_states()
+    return _reference(target, symbols).num_states()
 
 
-def check_buchi_equivalence(automaton_json, target, declared_aps):
-    """True iff the drawn automaton has the same language as the target LTL."""
+def check_buchi_equivalence(automaton_json, target, symbols):
+    """True iff the drawn automaton's language equals the target over Σ."""
     _require_spot()
-    student = build_buchi(automaton_json, declared_aps)
-    return spot.are_equivalent(student, _translate_target(target))
+    student = build_buchi(automaton_json, symbols)
+    return spot.are_equivalent(student, _reference(target, symbols))
 
 
-def is_deterministic(automaton_json, declared_aps):
+def is_deterministic(automaton_json, symbols):
     """True iff the drawn automaton is deterministic (spot.is_deterministic)."""
     _require_spot()
-    return spot.is_deterministic(build_buchi(automaton_json, declared_aps))
+    return spot.is_deterministic(build_buchi(automaton_json, symbols))
 
 
-def word_accepted(automaton_json, word_str, declared_aps):
+def _symbolic_word_to_props(word_str, symbols):
+    """Rewrite a symbol lasso word to a propositional one for spot.parse_word.
+
+    `a; b; cycle{a}` over Σ={a,b} → `(a & !b); (b & !a); cycle{(a & !b)}`.
+    Returns (prop_word, None) or (None, user_message) if a token is not a symbol.
+    """
+    terms = _onehot_terms(symbols)
+    problem = {}
+
+    def repl(m):
+        tok = m.group(0)
+        if tok == "cycle":
+            return tok
+        if tok not in symbols:
+            problem["msg"] = (
+                f"'{tok}' is not in the alphabet {{{', '.join(symbols)}}} — "
+                "a word uses one symbol per step."
+            )
+            return tok
+        return terms[tok]
+
+    rewritten = _IDENT_RE.sub(repl, word_str)
+    if problem:
+        return None, problem["msg"]
+    return rewritten, None
+
+
+def word_accepted(automaton_json, word_str, symbols):
     """Grade a typed lasso word against the automaton → (accepted, message).
 
-    The automaton is teacher data (build_buchi raises on a bad one). The word is
-    student data: a parse failure, missing cycle, or off-alphabet letter comes
-    back as (False, message), never an exception.
+    The word is one symbol per step, e.g. `a; b; cycle{a}`. The automaton is
+    teacher data (build_buchi raises on a bad one); the word is student data — a
+    parse failure, missing cycle, or off-alphabet symbol comes back as
+    (False, message), never an exception.
     """
     _require_spot()
-    aut = build_buchi(automaton_json, declared_aps)
+    symbols = list(symbols or [])
+    aut = build_buchi(automaton_json, symbols)
     text = (word_str or "").strip()
     if not text:
-        return False, "Enter a word — for example  a; cycle{a}."
+        return False, "Enter a word — for example  a; cycle{b}."
     if "cycle{" not in text:
         return False, "A Büchi word needs a repeating part: write it as prefix; cycle{...}."
+    prop_word, err = _symbolic_word_to_props(text, symbols)
+    if err:
+        return False, err
     try:
-        word = spot.parse_word(_normalize_formula(text), aut.get_dict())
+        word = spot.parse_word(prop_word, aut.get_dict())
     except (SyntaxError, RuntimeError) as exc:
         return False, f"Could not read the word: {exc}"
-    wa = word.as_automaton()
-    undeclared = {ap.ap_name() for ap in wa.ap()} - set(declared_aps or [])
-    if undeclared:
-        names = ", ".join(sorted(undeclared))
-        return False, f"The word uses proposition(s) not in the alphabet: {names}."
-    return spot.contains(aut, wa), ""
+    return spot.contains(aut, word.as_automaton()), ""

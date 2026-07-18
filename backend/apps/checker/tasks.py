@@ -139,4 +139,4 @@ def run_buchi_target_check(target: str, declared_aps: list[str]) -> dict:
     automaton's state count for teacher feedback. Returns {"states": int}.
     """
     validate_formula_submission(target, declared_aps)
-    return {"states": target_automaton_states(target)}
+    return {"states": target_automaton_states(target, declared_aps)}
