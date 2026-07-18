@@ -39,7 +39,7 @@
                         <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Module</th>
                         <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Attempts</th>
                         <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Class Solved</th>
-                        <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Avg Tries</th>
+                        <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Avg Tries (per part)</th>
                         <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Actions</th>
                     </tr>
                 </thead>
@@ -53,6 +53,7 @@
                         <td class="px-5 py-4 text-[13px] text-text-primary">
                             <span class="inline-flex items-center gap-2">
                                 {{ ex.name }}
+                                <span class="font-mono text-[9px] tracking-[0.12em] uppercase px-1.5 py-0.5 rounded border border-border-secondary text-text-secondary whitespace-nowrap">{{ ex.type_label }}</span>
                                 {% if not ex.is_published %}
                                 <span class="font-mono text-[9px] tracking-[0.12em] uppercase px-1.5 py-0.5 rounded border border-accent-orange text-accent-orange">Draft</span>
                                 {% endif %}

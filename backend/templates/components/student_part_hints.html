@@ -1,0 +1,10 @@
+{# Per-part hint reveal for student part cards. Expects `row` (part_rows entry) and `exercise`. #}
+<div class="mt-3" data-part-hints>
+    {{ row.part.hints|json_script }}
+    <div data-hints-list class="space-y-2"></div>
+    <button type="button" data-hint-btn
+        class="mt-2 px-3 py-1.5 bg-bg-primary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-secondary">
+        Get Hint
+    </button>
+    <input type="hidden" id="hints-used-{{ row.part.id }}" name="hints_used" value="0" />
+</div>

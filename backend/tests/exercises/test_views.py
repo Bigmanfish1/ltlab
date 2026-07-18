@@ -13,7 +13,7 @@ PLAIN_STATIC = {
 
 from apps.accounts.models import Profile
 from apps.exercises import views
-from apps.exercises.models import Exercise, Topic
+from apps.exercises.models import Exercise, ExercisePart, Topic
 
 REQGRANT = {
     "elements": {
@@ -166,3 +166,269 @@ class BuilderContextTests(TeacherViewTestCase):
         )
         context = views._builder_context(ex)
         self.assertEqual(context["allowed_operators"], [])
+
+    def test_parts_prefilled_on_edit(self):
+        ex = Exercise.objects.create(
+            topic=self.topic, title="Eng", description="d", difficulty="beginner",
+            hint="", exercise_type="english_to_formula", declared_aps=["p"],
+        )
+        part = ExercisePart.objects.create(exercise=ex, prompt="always p", formula="G p")
+        context = views._builder_context(ex)
+        self.assertEqual(context["exercise_type"], "english_to_formula")
+        self.assertEqual(json.loads(context["declared_aps_json"]), ["p"])
+        self.assertEqual(
+            json.loads(context["parts_json"]),
+            [{"id": str(part.id), "prompt": "always p", "formula": "G p", "hints": []}],
+        )
+
+
+COFFEE_APS = '["coffee_chosen", "tea_chosen", "money_inserted", "coffee_delivered", "tea_delivered"]'
+COFFEE_PARTS = json.dumps([
+    {"prompt": "once in a while someone chooses tea or coffee",
+     "formula": "G F (tea_chosen | coffee_chosen)"},
+    {"prompt": "if coffee is chosen and next money is inserted coffee will be delivered",
+     "formula": "G ((coffee_chosen & X money_inserted) -> F coffee_delivered)"},
+    {"prompt": "when coffee is chosen tea will not be delivered until tea is chosen",
+     "formula": "G (coffee_chosen -> (!tea_delivered U tea_chosen))"},
+])
+
+
+@override_settings(STORAGES=PLAIN_STATIC)
+class EnglishBuilderTests(TeacherViewTestCase):
+    def _english_form(self, **overrides):
+        data = self._form(
+            exercise_type="english_to_formula", graph_data="",
+            declared_aps=COFFEE_APS, parts=COFFEE_PARTS,
+            # coffee targets use the full operator set — students must be able
+            # to enter them, else the requirements are unsolvable
+            allowed_operators='["G", "F", "X", "U", "¬", "∧", "∨", "→"]',
+        )
+        data.update(overrides)
+        return data
+
+    def test_publish_english_creates_parts(self):
+        data = self._english_form(action="publish")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 302)
+        ex = Exercise.objects.get(title="New Ex")
+        self.assertTrue(ex.is_published)
+        self.assertEqual(ex.exercise_type, "english_to_formula")
+        self.assertEqual(len(ex.declared_aps), 5)
+        formulas = list(ex.parts.values_list("formula", flat=True))
+        self.assertEqual(len(formulas), 3)
+        self.assertIn("G F (tea_chosen | coffee_chosen)", formulas)
+
+    def test_publish_english_without_aps_rejected(self):
+        data = self._english_form(action="publish", declared_aps="[]")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_english_without_parts_rejected(self):
+        data = self._english_form(action="publish", parts="[]")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_unparseable_target_rejected(self):
+        parts = json.dumps([{"prompt": "p", "formula": "G (coffee_chosen"}])
+        data = self._english_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_target_with_undeclared_ap_rejected(self):
+        parts = json.dumps([{"prompt": "p", "formula": "G espresso"}])
+        data = self._english_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_reserved_ap_name_rejected(self):
+        data = self._english_form(action="publish", declared_aps='["G", "p"]')
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_draft_english_saves_without_validation(self):
+        data = self._english_form(action="draft", declared_aps="[]", parts="[]")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Exercise.objects.get(title="New Ex").is_published)
+
+    def test_no_graph_needed_for_english_publish(self):
+        data = self._english_form(action="publish", graph_data="")
+        views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertTrue(Exercise.objects.get(title="New Ex").is_published)
+
+    def test_edit_syncs_parts_by_id(self):
+        views.exercise_builder(self._req("post", self.teacher, self._english_form(action="publish")))
+        ex = Exercise.objects.get(title="New Ex")
+        kept, dropped, _ = list(ex.parts.all())
+        edited = json.dumps([
+            {"id": str(kept.id), "prompt": "edited prompt", "formula": kept.formula},
+            {"prompt": "brand new", "formula": "F coffee_delivered"},
+        ])
+        data = self._english_form(action="publish", parts=edited)
+        views.exercise_builder(self._req("post", self.teacher, data), ex.id)
+        parts = list(ex.parts.all())
+        self.assertEqual(len(parts), 2)
+        self.assertEqual(parts[0].id, kept.id)
+        self.assertEqual(parts[0].prompt, "edited prompt")
+        self.assertEqual(parts[1].prompt, "brand new")
+        self.assertFalse(ex.parts.filter(id=dropped.id).exists())
+
+    def test_type_locked_on_edit(self):
+        views.exercise_builder(self._req("post", self.teacher, self._english_form(action="publish")))
+        ex = Exercise.objects.get(title="New Ex")
+        data = self._english_form(action="publish", exercise_type="model_check")
+        views.exercise_builder(self._req("post", self.teacher, data), ex.id)
+        ex.refresh_from_db()
+        self.assertEqual(ex.exercise_type, "english_to_formula")
+
+
+# on REQGRANT the only infinite path is (idle req grant)^ω, so grant occurs
+# infinitely often: F grant / G F idle have satisfying paths, G !grant has none
+PATH_PARTS = json.dumps([
+    {"prompt": "", "formula": "F grant"},
+    {"prompt": "", "formula": "G F idle"},
+])
+
+
+@override_settings(STORAGES=PLAIN_STATIC)
+class PathExhibitBuilderTests(TeacherViewTestCase):
+    def _path_form(self, **overrides):
+        data = self._form(exercise_type="path_exhibit", parts=PATH_PARTS)
+        data.update(overrides)
+        return data
+
+    def test_publish_with_satisfiable_formulas_creates_parts(self):
+        data = self._path_form(action="publish")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 302)
+        ex = Exercise.objects.get(title="New Ex")
+        self.assertTrue(ex.is_published)
+        self.assertEqual(ex.exercise_type, "path_exhibit")
+        self.assertEqual(ex.kripke_structure["elements"]["nodes"][0]["data"]["id"], "idle")
+        self.assertEqual(list(ex.parts.values_list("formula", flat=True)), ["F grant", "G F idle"])
+
+    def test_publish_with_unsatisfiable_formula_rejected(self):
+        parts = json.dumps([
+            {"prompt": "", "formula": "F grant"},
+            {"prompt": "", "formula": "G (!grant)"},
+        ])
+        data = self._path_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_with_unparseable_formula_rejected(self):
+        parts = json.dumps([{"prompt": "", "formula": "F (grant"}])
+        data = self._path_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_without_parts_rejected(self):
+        data = self._path_form(action="publish", parts="[]")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_without_graph_rejected(self):
+        data = self._path_form(action="publish", graph_data="")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_draft_skips_satisfiability_gate(self):
+        parts = json.dumps([{"prompt": "", "formula": "G (!grant)"}])
+        data = self._path_form(action="draft", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Exercise.objects.get(title="New Ex").is_published)
+
+    def test_type_locked_on_edit(self):
+        views.exercise_builder(self._req("post", self.teacher, self._path_form(action="publish")))
+        ex = Exercise.objects.get(title="New Ex")
+        data = self._path_form(action="publish", exercise_type="english_to_formula")
+        views.exercise_builder(self._req("post", self.teacher, data), ex.id)
+        ex.refresh_from_db()
+        self.assertEqual(ex.exercise_type, "path_exhibit")
+
+
+# REQGRANT's single run is (idle req grant)^ω, so universally:
+# G F grant holds (grant at every third position), G idle does not (position 1)
+JUDGE_PARTS = json.dumps([
+    {"prompt": "", "formula": "G F grant"},
+    {"prompt": "", "formula": "G idle"},
+])
+
+
+@override_settings(STORAGES=PLAIN_STATIC)
+class JudgeBuilderTests(TeacherViewTestCase):
+    def _judge_form(self, **overrides):
+        data = self._form(exercise_type="judge", parts=JUDGE_PARTS)
+        data.update(overrides)
+        return data
+
+    def test_publish_creates_parts_and_answer_key_warning(self):
+        request = self._req("post", self.teacher, self._judge_form(action="publish"))
+        response = views.exercise_builder(request)
+        self.assertEqual(response.status_code, 302)
+        ex = Exercise.objects.get(title="New Ex")
+        self.assertTrue(ex.is_published)
+        self.assertEqual(ex.exercise_type, "judge")
+        self.assertEqual(ex.kripke_structure["elements"]["nodes"][0]["data"]["id"], "idle")
+        self.assertEqual(
+            list(ex.parts.values_list("formula", flat=True)), ["G F grant", "G idle"]
+        )
+        warnings = [m.message for m in get_messages(request) if m.level == messages.WARNING]
+        key = " ".join(m for m in warnings if "Answer key" in m)
+        self.assertIn("G F grant", key)
+        self.assertIn("holds", key)
+        self.assertIn("does not hold", key)
+
+    def test_publish_accepts_universally_false_formula(self):
+        # G grant is false on the only run (position 0 is {idle}); judging a
+        # never-true formula IS the exercise, so there is no solvability gate
+        parts = json.dumps([{"prompt": "", "formula": "G grant"}])
+        data = self._judge_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 302)
+        ex = Exercise.objects.get(title="New Ex")
+        self.assertTrue(ex.is_published)
+        self.assertEqual(list(ex.parts.values_list("formula", flat=True)), ["G grant"])
+
+    def test_publish_unparseable_formula_rejected(self):
+        parts = json.dumps([{"prompt": "", "formula": "G (grant"}])
+        data = self._judge_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_undeclared_ap_rejected(self):
+        parts = json.dumps([{"prompt": "", "formula": "G espresso"}])
+        data = self._judge_form(action="publish", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_without_parts_rejected(self):
+        data = self._judge_form(action="publish", parts="[]")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_publish_without_graph_rejected(self):
+        data = self._judge_form(action="publish", graph_data="")
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+
+    def test_draft_with_bad_formula_saves_unpublished(self):
+        parts = json.dumps([{"prompt": "", "formula": "G (grant"}])
+        data = self._judge_form(action="draft", parts=parts)
+        response = views.exercise_builder(self._req("post", self.teacher, data))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Exercise.objects.get(title="New Ex").is_published)
