@@ -80,10 +80,8 @@ def check_equivalence(target_str: str, submitted_str: str) -> bool:
 def formulas_jointly_satisfiable(formulas: list[str], declared_aps: list[str]) -> bool:
     """True iff some model satisfies every formula at once (their conjunction).
 
-    Each formula is first validated against the caps and the declared AP list
-    (ValueError on violation). A satisfiable conjunction guarantees the
-    build-a-Kripke exercise is solvable: any word satisfying it yields a lasso
-    Kripke structure M with M ⊨A conjunction, hence M ⊨A each formula.
+    A satisfiable conjunction guarantees a build-a-Kripke exercise is solvable:
+    any word satisfying it yields a lasso Kripke structure M with M ⊨A each.
     """
     _require_spot()
     for formula_str in formulas:

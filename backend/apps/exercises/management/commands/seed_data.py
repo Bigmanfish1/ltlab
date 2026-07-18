@@ -210,10 +210,7 @@ ATTEMPTS = [
     (2, [("Grant is followed by idle", "X idle", False)]),  # s0's successors aren't both idle
 ]
 
-# Build-a-Kripke exercise (inverse of Formalise a Property; MCL3 p.27 universal
-# model checking). The student constructs a model; grading model-checks each
-# requirement (M ⊨A φ). Requirements verified jointly satisfiable via
-# run_model_solvable_check(["G F req", "G (req -> F grant)"], ["req","grant"]).
+# Build-a-Kripke exercise (MCL3 p.27). Requirements verified jointly satisfiable.
 BUILD_KRIPKE_EXERCISE = {
     "title": "Build a request–grant model",
     "description": (

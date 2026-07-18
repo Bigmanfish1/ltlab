@@ -87,8 +87,6 @@ document.addEventListener('DOMContentLoaded', () => {
         box.classList.remove('hidden');
     }
 
-    // Pre-submit structural validation, mirroring the sandbox: catch an
-    // incomplete model (no initial state, a deadlock state) before the round-trip.
     btn.addEventListener('htmx:beforeRequest', (e) => {
         const ed = editor();
         if (!ed) return;

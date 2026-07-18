@@ -91,13 +91,9 @@ def run_equivalence_check(target: str, submitted: str, declared_aps: list[str]) 
 
 
 def run_model_solvable_check(formulas: list[str], declared_aps: list[str]) -> dict:
-    """Check whether a Kripke structure can satisfy every required formula at once.
+    """Whether some Kripke structure can satisfy every required formula at once.
 
-    Backs the build_kripke publish gate and the builder's Test button: an
-    exercise is only solvable if its required formulas are jointly satisfiable.
-    Each formula is validated against the caps and the declared AP list first
-    (ValueError surfaced to the teacher).
-
-    Returns {"solvable": bool}.
+    Backs the build_kripke publish gate and the builder Test button. Raises
+    ValueError on an invalid formula. Returns {"solvable": bool}.
     """
     return {"solvable": formulas_jointly_satisfiable(formulas, declared_aps)}

@@ -168,13 +168,10 @@ def _part_canvas(request, exercise, template, **extra):
 
 
 def _build_kripke_canvas(request, exercise):
-    """Student page for build_kripke — an editable Kripke editor plus the list
-    of formulas the built model must satisfy. One 'Check Model' submit grades
-    every requirement at once (submit_kripke)."""
+    """Student page for build_kripke — editable editor plus the required formulas."""
     part_rows = _part_rows(exercise, request.profile)
     exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
-    # restore the student's most recent submission so a reload (e.g. after a
-    # solve) shows their model, not the editor's default demo graph
+    # restore the last submitted graph so a reload doesn't revert to the demo
     last = (
         Attempt.objects.filter(exercise=exercise, student=request.profile)
         .order_by("-created_at")
@@ -258,12 +255,11 @@ def submit_formula(request, exercise_id):
 
 
 def _grade_constraint(graph, formula):
-    """Grade one required formula against the student's graph.
+    """Grade one required formula against the student's graph → (holds, message, trace).
 
-    Returns (holds, message, trace). A formula the student's model never
-    exercises (unknown proposition, deadlock, etc.) raises ValueError in the
-    engine — here that is the student's model failing the requirement, not a
-    system fault, so it comes back as holds=False with the reason."""
+    Engine ValueError (e.g. a proposition the model never uses) is the model
+    failing the requirement, not a system fault — returned as holds=False.
+    """
     try:
         result = run_ltl_check(graph, formula)
     except ValueError as exc:
@@ -276,11 +272,11 @@ def _grade_constraint(graph, formula):
 @supabase_login_required
 @require_POST
 def submit_kripke(request, exercise_id):
-    """Grade a build_kripke submission: model-check every required formula
-    against the student's own graph. Correct := all requirements hold (M ⊨A φ).
+    """Model-check every required formula against the student's graph.
 
-    Records one attempt per requirement (part) so completion and analytics
-    reuse the existing per-part machinery; a single graph grades them all."""
+    Correct := all hold (M ⊨A φ). Records one attempt per part so completion
+    and analytics reuse the per-part machinery.
+    """
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     if exercise.exercise_type != "build_kripke":
         return error_response(request, "This exercise is not a build-a-model task.")
@@ -732,8 +728,7 @@ def test_formula(request):
         return JsonResponse({"ok": False, "error": "Unknown test mode."})
     if not formula:
         return JsonResponse({"ok": False, "error": "Enter a formula to test."})
-    # build_kripke has no memo graph — the student supplies it — so "solvable"
-    # asks only whether some model could satisfy this requirement at all
+    # build_kripke has no memo graph — test satisfiability instead
     if mode == "solvable":
         declared_aps = payload.get("declared_aps")
         if not isinstance(declared_aps, list):

@@ -612,9 +612,7 @@ def _validate_path_parts(form, graph, errors):
 
 
 def _validate_build_kripke_parts(form, errors):
-    """Each required formula must parse against the declared APs, and the whole
-    set must be jointly satisfiable — otherwise no Kripke structure could
-    satisfy them all and students could never solve the exercise."""
+    """Require ≥1 formula, all over the declared APs and jointly satisfiable."""
     if not form["parts"]:
         errors.append("Add at least one formula the student's model must satisfy.")
         return
@@ -691,8 +689,7 @@ def validate_exercise_form(form, exercise, publishing):
             _validate_declared_aps(form["declared_aps"], errors)
             _validate_english_parts(form, errors)
         elif exercise_type == "build_kripke":
-            # the student supplies the graph, so there is no memo to validate —
-            # instead the required formulas must be jointly satisfiable
+            # student supplies the graph; validate the required formulas instead
             _validate_declared_aps(form["declared_aps"], errors)
             _validate_build_kripke_parts(form, errors)
         elif not graph:
@@ -782,8 +779,7 @@ def persist_exercise(exercise, form, graph, publishing):
     exercise.hint = next((h for h in global_hints if h), "")
     exercise.allowed_operators = form["allowed_operators"]
     exercise.declared_aps = form["declared_aps"]
-    # build_kripke has no teacher memo — the student supplies the graph — so
-    # never persist the (hidden) builder editor's contents for this type
+    # build_kripke is student-built — never persist the builder's hidden editor
     exercise.kripke_structure = None if exercise.exercise_type == "build_kripke" else graph
     exercise.is_published = publishing
     if publishing:
