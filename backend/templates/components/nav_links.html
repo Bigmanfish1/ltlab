@@ -1,0 +1,28 @@
+{% comment %}Nav links shared by the desktop bar and the mobile dropdown. Pass link_extra for per-layout classes.{% endcomment %}
+<a href="{% url 'home' %}"
+  class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors {{ link_extra }}
+          {% if request.resolver_match.url_name == 'home' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
+    Dashboard
+</a>
+<a href="{% if request.profile and request.profile.role == 'teacher' %}{% url 'teacher_exercises' %}{% else %}{% url 'exercises' %}{% endif %}"
+  class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors {{ link_extra }}
+          {% if request.resolver_match.url_name == 'exercises' or request.resolver_match.url_name == 'teacher_exercises' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
+    Exercises
+</a>
+<a href="{% url 'sandbox' %}"
+  class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors {{ link_extra }}
+          {% if request.resolver_match.url_name == 'sandbox' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
+    Sandbox
+</a>
+<a href="{% if request.profile and request.profile.role == 'teacher' %}{% url 'results' %}{% else %}#{% endif %}"
+  class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors {{ link_extra }}
+          {% if request.resolver_match.url_name == 'results' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
+    Results
+</a>
+{% if request.profile and request.profile.role == 'teacher' %}
+<a href="{% url 'manage' %}"
+  class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors {{ link_extra }}
+          {% if request.resolver_match.url_name == 'manage' or request.resolver_match.url_name == 'exercise_builder' or request.resolver_match.url_name == 'exercise_edit' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
+    Manage
+</a>
+{% endif %}

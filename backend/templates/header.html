@@ -1,40 +1,38 @@
-  <header class="border-b border-slate-800 px-6 h-12 flex items-center justify-between bg-bg-primary">
+  <header class="relative border-b border-slate-800 px-6 h-12 flex items-center justify-between bg-bg-primary">
       <div class="font-mono text-sm font-semibold tracking-tight text-text-primary">
           LTLab
       </div>
-      <nav class="absolute left-1/2 -translate-x-1/2 flex items-center gap-8">
-          <a href="{% url 'home' %}" 
-            class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors
-                    {% if request.resolver_match.url_name == 'home' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
-              Dashboard
-          </a>
-          <a href="{% if request.profile and request.profile.role == 'teacher' %}{% url 'teacher_exercises' %}{% else %}{% url 'exercises' %}{% endif %}"
-            class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors
-                    {% if request.resolver_match.url_name == 'exercises' or request.resolver_match.url_name == 'teacher_exercises' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
-              Exercises
-          </a>
-          <a href="{% url 'sandbox' %}" 
-            class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors
-                    {% if request.resolver_match.url_name == 'sandbox' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
-              Sandbox
-          </a>
-          <a href="{% if request.profile and request.profile.role == 'teacher' %}{% url 'results' %}{% else %}#{% endif %}"
-            class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors
-                    {% if request.resolver_match.url_name == 'results' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
-              Results
-          </a>
-          {% if request.profile and request.profile.role == 'teacher' %}
-          <a href="{% url 'manage' %}"
-            class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors
-                    {% if request.resolver_match.url_name == 'manage' or request.resolver_match.url_name == 'exercise_builder' or request.resolver_match.url_name == 'exercise_edit' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
-              Manage
-          </a>
-          {% endif %}
+      <nav class="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-8">
+          {% include "components/nav_links.html" %}
       </nav>
       <div class="flex items-center gap-3">
+          <div class="hidden md:flex items-center gap-3">
+              {% if request.supabase_user %}
+              <span class="font-mono text-[11px] text-text-secondary">{{ request.supabase_user.email }}</span>
+              <form method="post" action="{% url 'accounts:logout' %}" class="flex items-center">
+                  {% csrf_token %}
+                  <button type="submit" class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-accent-orange transition-colors cursor-pointer">
+                      Logout
+                  </button>
+              </form>
+              {% else %}
+              <a href="{% url 'accounts:login' %}" class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-text-primary transition-colors">
+                  Login
+              </a>
+              {% endif %}
+          </div>
+          <button type="button" id="nav-toggle" aria-label="Menu" aria-expanded="false"
+              class="md:hidden font-mono text-lg leading-none text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
+              ☰
+          </button>
+      </div>
+  </header>
+  <div id="nav-menu" class="hidden md:hidden border-b border-slate-800 bg-bg-primary px-6 py-3 flex-col gap-3">
+      {% include "components/nav_links.html" with link_extra="block py-1" %}
+      <div class="border-t border-slate-800 pt-3 flex flex-col gap-3">
           {% if request.supabase_user %}
-          <span class="font-mono text-[11px] text-text-secondary">{{ request.supabase_user.email }}</span>
-          <form method="post" action="{% url 'accounts:logout' %}" class="flex items-center">
+          <span class="font-mono text-[11px] text-text-secondary break-all">{{ request.supabase_user.email }}</span>
+          <form method="post" action="{% url 'accounts:logout' %}">
               {% csrf_token %}
               <button type="submit" class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-accent-orange transition-colors cursor-pointer">
                   Logout
@@ -46,4 +44,16 @@
           </a>
           {% endif %}
       </div>
-  </header>
+  </div>
+  <script>
+      (function () {
+          var btn = document.getElementById('nav-toggle');
+          var menu = document.getElementById('nav-menu');
+          if (!btn || !menu) return;
+          btn.addEventListener('click', function () {
+              var open = menu.classList.toggle('hidden') === false;
+              menu.classList.toggle('flex', open);
+              btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          });
+      })();
+  </script>
