@@ -16,6 +16,7 @@ EXERCISE_TYPE_CHOICES = [
     ("judge", "Judge formulas + counterexample"),
     ("path_exhibit", "Exhibit a satisfying path"),
     ("english_to_formula", "English requirement to formula"),
+    ("build_kripke", "Build a Kripke structure that satisfies a formula"),
 ]
 
 

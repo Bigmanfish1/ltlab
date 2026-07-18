@@ -23,7 +23,9 @@ from .constants import (
 )
 from .models import Attempt, Exercise, ExercisePart, Topic
 
-BUILDER_EXERCISE_TYPES = ("model_check", "english_to_formula", "path_exhibit", "judge")
+BUILDER_EXERCISE_TYPES = (
+    "model_check", "english_to_formula", "path_exhibit", "judge", "build_kripke",
+)
 
 
 def enrolled_students():

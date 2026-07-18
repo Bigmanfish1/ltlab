@@ -16,6 +16,7 @@ EXERCISE_TYPE_BADGES = {
     "english_to_formula": "Requirements → LTL",
     "path_exhibit": "∃ Model Checking",
     "judge": "∀ Model Checking",
+    "build_kripke": "Model a Property",
 }
 
 # sample labels for the placeholder misconception panel (analytics reworking)
