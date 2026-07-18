@@ -1,0 +1,11 @@
+{% if equivalent %}
+<div class="result-flash flex items-start gap-2 p-3 bg-bg-primary border border-accent-lime rounded">
+    <span class="font-mono text-xs text-accent-lime shrink-0">✓ EQUIVALENT</span>
+    <span class="text-xs text-text-primary">Your automaton accepts exactly the language of <span class="font-mono">{{ target }}</span> — exercise complete.</span>
+</div>
+{% else %}
+<div class="result-flash flex items-start gap-2 p-3 bg-bg-primary border border-accent-orange rounded">
+    <span class="font-mono text-xs text-accent-orange shrink-0">✗ NOT YET</span>
+    <span class="text-xs text-text-primary">Your automaton's language differs from <span class="font-mono">{{ target }}</span>. Check which runs it accepts or rejects, and which states are accepting.</span>
+</div>
+{% endif %}

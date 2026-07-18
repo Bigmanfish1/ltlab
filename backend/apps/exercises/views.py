@@ -13,6 +13,7 @@ from django.views.decorators.http import require_POST
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import (
+    run_buchi_equivalence_check,
     run_equivalence_check,
     run_ltl_check,
     run_model_solvable_check,
@@ -114,6 +115,8 @@ def exercise_canvas(request, exercise_id):
         return _part_canvas(request, exercise, "exercises/exercise_judge.html")
     if exercise.exercise_type == "build_kripke":
         return _build_kripke_canvas(request, exercise)
+    if exercise.exercise_type == "buchi_construct":
+        return _buchi_construct_canvas(request, exercise)
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
@@ -193,6 +196,33 @@ def _build_kripke_canvas(request, exercise):
         "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
     }
     return render(request, "exercises/exercise_build_kripke.html", context)
+
+
+def _buchi_construct_canvas(request, exercise):
+    """Student page for buchi_construct — draw a Büchi automaton for the target."""
+    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
+    # restore the last submitted automaton so a reload keeps the student's work
+    last = (
+        Attempt.objects.filter(exercise=exercise, student=request.profile)
+        .order_by("-created_at")
+        .first()
+    )
+    last_automaton = (
+        last.answer.get("automaton") if last and isinstance(last.answer, dict) else None
+    )
+    context = {
+        "exercise": exercise,
+        "exercise_number": exercise_number,
+        "declared_aps": list(exercise.declared_aps or []),
+        "elements_json": _elements_json(last_automaton),
+        "is_completed": Attempt.objects.filter(
+            exercise=exercise, student=request.profile, is_correct=True
+        ).exists(),
+        "prev_exercise": prev_exercise,
+        "next_exercise": next_exercise,
+        "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
+    }
+    return render(request, "exercises/exercise_buchi_construct.html", context)
 
 
 @supabase_login_required
@@ -321,6 +351,54 @@ def submit_kripke(request, exercise_id):
 
     response = render(request, "exercises/kripke_result.html", {
         "results": results, "all_ok": all_ok,
+    })
+    return _completion_trigger(response, request, exercise)
+
+
+@supabase_login_required
+@require_POST
+def submit_buchi(request, exercise_id):
+    """Grade a drawn Büchi automaton against the target LTL by language equivalence.
+
+    Records one whole-exercise attempt (buchi_construct has no parts). A drawing
+    problem the client validation missed (unlabelled edge, no initial state,
+    off-alphabet label) is surfaced to the student, not a 500.
+    """
+    exercise = get_object_or_404(published_exercises(), id=exercise_id)
+    if exercise.exercise_type != "buchi_construct":
+        return error_response(request, "This exercise is not a draw-an-automaton task.")
+
+    try:
+        automaton = json.loads(request.POST.get("automaton_data") or "")
+    except json.JSONDecodeError:
+        return error_response(request, "The automaton could not be read.")
+    elements = automaton.get("elements") if isinstance(automaton, dict) else None
+    if not isinstance(elements, dict) or not elements.get("nodes"):
+        return error_response(request, "Draw an automaton before checking.")
+
+    try:
+        result = run_buchi_equivalence_check(
+            automaton, exercise.target_formula, list(exercise.declared_aps or [])
+        )
+    except ValueError as exc:
+        return error_response(request, str(exc))
+    except Exception:
+        logger.exception("run_buchi_equivalence_check failed during submission")
+        return error_response(
+            request, "Verification was stopped — the automaton could not be processed."
+        )
+
+    equivalent = result["equivalent"]
+    Attempt.objects.create(
+        exercise=exercise,
+        student=request.profile,
+        answer={"automaton": automaton},
+        is_correct=equivalent,
+        hints_used=_clamped_hints(request, exercise.hints),
+    )
+
+    response = render(request, "exercises/buchi_result.html", {
+        "equivalent": equivalent, "target": exercise.target_formula,
     })
     return _completion_trigger(response, request, exercise)
 

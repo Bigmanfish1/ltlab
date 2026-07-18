@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ exercise.title }} - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<div class="min-h-screen bg-bg-primary">
+    {% include "header.html" %}
+    {% include "components/exercise_header.html" %}
+
+    <div class="max-w-[1280px] mx-auto px-12 py-8">
+        <div class="mb-6">
+            <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">TASK</h2>
+            <p class="text-text-primary text-base leading-relaxed">{{ exercise.description }}</p>
+            <p class="text-text-secondary text-sm mt-2">
+                Draw a Büchi automaton that accepts exactly the language of the target formula.
+                Double-click the canvas to add a state, use the edge tool to connect states and press
+                <span class="font-mono text-text-primary">L</span> to label a transition with a boolean
+                expression, <span class="font-mono text-text-primary">I</span> to mark an initial state
+                (you may have more than one), and <span class="font-mono text-text-primary">A</span> to
+                mark an accepting state (double ring).
+            </p>
+            {% if declared_aps %}
+            <div class="flex items-center gap-2 mt-3">
+                <span class="font-mono text-[11px] text-text-secondary tracking-[0.12em]">ALPHABET</span>
+                {% for ap in declared_aps %}
+                <span class="font-mono text-[11px] px-2 py-1 bg-bg-secondary border border-border-secondary text-text-primary rounded">{{ ap }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-8">
+            <div>
+                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR BÜCHI AUTOMATON</h2>
+                <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex" style="height: 460px;">
+                    {% include "components/buchi_editor.html" with id="draw" input_name="automaton_data" height="460px" elements_json=elements_json %}
+                </div>
+                <div id="draw-warning" class="mt-3 hidden"></div>
+            </div>
+
+            <div>
+                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">TARGET LANGUAGE</h2>
+                <div class="bg-bg-secondary border border-border-primary rounded p-4 mb-5">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-2">ACCEPT EXACTLY</div>
+                    <div class="font-mono text-base text-text-primary">L({{ exercise.target_formula }})</div>
+                </div>
+
+                <button type="button" id="check-buchi-btn"
+                    hx-post="{% url 'submit_buchi' exercise.id %}"
+                    hx-target="#buchi-result"
+                    hx-swap="innerHTML"
+                    hx-include="#draw-graph-data"
+                    hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                    class="w-full px-5 py-2.5 bg-accent-orange hover:opacity-90 transition-opacity rounded text-sm font-medium text-text-primary">
+                    Check Automaton
+                </button>
+
+                <div id="buchi-result" class="mt-4"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('check-buchi-btn');
+
+    function editor() {
+        return (window.BuchiEditors || {})['draw'];
+    }
+
+    function showWarning(msg) {
+        const box = document.getElementById('draw-warning');
+        box.innerHTML = '<div class="flex items-start gap-2 p-3 bg-bg-primary border border-border-secondary rounded">'
+            + '<span class="font-mono text-xs text-text-secondary shrink-0">! CHECK</span>'
+            + '<span class="text-xs text-text-primary">' + msg + '</span></div>';
+        box.classList.remove('hidden');
+    }
+
+    btn.addEventListener('htmx:beforeRequest', (e) => {
+        const ed = editor();
+        if (!ed) return;
+        const error = ed.validateStructure();
+        if (error) {
+            e.preventDefault();
+            showWarning(error);
+        } else {
+            document.getElementById('draw-warning').classList.add('hidden');
+        }
+    });
+
+    let warnTimer = null;
+    document.addEventListener('buchi:warn', (e) => {
+        if (!(e.detail && e.detail.html)) return;
+        showWarning(e.detail.html);
+        clearTimeout(warnTimer);
+        warnTimer = setTimeout(() => document.getElementById('draw-warning').classList.add('hidden'), 3000);
+    });
+
+    document.body.addEventListener('exerciseSolved', () => {
+        setTimeout(() => location.reload(), 1400);
+    });
+});
+</script>
+{% endblock %}
