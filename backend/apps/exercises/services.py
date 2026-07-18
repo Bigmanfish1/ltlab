@@ -132,6 +132,7 @@ def exercise_rows(matrix=None, part_counts=None):
             "module": ex.topic.title,
             "module_id": ex.topic_id,
             "difficulty": ex.difficulty,
+            "exercise_type": ex.exercise_type,
             "type_label": EXERCISE_TYPE_BADGES.get(ex.exercise_type, ""),
             "is_published": ex.is_published,
             "attempts": m["attempts"],

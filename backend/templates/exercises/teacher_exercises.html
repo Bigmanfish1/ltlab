@@ -16,11 +16,11 @@
 
         <!-- Filter bar -->
         <div class="flex items-center justify-between mb-6">
-            <div class="flex gap-2" id="difficulty-filters">
-                <button data-difficulty="all" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">All</button>
-                <button data-difficulty="beginner" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Beginner</button>
-                <button data-difficulty="intermediate" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Intermediate</button>
-                <button data-difficulty="advanced" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Advanced</button>
+            <div class="flex flex-wrap gap-2" id="type-filters">
+                <button data-type="all" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">All</button>
+                {% for t in type_filters %}
+                <button data-type="{{ t.key }}" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">{{ t.label }}</button>
+                {% endfor %}
             </div>
             <input
                 id="exercise-search"
@@ -46,7 +46,7 @@
                 <tbody id="exercise-rows">
                     {% for ex in exercises %}
                     <tr class="exercise-row border-b border-border-primary hover:bg-bg-tertiary transition-colors"
-                        data-difficulty="{{ ex.difficulty }}"
+                        data-type="{{ ex.exercise_type }}"
                         data-name="{{ ex.name|lower }}"
                         data-module="{{ ex.module|lower }}"
                         data-id="{{ ex.id }}">
@@ -125,15 +125,15 @@
         const table = tbody.closest('table');
         const thead = table.querySelector('thead');
 
-        let difficulty = 'all';
+        let type = 'all';
         let page = 1;
         let pageSize = 6;
 
         function matches(row) {
             const q = searchInput.value.trim().toLowerCase();
-            const diffOk = difficulty === 'all' || row.dataset.difficulty === difficulty;
+            const typeOk = type === 'all' || row.dataset.type === type;
             const textOk = !q || row.dataset.name.includes(q) || row.dataset.module.includes(q);
-            return diffOk && textOk;
+            return typeOk && textOk;
         }
 
         function computePageSize(rows) {
@@ -181,7 +181,7 @@
 
         tabs.forEach(function (tab) {
             tab.addEventListener('click', function () {
-                difficulty = tab.dataset.difficulty;
+                type = tab.dataset.type;
                 page = 1;
                 setActive(tab);
                 render();
@@ -199,7 +199,7 @@
         });
 
         // JS owns active state — set initial tab before first render.
-        setActive(tabs.find(function (t) { return t.dataset.difficulty === difficulty; }));
+        setActive(tabs.find(function (t) { return t.dataset.type === type; }));
         render();
     })();
 </script>

@@ -473,8 +473,13 @@ def _topic_or_none(pk):
 
 @teacher_required
 def teacher_exercises(request):
+    type_filters = [
+        {"key": t, "label": EXERCISE_TYPE_BADGES.get(t, t)}
+        for t in BUILDER_EXERCISE_TYPES
+    ]
     return render(request, "exercises/teacher_exercises.html", {
         "exercises": exercise_rows(),
+        "type_filters": type_filters,
     })
 
 
