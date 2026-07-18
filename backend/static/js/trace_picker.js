@@ -131,7 +131,7 @@
         return (node && node.data("name")) || id;
       };
       if (closedAt < 0) {
-        return path.map(name).join(" → ") + " → …";
+        return path.map(name).join(" → ");
       }
       const prefixStr = parts.prefix.map(name).join(" → ");
       const cycleStr = "(" + parts.cycle.map(name).join(" → ") + ")ω";
@@ -296,7 +296,7 @@
     function canonicalText() {
       const parts = split();
       if (!path.length) return "";
-      if (closedAt < 0) return path.join(" → ") + " → …";
+      if (closedAt < 0) return path.join(" → ");
       const pre = parts.prefix.join(" → ");
       const cyc = "(" + parts.cycle.join(" → ") + ")ω";
       return pre ? pre + " → " + cyc : cyc;
