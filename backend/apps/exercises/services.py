@@ -11,7 +11,7 @@ from apps.accounts.models import Profile
 from apps.checker.engine import validate_request
 from apps.checker.equivalence import validate_formula_submission
 from apps.checker.operators import disallowed_operators
-from apps.checker.tasks import run_ltl_check
+from apps.checker.tasks import run_ltl_check, run_model_solvable_check
 from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
 
 from .constants import (
@@ -611,6 +611,33 @@ def _validate_path_parts(form, graph, errors):
             )
 
 
+def _validate_build_kripke_parts(form, errors):
+    """Each required formula must parse against the declared APs, and the whole
+    set must be jointly satisfiable — otherwise no Kripke structure could
+    satisfy them all and students could never solve the exercise."""
+    if not form["parts"]:
+        errors.append("Add at least one formula the student's model must satisfy.")
+        return
+    formulas = []
+    for i, part in enumerate(form["parts"], start=1):
+        if not part["formula"]:
+            errors.append(f"Formula {i} is empty.")
+            continue
+        formulas.append(part["formula"])
+    if len(formulas) != len(form["parts"]):
+        return
+    try:
+        solvable = run_model_solvable_check(formulas, form["declared_aps"])["solvable"]
+    except ValueError as exc:
+        errors.append(str(exc))
+        return
+    if not solvable:
+        errors.append(
+            "These requirements contradict each other — no Kripke structure can "
+            "satisfy them all, so students could never solve the exercise."
+        )
+
+
 def _has_attempts(exercise):
     # memoised per instance — type_locked and persist both need it within one
     # request, and the exercise object is shared across them
@@ -663,6 +690,11 @@ def validate_exercise_form(form, exercise, publishing):
         if exercise_type == "english_to_formula":
             _validate_declared_aps(form["declared_aps"], errors)
             _validate_english_parts(form, errors)
+        elif exercise_type == "build_kripke":
+            # the student supplies the graph, so there is no memo to validate —
+            # instead the required formulas must be jointly satisfiable
+            _validate_declared_aps(form["declared_aps"], errors)
+            _validate_build_kripke_parts(form, errors)
         elif not graph:
             # Students are graded against this graph (model-checking their
             # formula, or walking their path on it), so publishing needs one.
