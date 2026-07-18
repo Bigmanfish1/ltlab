@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.utils import timezone
 
 from apps.accounts.models import Profile
@@ -727,10 +727,16 @@ def persist_exercise(exercise, form, graph, publishing):
             exercise.exercise_type = new_type
             exercise.parts.all().delete()
     else:
+        next_position = (
+            Exercise.objects.filter(topic_id=form["module_id"]).aggregate(
+                m=Max("position")
+            )["m"]
+        )
         exercise = Exercise(
             topic_id=form["module_id"],
             created_at=timezone.now(),
             exercise_type=form["exercise_type"],
+            position=(next_position + 1) if next_position is not None else 0,
         )
     exercise.title = form["title"]
     exercise.description = form["description"]

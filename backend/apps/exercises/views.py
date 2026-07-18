@@ -45,7 +45,9 @@ logger = logging.getLogger(__name__)
 
 def published_exercises():
     """Exercises visible to students — drafts (is_published=False) are excluded."""
-    return Exercise.objects.filter(is_published=True)
+    return Exercise.objects.filter(is_published=True).order_by(
+        "topic__position", "position", "id"
+    )
 
 
 @supabase_login_required
@@ -66,9 +68,7 @@ def exercises(request):
 
 
 def _exercise_nav(exercise_id):
-    all_exercises = list(
-        published_exercises().only('id', 'position').order_by('position', 'id')
-    )
+    all_exercises = list(published_exercises().only('id', 'position'))
     current_index = next((i for i, ex in enumerate(all_exercises) if ex.id == exercise_id), 0)
     prev_exercise = all_exercises[current_index - 1] if current_index > 0 else None
     next_exercise = all_exercises[current_index + 1] if current_index < len(all_exercises) - 1 else None
