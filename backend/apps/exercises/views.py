@@ -173,11 +173,20 @@ def _build_kripke_canvas(request, exercise):
     every requirement at once (submit_kripke)."""
     part_rows = _part_rows(exercise, request.profile)
     exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
+    # restore the student's most recent submission so a reload (e.g. after a
+    # solve) shows their model, not the editor's default demo graph
+    last = (
+        Attempt.objects.filter(exercise=exercise, student=request.profile)
+        .order_by("-created_at")
+        .first()
+    )
+    last_graph = last.answer.get("graph") if last and isinstance(last.answer, dict) else None
     context = {
         "exercise": exercise,
         "exercise_number": exercise_number,
         "part_rows": part_rows,
         "declared_aps": list(exercise.declared_aps or []),
+        "elements_json": _elements_json(last_graph),
         "is_completed": bool(part_rows) and all(r["solved"] for r in part_rows),
         "prev_exercise": prev_exercise,
         "next_exercise": next_exercise,
