@@ -821,9 +821,14 @@ def _builder_context(exercise, form=None):
     if form is not None:
         hint_values = form["hints"]
         allowed = form["allowed_operators"]
+        exercise_type = (
+            exercise.exercise_type if type_locked(exercise) else form["exercise_type"]
+        )
+        # must match the field validate_exercise_form read, which also keys off
+        # the effective type — a locked exercise ignores the posted type
         raw_graph = (
             form["automaton_data"]
-            if form["exercise_type"] == "buchi_word"
+            if exercise_type == "buchi_word"
             else form["graph_data"]
         )
         try:
@@ -831,9 +836,6 @@ def _builder_context(exercise, form=None):
         except json.JSONDecodeError:
             elements_json = ""
         prefill = form
-        exercise_type = (
-            exercise.exercise_type if type_locked(exercise) else form["exercise_type"]
-        )
         declared_aps = form["declared_aps"]
         parts = form["parts"]
         target_formula = form["target_formula"]
