@@ -46,12 +46,16 @@
                         <span class="font-mono text-[10px] tracking-[0.12em] uppercase text-text-secondary mr-1">Insert</span>
                         {% for ap in declared_aps %}
                         <button type="button" data-insert-word="{{ ap }}"
-                            class="word-insert px-2 py-1 font-mono text-[12px] border border-border-primary text-text-primary rounded hover:border-accent-orange transition-colors">{{ ap }}</button>
+                            class="word-insert px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-primary">{{ ap }}</button>
                         {% endfor %}
                         <button type="button" data-insert-word=" → "
-                            class="word-insert px-2 py-1 font-mono text-[12px] border border-border-primary text-text-secondary rounded hover:border-accent-orange transition-colors">→</button>
-                        <button type="button" data-insert-word="()ω"
-                            class="word-insert px-2 py-1 font-mono text-[12px] border border-border-primary text-text-secondary rounded hover:border-accent-orange transition-colors">( )ω</button>
+                            class="word-insert px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-primary">→</button>
+                        <button type="button" data-insert-word="("
+                            class="word-insert px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-primary">(</button>
+                        <button type="button" data-insert-word=")"
+                            class="word-insert px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-primary">)</button>
+                        <button type="button" data-insert-word="ω"
+                            class="word-insert px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-primary">ω</button>
                     </div>
                     <p class="text-[12px] text-text-secondary mt-3 leading-relaxed">
                         One symbol per step. Put the part that repeats forever in
@@ -89,14 +93,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') { e.preventDefault(); btn.click(); }
     });
 
-    // Insert buttons drop text at the caret; ( )ω leaves the caret inside
+    // Insert buttons drop their token at the caret, matching the path picker
     document.querySelectorAll('.word-insert').forEach((b) => {
         b.addEventListener('click', () => {
-            const text = b.dataset.insertWord;
-            const start = input.selectionStart ?? input.value.length;
-            const end = input.selectionEnd ?? start;
-            input.value = input.value.slice(0, start) + text + input.value.slice(end);
-            const caret = text === '()ω' ? start + 1 : start + text.length;
+            const tok = b.dataset.insertWord;
+            const start = input.selectionStart != null ? input.selectionStart : input.value.length;
+            const end = input.selectionEnd != null ? input.selectionEnd : input.value.length;
+            input.value = input.value.slice(0, start) + tok + input.value.slice(end);
+            const caret = start + tok.length;
             input.focus();
             input.setSelectionRange(caret, caret);
         });
