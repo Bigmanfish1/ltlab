@@ -380,13 +380,19 @@ def submit_kripke(request, exercise_id):
     parts = list(exercise.parts.all())
     results = []
     all_ok = bool(parts)
-    for i, part in enumerate(parts, start=1):
-        holds, message, trace = _grade_constraint(graph, part.formula)
-        all_ok = all_ok and holds
-        results.append({
-            "number": i, "formula": part.formula,
-            "ok": holds, "message": message, "trace": trace,
-        })
+    try:
+        for i, part in enumerate(parts, start=1):
+            holds, message, trace = _grade_constraint(graph, part.formula)
+            all_ok = all_ok and holds
+            results.append({
+                "number": i, "formula": part.formula,
+                "ok": holds, "message": message, "trace": trace,
+            })
+    except Exception:
+        logger.exception("run_ltl_check failed during build_kripke submission")
+        return error_response(
+            request, "Verification was stopped — the model could not be processed."
+        )
 
     Attempt.objects.create(
         exercise=exercise,
