@@ -80,6 +80,10 @@
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
                             Draw a Büchi Automaton
                         </button>
+                        <button type="button" data-type="buchi_word" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
+                            Give an Accepting Word
+                        </button>
                     </div>
                     {% if type_locked %}
                     <div class="text-[11px] text-text-secondary mt-1">Type is locked once the exercise has been published or attempted.</div>
@@ -177,11 +181,23 @@
                     </button>
                 </div>
 
-                <div data-type-section="english_to_formula build_kripke buchi_construct" class="hidden">
+                <div data-type-section="buchi_word" class="hidden">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">THE AUTOMATON STUDENTS READ</div>
+                    <div class="text-[12px] text-text-secondary mb-3">
+                        Draw the Büchi automaton shown to students; they must supply a word it accepts.
+                        Publishing checks it accepts at least one word.
+                    </div>
+                    <div class="relative bg-bg-primary border border-border-primary rounded overflow-hidden flex mb-6" style="height: 420px;">
+                        {% include "components/buchi_editor.html" with id="shownmemo" input_name="automaton_data" height="420px" elements_json=elements_json %}
+                    </div>
+                </div>
+
+                <div data-type-section="english_to_formula build_kripke buchi_construct buchi_word" class="hidden">
                     <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5" data-alphabet-heading>ATOMIC PROPOSITIONS</div>
                     <div class="text-[12px] text-text-secondary mb-3" data-type-hint="english_to_formula">The propositions students may use in their formulas.</div>
                     <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="build_kripke">The propositions students may label states with — the requirement formulas may use only these.</div>
                     <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="buchi_construct">The alphabet Σ. Each symbol is exclusive — a word has exactly one symbol per step, and transitions are labelled with a symbol or a set like <span class="font-mono">a,b</span>.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="buchi_word">The alphabet Σ the automaton is labelled over — students' words use exactly one of these symbols per step.</div>
                     <input type="hidden" name="declared_aps" id="aps-input" value="" />
                     <div class="flex flex-wrap items-center gap-2 mb-6" id="ap-chips">
                         <input type="text" id="ap-entry" placeholder="add proposition + Enter"
@@ -300,7 +316,8 @@
             const alphabetHeading = document.querySelector('[data-alphabet-heading]');
             if (alphabetHeading) {
                 alphabetHeading.textContent =
-                    current === 'buchi_construct' ? 'ALPHABET Σ' : 'ATOMIC PROPOSITIONS';
+                    (current === 'buchi_construct' || current === 'buchi_word')
+                        ? 'ALPHABET Σ' : 'ATOMIC PROPOSITIONS';
             }
         }
         typeBtns.forEach(function (b) {
