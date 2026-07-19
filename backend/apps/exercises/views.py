@@ -881,6 +881,12 @@ def _builder_context(exercise, form=None):
         parts = []
         target_formula = ""
         ask_determinism = False
+    # the page carries a Kripke editor and a Büchi editor at once; each gets only
+    # its own type's structure so neither boots with the other's shape
+    is_automaton = exercise_type == "buchi_word"
+    automaton_elements_json = elements_json if is_automaton else ""
+    if is_automaton:
+        elements_json = ""
     return {
         "modules": list(Topic.objects.all()),
         "operators": BUILDER_OPERATORS,
@@ -888,6 +894,7 @@ def _builder_context(exercise, form=None):
         "hint_values": hint_values,
         "allowed_operators": allowed,
         "elements_json": elements_json,
+        "automaton_elements_json": automaton_elements_json,
         "prefill": prefill,
         # str: POST re-render carries the id as a string, the edit path as a UUID
         "selected_topic_id": str(prefill["module_id"]) if prefill and prefill["module_id"] else None,
