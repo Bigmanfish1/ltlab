@@ -22,7 +22,12 @@ from apps.checker.tasks import (
     run_model_solvable_check,
     run_trace_check,
 )
-from apps.checker.views import MAX_FORMULA_CHARS, build_result_context, error_response
+from apps.checker.views import (
+    MAX_FORMULA_CHARS,
+    MAX_NODES,
+    build_result_context,
+    error_response,
+)
 
 from .constants import (
     BUILDER_OPERATORS,
@@ -360,6 +365,17 @@ def submit_kripke(request, exercise_id):
     elements = graph.get("elements") if isinstance(graph, dict) else None
     if not isinstance(elements, dict) or not elements.get("nodes"):
         return error_response(request, "Draw a Kripke structure before checking.")
+
+    # the only path that hands a student-drawn graph to SPOT — run_ltl_check
+    # caps the formula but not the graph, so the sandbox's node cap applies here
+    real_nodes = [
+        n for n in elements["nodes"] if not (n.get("data") or {}).get("phantom")
+    ]
+    if len(real_nodes) > MAX_NODES:
+        return error_response(
+            request,
+            f"Your model has {len(real_nodes)} states — at most {MAX_NODES} are supported.",
+        )
 
     parts = list(exercise.parts.all())
     results = []
