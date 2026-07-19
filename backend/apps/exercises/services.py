@@ -12,6 +12,7 @@ from apps.checker.engine import validate_request
 from apps.checker.equivalence import validate_formula_submission
 from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import (
+    run_buchi_shown_automaton_check,
     run_buchi_target_check,
     run_ltl_check,
     run_model_solvable_check,
@@ -525,6 +526,9 @@ def parse_exercise_form(request):
         ],
         "parts": parts,
         "graph_data": request.POST.get("graph_data", "").strip(),
+        # buchi_word's editor posts its own field so the two editors on the
+        # builder page never collide on one name
+        "automaton_data": request.POST.get("automaton_data", "").strip(),
         "target_formula": request.POST.get("target_formula", "").strip(),
     }
 
@@ -674,6 +678,25 @@ def _validate_build_kripke_parts(form, errors):
         )
 
 
+def _validate_buchi_word(form, graph, errors):
+    """Require an alphabet and a shown automaton that actually accepts something."""
+    _validate_declared_aps(form["declared_aps"], errors, noun="alphabet symbol")
+    if not graph:
+        errors.append("Draw the Büchi automaton students will read.")
+    if errors:
+        return
+    try:
+        empty = run_buchi_shown_automaton_check(graph, form["declared_aps"])["empty"]
+    except ValueError as exc:
+        errors.append(f"Automaton: {exc}")
+        return
+    if empty:
+        errors.append(
+            "This automaton accepts no words at all, so students could never "
+            "give an accepting word."
+        )
+
+
 def _has_attempts(exercise):
     # memoised per instance — type_locked and persist both need it within one
     # request, and the exercise object is shared across them
@@ -713,12 +736,18 @@ def validate_exercise_form(form, exercise, publishing):
         errors.append("Unknown exercise type.")
         return errors, None
 
+    # buchi_word's drawing is the exercise's automaton, posted on its own field
+    is_automaton = exercise_type == "buchi_word"
+    raw_graph = form["automaton_data"] if is_automaton else form["graph_data"]
     graph = None
-    if form["graph_data"]:
+    if raw_graph:
         try:
-            graph = json.loads(form["graph_data"])
+            graph = json.loads(raw_graph)
         except json.JSONDecodeError:
-            errors.append("The Kripke structure could not be read.")
+            errors.append(
+                "The automaton could not be read." if is_automaton
+                else "The Kripke structure could not be read."
+            )
     elif exercise is not None:
         graph = exercise.kripke_structure
 
@@ -733,6 +762,9 @@ def validate_exercise_form(form, exercise, publishing):
         elif exercise_type == "buchi_construct":
             # student draws the automaton; validate the alphabet and target
             _validate_buchi_construct(form, errors)
+        elif exercise_type == "buchi_word":
+            # teacher supplies the automaton; students supply a word for it
+            _validate_buchi_word(form, graph, errors)
         elif not graph:
             # Students are graded against this graph (model-checking their
             # formula, or walking their path on it), so publishing needs one.
@@ -819,7 +851,7 @@ def persist_exercise(exercise, form, graph, publishing):
     # global hints belong to the partless types; part types carry hints per part
     global_hints = (
         form["hints"]
-        if exercise.exercise_type in ("model_check", "buchi_construct")
+        if exercise.exercise_type in ("model_check", "buchi_construct", "buchi_word")
         else []
     )
     exercise.hints = global_hints
@@ -839,7 +871,7 @@ def persist_exercise(exercise, form, graph, publishing):
     if publishing:
         exercise.ever_published = True
     exercise.save()
-    if exercise.exercise_type not in ("model_check", "buchi_construct"):
+    if exercise.exercise_type not in ("model_check", "buchi_construct", "buchi_word"):
         _sync_parts(exercise, form["parts"])
     if exercise.exercise_type == "judge":
         _store_judge_answers(exercise)

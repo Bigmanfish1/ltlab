@@ -1,0 +1,16 @@
+{% if accepted %}
+<div class="result-flash flex items-start gap-2 p-3 bg-bg-primary border border-accent-lime rounded">
+    <span class="font-mono text-xs text-accent-lime shrink-0">✓ ACCEPTED</span>
+    <span class="text-xs text-text-primary">The automaton has an accepting run on <span class="font-mono">{{ word }}</span> — exercise complete.</span>
+</div>
+{% elif word_error %}
+<div class="result-flash flex items-start gap-2 p-3 bg-bg-primary border border-border-secondary rounded">
+    <span class="font-mono text-xs text-text-secondary shrink-0">! CHECK</span>
+    <span class="text-xs text-text-primary">{{ word_error }}</span>
+</div>
+{% else %}
+<div class="result-flash flex items-start gap-2 p-3 bg-bg-primary border border-accent-orange rounded">
+    <span class="font-mono text-xs text-accent-orange shrink-0">✗ REJECTED</span>
+    <span class="text-xs text-text-primary">No run of the automaton on <span class="font-mono">{{ word }}</span> visits an accepting state infinitely often. Trace the word through the automaton and check where the run gets stuck or stops meeting a double-ringed state.</span>
+</div>
+{% endif %}

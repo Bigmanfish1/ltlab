@@ -15,6 +15,7 @@ from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import (
     run_buchi_equivalence_check,
     run_buchi_target_check,
+    run_buchi_word_check,
     run_equivalence_check,
     run_ltl_check,
     run_model_solvable_check,
@@ -118,6 +119,8 @@ def exercise_canvas(request, exercise_id):
         return _build_kripke_canvas(request, exercise)
     if exercise.exercise_type == "buchi_construct":
         return _buchi_construct_canvas(request, exercise)
+    if exercise.exercise_type == "buchi_word":
+        return _buchi_word_canvas(request, exercise)
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
@@ -227,6 +230,30 @@ def _buchi_construct_canvas(request, exercise):
         "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
     }
     return render(request, "exercises/exercise_buchi_construct.html", context)
+
+
+def _buchi_word_canvas(request, exercise):
+    """Student page for buchi_word — read the fixed automaton, type an accepting word."""
+    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
+    last = (
+        Attempt.objects.filter(exercise=exercise, student=request.profile)
+        .order_by("-created_at")
+        .first()
+    )
+    context = {
+        "exercise": exercise,
+        "exercise_number": exercise_number,
+        "declared_aps": list(exercise.declared_aps or []),
+        "elements_json": _elements_json(exercise.kripke_structure),
+        "last_word": (last.answer or {}).get("word", "") if last else "",
+        "is_completed": Attempt.objects.filter(
+            exercise=exercise, student=request.profile, is_correct=True
+        ).exists(),
+        "prev_exercise": prev_exercise,
+        "next_exercise": next_exercise,
+        "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
+    }
+    return render(request, "exercises/exercise_buchi_word.html", context)
 
 
 @supabase_login_required
@@ -403,6 +430,54 @@ def submit_buchi(request, exercise_id):
 
     # the target formula is the hidden answer key — never rendered to students
     response = render(request, "exercises/buchi_result.html", {"equivalent": equivalent})
+    return _completion_trigger(response, request, exercise)
+
+
+@supabase_login_required
+@require_POST
+def submit_buchi_word(request, exercise_id):
+    """Grade a typed lasso word against the exercise's fixed Büchi automaton.
+
+    Records one whole-exercise attempt (buchi_word has no parts). An unreadable
+    or off-alphabet word is student data — it comes back as a rejection with a
+    message, not an error page.
+    """
+    exercise = get_object_or_404(published_exercises(), id=exercise_id)
+    if exercise.exercise_type != "buchi_word":
+        return error_response(request, "This exercise is not an accepting-word task.")
+
+    word = (request.POST.get("word") or "").strip()
+    if len(word) > MAX_FORMULA_CHARS:
+        return error_response(
+            request, f"Word is too long — at most {MAX_FORMULA_CHARS} characters."
+        )
+
+    try:
+        result = run_buchi_word_check(
+            exercise.kripke_structure, word, list(exercise.declared_aps or [])
+        )
+    except ValueError as exc:
+        # the automaton is teacher data — a bad one is not the student's fault
+        logger.warning("buchi_word automaton rejected: %s", exc)
+        return error_response(request, "This exercise's automaton could not be read.")
+    except Exception:
+        logger.exception("run_buchi_word_check failed during submission")
+        return error_response(
+            request, "Verification was stopped — the word could not be processed."
+        )
+
+    accepted = result["accepted"]
+    Attempt.objects.create(
+        exercise=exercise,
+        student=request.profile,
+        answer={"word": word},
+        is_correct=accepted,
+        hints_used=_clamped_hints(request, exercise.hints),
+    )
+
+    response = render(request, "exercises/buchi_word_result.html", {
+        "accepted": accepted, "word_error": result["word_error"], "word": word,
+    })
     return _completion_trigger(response, request, exercise)
 
 
@@ -697,8 +772,13 @@ def _builder_context(exercise, form=None):
     if form is not None:
         hint_values = form["hints"]
         allowed = form["allowed_operators"]
+        raw_graph = (
+            form["automaton_data"]
+            if form["exercise_type"] == "buchi_word"
+            else form["graph_data"]
+        )
         try:
-            elements_json = _elements_json(json.loads(form["graph_data"]) if form["graph_data"] else None)
+            elements_json = _elements_json(json.loads(raw_graph) if raw_graph else None)
         except json.JSONDecodeError:
             elements_json = ""
         prefill = form
