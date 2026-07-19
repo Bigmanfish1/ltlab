@@ -834,8 +834,15 @@ def persist_exercise(exercise, form, graph, publishing):
         if new_type != exercise.exercise_type:
             # only reachable while never-published with zero attempts, so the
             # wipe destroys teacher-authored parts, never student data
+            was_buchi_construct = exercise.exercise_type == "buchi_construct"
             exercise.exercise_type = new_type
             exercise.parts.all().delete()
+            if was_buchi_construct:
+                # the builder hides these fields on other types, so leaving them
+                # set would strand a hidden answer key the teacher cannot see —
+                # and model_check reads target_formula as its own memo answer
+                exercise.target_formula = None
+                exercise.ask_determinism = False
     else:
         next_position = (
             Exercise.objects.filter(topic_id=form["module_id"]).aggregate(
