@@ -173,6 +173,16 @@ def target_automaton_states(target, symbols):
     return _reference(target, symbols).num_states()
 
 
+def target_language_empty(target, symbols):
+    """True iff no word over Σ satisfies the target — the exercise is unsolvable.
+
+    Possible even for a satisfiable formula: `G(a & b)` has models over 2^AP but
+    none where exactly one symbol holds per step, so it is empty over Σ.
+    """
+    _require_spot()
+    return _reference(target, symbols).is_empty()
+
+
 def check_buchi_equivalence(automaton_json, target, symbols):
     """True iff the drawn automaton's language equals the target over Σ."""
     _require_spot()

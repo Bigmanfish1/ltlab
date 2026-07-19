@@ -2,6 +2,7 @@ from .buchi import (
     check_buchi_equivalence,
     is_deterministic,
     target_automaton_states,
+    target_language_empty,
     word_accepted,
 )
 from .engine import analyze_lasso, check_ltl, cytoscape_to_kripke, validate_request
@@ -136,7 +137,11 @@ def run_buchi_target_check(target: str, declared_aps: list[str]) -> dict:
 
     Validates the target parses and stays within the formula caps and the
     declared alphabet (ValueError on violation), and reports the target
-    automaton's state count for teacher feedback. Returns {"states": int}.
+    automaton's state count plus whether its language is empty over Σ (an empty
+    one is unsolvable). Returns {"states": int, "empty": bool}.
     """
     validate_formula_submission(target, declared_aps)
-    return {"states": target_automaton_states(target, declared_aps)}
+    return {
+        "states": target_automaton_states(target, declared_aps),
+        "empty": target_language_empty(target, declared_aps),
+    }

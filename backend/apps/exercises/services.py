@@ -11,7 +11,11 @@ from apps.accounts.models import Profile
 from apps.checker.engine import validate_request
 from apps.checker.equivalence import validate_formula_submission
 from apps.checker.operators import disallowed_operators
-from apps.checker.tasks import run_ltl_check, run_model_solvable_check
+from apps.checker.tasks import (
+    run_buchi_target_check,
+    run_ltl_check,
+    run_model_solvable_check,
+)
 from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
 
 from .constants import (
@@ -521,17 +525,44 @@ def parse_exercise_form(request):
         ],
         "parts": parts,
         "graph_data": request.POST.get("graph_data", "").strip(),
+        "target_formula": request.POST.get("target_formula", "").strip(),
     }
 
 
-def _validate_declared_aps(declared_aps, errors):
+def _validate_declared_aps(declared_aps, errors, noun="atomic proposition"):
     if not declared_aps:
-        errors.append("Declare at least one atomic proposition.")
+        errors.append(f"Declare at least one {noun}.")
     for ap in declared_aps:
         if not _PROP_NAME_RE.match(ap):
-            errors.append(f"'{ap}' is not a valid proposition name.")
+            errors.append(f"'{ap}' is not a valid {noun} name.")
         elif ap in _RESERVED_PROP_NAMES:
             errors.append(f"'{ap}' is a reserved LTL keyword.")
+
+
+def _validate_buchi_construct(form, errors):
+    """Require an alphabet Σ and a target LTL over it with a non-empty language.
+
+    Σ symbols are exclusive (one per word step), so a formula can be satisfiable
+    over 2^AP yet accept nothing over Σ — that would be unsolvable, so it is
+    rejected here rather than left for students to fail against.
+    """
+    _validate_declared_aps(form["declared_aps"], errors, noun="alphabet symbol")
+    target = form["target_formula"]
+    if not target:
+        errors.append("Enter the target LTL formula the automaton must accept.")
+        return
+    if errors:
+        return
+    try:
+        result = run_buchi_target_check(target, form["declared_aps"])
+    except ValueError as exc:
+        errors.append(f"Target formula: {exc}")
+        return
+    if result["empty"]:
+        errors.append(
+            f"No word over the alphabet satisfies {target}, so no Büchi automaton "
+            "could accept it — students could never solve the exercise."
+        )
 
 
 def _validate_english_parts(form, errors):
@@ -699,6 +730,9 @@ def validate_exercise_form(form, exercise, publishing):
             # student supplies the graph; validate the required formulas instead
             _validate_declared_aps(form["declared_aps"], errors)
             _validate_build_kripke_parts(form, errors)
+        elif exercise_type == "buchi_construct":
+            # student draws the automaton; validate the alphabet and target
+            _validate_buchi_construct(form, errors)
         elif not graph:
             # Students are graded against this graph (model-checking their
             # formula, or walking their path on it), so publishing needs one.
@@ -710,7 +744,7 @@ def validate_exercise_form(form, exercise, publishing):
     return errors, graph
 
 
-def _grading_signature(graph, allowed_operators, declared_aps, parts):
+def _grading_signature(graph, allowed_operators, declared_aps, parts, target_formula=None):
     """Stable fingerprint of everything that determines how answers are graded.
 
     parts is a list of (prompt, formula) in position order. Title, description,
@@ -723,6 +757,7 @@ def _grading_signature(graph, allowed_operators, declared_aps, parts):
             "ops": sorted(allowed_operators or []),
             "aps": sorted(declared_aps or []),
             "parts": [[p, f] for p, f in parts],
+            "target": target_formula,
         },
         sort_keys=True,
         default=str,
@@ -734,6 +769,7 @@ def _exercise_grading_signature(exercise):
     return _grading_signature(
         exercise.kripke_structure, exercise.allowed_operators,
         exercise.declared_aps, parts,
+        exercise.target_formula if exercise.exercise_type == "buchi_construct" else None,
     )
 
 
@@ -780,19 +816,30 @@ def persist_exercise(exercise, form, graph, publishing):
     exercise.title = form["title"]
     exercise.description = form["description"]
     exercise.difficulty = form["difficulty"]
-    # global hints belong to the partless type; part types carry hints per part
-    global_hints = form["hints"] if exercise.exercise_type == "model_check" else []
+    # global hints belong to the partless types; part types carry hints per part
+    global_hints = (
+        form["hints"]
+        if exercise.exercise_type in ("model_check", "buchi_construct")
+        else []
+    )
     exercise.hints = global_hints
     exercise.hint = next((h for h in global_hints if h), "")
     exercise.allowed_operators = form["allowed_operators"]
     exercise.declared_aps = form["declared_aps"]
-    # build_kripke is student-built — never persist the builder's hidden editor
-    exercise.kripke_structure = None if exercise.exercise_type == "build_kripke" else graph
+    # build_kripke / buchi_construct are student-built — never persist the
+    # builder's hidden editor as a memorandum
+    exercise.kripke_structure = (
+        None
+        if exercise.exercise_type in ("build_kripke", "buchi_construct")
+        else graph
+    )
+    if exercise.exercise_type == "buchi_construct":
+        exercise.target_formula = form["target_formula"]
     exercise.is_published = publishing
     if publishing:
         exercise.ever_published = True
     exercise.save()
-    if exercise.exercise_type != "model_check":
+    if exercise.exercise_type not in ("model_check", "buchi_construct"):
         _sync_parts(exercise, form["parts"])
     if exercise.exercise_type == "judge":
         _store_judge_answers(exercise)
