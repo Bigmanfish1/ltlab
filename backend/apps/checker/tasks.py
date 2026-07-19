@@ -1,4 +1,5 @@
 from .buchi import (
+    automaton_language_empty,
     check_buchi_equivalence,
     is_deterministic,
     target_automaton_states,
@@ -130,6 +131,16 @@ def run_buchi_word_check(automaton: dict, word: str, declared_aps: list[str]) ->
     """
     accepted, message = word_accepted(automaton, word, declared_aps)
     return {"accepted": accepted, "word_error": message or None}
+
+
+def run_buchi_shown_automaton_check(automaton: dict, declared_aps: list[str]) -> dict:
+    """Publish gate for buchi_word's fixed automaton.
+
+    Raises ValueError if it cannot be compiled (bad label, no initial state).
+    Returns {"empty": bool} — an empty language means no accepting word exists,
+    so students could never solve the exercise.
+    """
+    return {"empty": automaton_language_empty(automaton, declared_aps)}
 
 
 def run_buchi_target_check(target: str, declared_aps: list[str]) -> dict:

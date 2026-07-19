@@ -183,6 +183,12 @@ def target_language_empty(target, symbols):
     return _reference(target, symbols).is_empty()
 
 
+def automaton_language_empty(automaton_json, symbols):
+    """True iff the drawn automaton accepts no word — no accepting word exists."""
+    _require_spot()
+    return build_buchi(automaton_json, symbols).is_empty()
+
+
 def check_buchi_equivalence(automaton_json, target, symbols):
     """True iff the drawn automaton's language equals the target over Σ."""
     _require_spot()
