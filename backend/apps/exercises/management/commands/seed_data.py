@@ -243,6 +243,35 @@ BUCHI_CONSTRUCT_EXERCISE = {
     "target_formula": "G F b",
 }
 
+# Give-an-accepting-word exercise: the MCL5 p.18 "eventually b only" automaton
+# (state 1 initial with an a,b self-loop; state 2 accepting with a b self-loop).
+BUCHI_WORD_AUTOMATON = {
+    "elements": {
+        "nodes": [
+            {"data": {"id": "s1", "name": "1", "initial": True, "accepting": False},
+             "position": {"x": 240, "y": 240}},
+            {"data": {"id": "s2", "name": "2", "initial": False, "accepting": True},
+             "position": {"x": 500, "y": 240}},
+        ],
+        "edges": [
+            {"data": {"id": "e0", "source": "s1", "target": "s1", "label": "a,b"}},
+            {"data": {"id": "e1", "source": "s1", "target": "s2", "label": "b"}},
+            {"data": {"id": "e2", "source": "s2", "target": "s2", "label": "b"}},
+        ],
+    }
+}
+
+BUCHI_WORD_EXERCISE = {
+    "title": "Give a word this automaton accepts",
+    "description": (
+        "Give an infinite word over Σ = {a, b} that this Büchi automaton accepts — "
+        "one whose run visits the double-ringed accepting state infinitely often. "
+        "Write it as a lasso: a prefix, then a repeating part."
+    ),
+    "difficulty": "beginner",
+    "declared_aps": ["a", "b"],
+}
+
 
 class Command(BaseCommand):
     help = "Seed a minimal dataset for local development (teacher, students, modules, attempts)."
@@ -433,6 +462,26 @@ class Command(BaseCommand):
             buchi_ex.description = BUCHI_CONSTRUCT_EXERCISE["description"]
             buchi_ex.target_formula = BUCHI_CONSTRUCT_EXERCISE["target_formula"]
             buchi_ex.save(update_fields=["description", "target_formula"])
+
+        word_ex, _ = Exercise.objects.get_or_create(
+            title=BUCHI_WORD_EXERCISE["title"],
+            topic=ltl_topic,
+            defaults={
+                "description": BUCHI_WORD_EXERCISE["description"],
+                "difficulty": BUCHI_WORD_EXERCISE["difficulty"],
+                "hint": "",
+                "is_published": True,
+                "ever_published": True,
+                "position": 6,
+                "exercise_type": "buchi_word",
+                "declared_aps": BUCHI_WORD_EXERCISE["declared_aps"],
+                "kripke_structure": BUCHI_WORD_AUTOMATON,
+                "allowed_operators": list(BUILDER_OPERATORS),
+            },
+        )
+        if word_ex.kripke_structure != BUCHI_WORD_AUTOMATON:
+            word_ex.kripke_structure = BUCHI_WORD_AUTOMATON
+            word_ex.save(update_fields=["kripke_structure"])
 
         created = 0
         for student_idx, rows in ATTEMPTS:
