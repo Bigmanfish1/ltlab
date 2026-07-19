@@ -34,7 +34,16 @@ except ImportError:  # pragma: no cover - mirrors engine's optional import
 MAX_BUCHI_STATES = 60
 MAX_BUCHI_EDGES = 120
 
-_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+MAX_WORD_SYMBOLS = 60
+
+# prefix·(cycle)ω as the path picker accepts it: anything before a single
+# parenthesised group, optionally suffixed with ω / ^ω / ^w / w
+_LASSO_RE = re.compile(r"^([^()]*)\(([^()]*)\)\s*(?:\^?ω|\^?w)?\s*$")
+
+
+def _split_symbols(chunk):
+    """Symbols separated by arrows, commas or whitespace."""
+    return [t for t in re.split(r"→|->|,|\s+", chunk or "") if t]
 
 
 def _real_elements(automaton_json):
@@ -211,59 +220,58 @@ def is_deterministic(automaton_json, symbols):
     return spot.is_deterministic(build_buchi(automaton_json, symbols))
 
 
-def _symbolic_word_to_props(word_str, symbols):
-    """Rewrite a symbol lasso word to a propositional one for spot.parse_word.
+def parse_word_lasso(text, symbols):
+    """Parse the module's lasso notation into (prefix, cycle, error).
 
-    `a; b; cycle{a}` over Σ={a,b} → `(a & !b); (b & !a); cycle{(a & !b)}`.
-    Returns (prop_word, None) or (None, user_message). Each step must be exactly
-    one symbol: boolean operators (& | !) and parentheses are rejected so a
-    student cannot smuggle a compound letter like `a & b` or `a | b` past the
-    one-symbol-per-step contract.
+    Students write an infinite word as prefix·(cycle)ω — the notation the path
+    picker already uses for lassos (MCL8 p.24) — e.g. `a → (b)ω`. Separators may
+    be arrows, commas or spaces. Returns (None, None, message) on any problem.
     """
-    if re.search(r"[&|!()]", word_str):
-        return None, "Each step of the word is exactly one symbol — no & | ! operators."
-    terms = _onehot_terms(symbols)
-    problem = {}
+    raw = (text or "").strip()
+    if not raw:
+        return None, None, "Enter a word — for example  a \u2192 (b)\u03c9."
+    match = _LASSO_RE.match(raw)
+    if not match:
+        return None, None, (
+            "Mark the part that repeats forever with parentheses, "
+            "for example  a \u2192 (b)\u03c9."
+        )
+    prefix = _split_symbols(match.group(1))
+    cycle = _split_symbols(match.group(2))
+    if not cycle:
+        return None, None, "The repeating part needs at least one symbol inside ( )\u03c9."
+    unknown = [t for t in prefix + cycle if t not in symbols]
+    if unknown:
+        return None, None, (
+            f"'{unknown[0]}' is not in the alphabet {{{', '.join(symbols)}}}."
+        )
+    if len(prefix) + len(cycle) > MAX_WORD_SYMBOLS:
+        return None, None, (
+            f"That word is too long \u2014 at most {MAX_WORD_SYMBOLS} symbols are supported."
+        )
+    return prefix, cycle, None
 
-    def repl(m):
-        tok = m.group(0)
-        if tok == "cycle":
-            return tok
-        if tok not in symbols:
-            problem["msg"] = (
-                f"'{tok}' is not in the alphabet {{{', '.join(symbols)}}} — "
-                "a word uses one symbol per step."
-            )
-            return tok
-        return terms[tok]
 
-    rewritten = _IDENT_RE.sub(repl, word_str)
-    if problem:
-        return None, problem["msg"]
-    return rewritten, None
-
-
-def word_accepted(automaton_json, word_str, symbols):
+def word_accepted(automaton_json, word_text, symbols):
     """Grade a typed lasso word against the automaton → (accepted, message).
 
-    The word is one symbol per step, e.g. `a; b; cycle{a}`. The automaton is
-    teacher data (build_buchi raises on a bad one); the word is student data — a
-    parse failure, missing cycle, or off-alphabet symbol comes back as
+    The word is written prefix·(cycle)ω with one alphabet symbol per step. The
+    automaton is teacher data (build_buchi raises on a bad one); the word is
+    student data — a parse problem or an off-alphabet symbol comes back as
     (False, message), never an exception.
     """
     _require_spot()
     symbols = list(symbols or [])
     aut = build_buchi(automaton_json, symbols)
-    text = (word_str or "").strip()
-    if not text:
-        return False, "Enter a word — for example  a; cycle{b}."
-    if "cycle{" not in text:
-        return False, "A Büchi word needs a repeating part: write it as prefix; cycle{...}."
-    prop_word, err = _symbolic_word_to_props(text, symbols)
+    prefix, cycle, err = parse_word_lasso(word_text, symbols)
     if err:
         return False, err
+    # each symbol becomes its one-hot letter for spot.parse_word
+    terms = _onehot_terms(symbols)
+    stem = "".join(terms[s] + "; " for s in prefix)
+    loop = "; ".join(terms[s] for s in cycle)
     try:
-        word = spot.parse_word(prop_word, aut.get_dict())
+        word = spot.parse_word(stem + "cycle{" + loop + "}", aut.get_dict())
     except (SyntaxError, RuntimeError) as exc:
         return False, f"Could not read the word: {exc}"
     return spot.contains(aut, word.as_automaton()), ""

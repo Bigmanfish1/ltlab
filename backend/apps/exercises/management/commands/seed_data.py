@@ -266,7 +266,7 @@ BUCHI_WORD_EXERCISE = {
     "description": (
         "Give an infinite word over Σ = {a, b} that this Büchi automaton accepts — "
         "one whose run visits the double-ringed accepting state infinitely often. "
-        "Write it as a lasso: a prefix, then a repeating part."
+        "Write it as a lasso, prefix·(cycle)ω."
     ),
     "difficulty": "beginner",
     "declared_aps": ["a", "b"],
@@ -479,9 +479,13 @@ class Command(BaseCommand):
                 "allowed_operators": list(BUILDER_OPERATORS),
             },
         )
-        if word_ex.kripke_structure != BUCHI_WORD_AUTOMATON:
+        if (
+            word_ex.kripke_structure != BUCHI_WORD_AUTOMATON
+            or word_ex.description != BUCHI_WORD_EXERCISE["description"]
+        ):
             word_ex.kripke_structure = BUCHI_WORD_AUTOMATON
-            word_ex.save(update_fields=["kripke_structure"])
+            word_ex.description = BUCHI_WORD_EXERCISE["description"]
+            word_ex.save(update_fields=["kripke_structure", "description"])
 
         created = 0
         for student_idx, rows in ATTEMPTS:

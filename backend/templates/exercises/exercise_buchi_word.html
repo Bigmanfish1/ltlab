@@ -38,16 +38,27 @@
             <div>
                 <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR ACCEPTING WORD</h2>
                 <div class="bg-bg-secondary border border-border-primary rounded p-4 mb-5">
-                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-2">LASSO WORD</div>
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-2">WORD  prefix·(cycle)ω</div>
                     <input type="text" id="word-input" name="word" value="{{ last_word }}"
-                        placeholder="a; cycle{b}"
+                        placeholder="a → (b)ω" autocomplete="off"
                         class="w-full bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
+                    <div class="mt-3 flex flex-wrap items-center gap-1.5">
+                        <span class="font-mono text-[10px] tracking-[0.12em] uppercase text-text-secondary mr-1">Insert</span>
+                        {% for ap in declared_aps %}
+                        <button type="button" data-insert-word="{{ ap }}"
+                            class="word-insert px-2 py-1 font-mono text-[12px] border border-border-primary text-text-primary rounded hover:border-accent-orange transition-colors">{{ ap }}</button>
+                        {% endfor %}
+                        <button type="button" data-insert-word=" → "
+                            class="word-insert px-2 py-1 font-mono text-[12px] border border-border-primary text-text-secondary rounded hover:border-accent-orange transition-colors">→</button>
+                        <button type="button" data-insert-word="()ω"
+                            class="word-insert px-2 py-1 font-mono text-[12px] border border-border-primary text-text-secondary rounded hover:border-accent-orange transition-colors">( )ω</button>
+                    </div>
                     <p class="text-[12px] text-text-secondary mt-3 leading-relaxed">
-                        One symbol per step, separated by <span class="font-mono text-text-primary">;</span> —
-                        put the repeating part in <span class="font-mono text-text-primary">cycle{…}</span>.
-                        For example <span class="font-mono text-text-primary">a; cycle{b}</span> is
+                        One symbol per step. Put the part that repeats forever in
+                        <span class="font-mono text-text-primary">( )ω</span>. For example
+                        <span class="font-mono text-text-primary">a → (b)ω</span> is
                         <span class="font-mono">a b b b …</span>, and
-                        <span class="font-mono text-text-primary">cycle{a; b}</span> is
+                        <span class="font-mono text-text-primary">(a → b)ω</span> is
                         <span class="font-mono">a b a b …</span>
                     </p>
                 </div>
@@ -76,6 +87,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Enter in the word field submits, matching the other typed-answer pages
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); btn.click(); }
+    });
+
+    // Insert buttons drop text at the caret; ( )ω leaves the caret inside
+    document.querySelectorAll('.word-insert').forEach((b) => {
+        b.addEventListener('click', () => {
+            const text = b.dataset.insertWord;
+            const start = input.selectionStart ?? input.value.length;
+            const end = input.selectionEnd ?? start;
+            input.value = input.value.slice(0, start) + text + input.value.slice(end);
+            const caret = text === '()ω' ? start + 1 : start + text.length;
+            input.focus();
+            input.setSelectionRange(caret, caret);
+        });
     });
 
     document.body.addEventListener('exerciseSolved', () => {
