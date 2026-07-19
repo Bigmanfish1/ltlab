@@ -233,8 +233,16 @@
       };
     }
 
+    // What leaves the browser. cy.json() also carries the whole stylesheet plus
+    // zoom/pan, none of which the server reads — and a build_kripke submission is
+    // stored verbatim in Attempt.answer, so only the elements are serialised.
+    function getSubmitJson() {
+      const els = getCleanGraphJson().elements;
+      return { elements: { nodes: els.nodes, edges: els.edges } };
+    }
+
     function syncGraphData() {
-      if (input) input.value = JSON.stringify(getCleanGraphJson());
+      if (input) input.value = JSON.stringify(getSubmitJson());
       emitChange();
     }
 
@@ -854,7 +862,7 @@
       toggleInitial,
       clear: clearCanvas,
       loadElements,
-      getData: getCleanGraphJson,
+      getData: getSubmitJson,
       sync: syncGraphData,
       validateStructure,
       warn,

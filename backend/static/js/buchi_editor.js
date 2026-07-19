@@ -219,12 +219,20 @@
       };
     }
 
+    // What leaves the browser. cy.json() also carries the whole stylesheet plus
+    // zoom/pan, none of which the server reads — and every submission is stored
+    // verbatim in Attempt.answer, so only the elements are serialised.
+    function getSubmitJson() {
+      const els = getCleanGraphJson().elements;
+      return { elements: { nodes: els.nodes, edges: els.edges } };
+    }
+
     function syncGraphData() {
-      const clean = getCleanGraphJson();
-      if (input) input.value = JSON.stringify(clean);
+      const payload = JSON.stringify(getSubmitJson());
+      if (input) input.value = payload;
       if (storageKey && editable) {
         try {
-          localStorage.setItem(storageKey, JSON.stringify(clean));
+          localStorage.setItem(storageKey, payload);
         } catch (e) {
           /* storage full / disabled — autosave is best-effort */
         }
@@ -795,7 +803,7 @@
       toggleAccepting,
       clear: clearCanvas,
       loadElements,
-      getData: getCleanGraphJson,
+      getData: getSubmitJson,
       sync: syncGraphData,
       validateStructure,
       warn,
