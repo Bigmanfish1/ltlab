@@ -76,6 +76,10 @@
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
                             Model a Property
                         </button>
+                        <button type="button" data-type="buchi_construct" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
+                            Draw a Büchi Automaton
+                        </button>
                     </div>
                     {% if type_locked %}
                     <div class="text-[11px] text-text-secondary mt-1">Type is locked once the exercise has been published or attempted.</div>
@@ -173,10 +177,11 @@
                     </button>
                 </div>
 
-                <div data-type-section="english_to_formula build_kripke" class="hidden">
-                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">ATOMIC PROPOSITIONS</div>
+                <div data-type-section="english_to_formula build_kripke buchi_construct" class="hidden">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5" data-alphabet-heading>ATOMIC PROPOSITIONS</div>
                     <div class="text-[12px] text-text-secondary mb-3" data-type-hint="english_to_formula">The propositions students may use in their formulas.</div>
                     <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="build_kripke">The propositions students may label states with — the requirement formulas may use only these.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="buchi_construct">The alphabet Σ. Each symbol is exclusive — a word has exactly one symbol per step, and transitions are labelled with a symbol or a set like <span class="font-mono">a,b</span>.</div>
                     <input type="hidden" name="declared_aps" id="aps-input" value="" />
                     <div class="flex flex-wrap items-center gap-2 mb-6" id="ap-chips">
                         <input type="text" id="ap-entry" placeholder="add proposition + Enter"
@@ -204,6 +209,28 @@
                         class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
                         + Add Formula
                     </button>
+                </div>
+
+                <div data-type-section="buchi_construct" class="hidden">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">TARGET LANGUAGE</div>
+                    <div class="text-[12px] text-text-secondary mb-3">
+                        The LTL formula over the alphabet whose language the student's Büchi automaton must accept exactly.
+                        For Σ = {a, b}: <span class="font-mono">G F b</span> is “b infinitely often”,
+                        <span class="font-mono">F G b</span> is “eventually b only”.
+                    </div>
+                    <div class="bg-bg-secondary border border-border-primary rounded p-4">
+                        <div class="flex items-center gap-2">
+                            <input type="text" name="target_formula" id="buchi-target-input"
+                                value="{{ target_formula }}"
+                                placeholder="G F b"
+                                class="flex-1 bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
+                            <button type="button" id="buchi-target-test"
+                                class="px-4 py-2 bg-bg-primary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
+                                Test
+                            </button>
+                        </div>
+                        <div id="buchi-target-result" class="hidden font-mono text-[11px] mt-3"></div>
+                    </div>
                 </div>
             </div>
 
@@ -266,6 +293,11 @@
             document.querySelectorAll('[data-type-hint]').forEach(function (h) {
                 h.classList.toggle('hidden', h.dataset.typeHint !== current);
             });
+            const alphabetHeading = document.querySelector('[data-alphabet-heading]');
+            if (alphabetHeading) {
+                alphabetHeading.textContent =
+                    current === 'buchi_construct' ? 'ALPHABET Σ' : 'ATOMIC PROPOSITIONS';
+            }
         }
         typeBtns.forEach(function (b) {
             b.addEventListener('click', function () {
@@ -430,6 +462,42 @@
                 showTestResult(row, false, 'The test request failed — try again.');
             });
         }
+        const buchiTargetInput = document.getElementById('buchi-target-input');
+        const buchiTargetBtn = document.getElementById('buchi-target-test');
+        if (buchiTargetBtn) {
+            buchiTargetBtn.addEventListener('click', function () {
+                const out = document.getElementById('buchi-target-result');
+                const formula = buchiTargetInput.value.trim();
+                out.classList.remove('hidden', 'text-accent-lime', 'text-accent-orange');
+                if (!formula) {
+                    out.textContent = 'Enter the target formula to test.';
+                    out.classList.add('text-accent-orange');
+                    return;
+                }
+                out.textContent = 'Testing…';
+                fetch("{% url 'test_formula' %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('input[name="csrfmiddlewaretoken"]').value,
+                    },
+                    body: JSON.stringify({
+                        formula: formula,
+                        mode: 'buchi_target',
+                        declared_aps: apsInput.value ? JSON.parse(apsInput.value) : [],
+                    }),
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    out.classList.remove('text-accent-lime', 'text-accent-orange');
+                    const bad = !data.ok || /unsolvable/.test(data.result || '');
+                    out.textContent = data.ok ? data.result : data.error;
+                    out.classList.add(bad ? 'text-accent-orange' : 'text-accent-lime');
+                }).catch(function () {
+                    out.textContent = 'The test request failed — try again.';
+                    out.classList.add('text-accent-orange');
+                });
+            });
+        }
+
         [containers.english_to_formula.rows, containers.path_exhibit.rows, containers.build_kripke.rows].forEach(function (rows) {
             rows.addEventListener('click', function (e) {
                 const opBtn = e.target.closest('.part-op');

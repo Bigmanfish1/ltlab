@@ -14,6 +14,7 @@ from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import (
     run_buchi_equivalence_check,
+    run_buchi_target_check,
     run_equivalence_check,
     run_ltl_check,
     run_model_solvable_check,
@@ -707,6 +708,7 @@ def _builder_context(exercise, form=None):
         )
         declared_aps = form["declared_aps"]
         parts = form["parts"]
+        target_formula = form["target_formula"]
     elif exercise is not None:
         hints = list(exercise.hints or [])[:3]
         hint_values = hints + [""] * (3 - len(hints))
@@ -729,6 +731,13 @@ def _builder_context(exercise, form=None):
              "hints": list(p.hints or [])}
             for p in exercise.parts.all()
         ]
+        # legacy model_check reuses target_formula as its memo answer — only the
+        # Büchi target belongs in the builder field
+        target_formula = (
+            exercise.target_formula or ""
+            if exercise.exercise_type == "buchi_construct"
+            else ""
+        )
     else:
         hint_values = ["", "", ""]
         allowed = list(BUILDER_OPERATORS)
@@ -737,6 +746,7 @@ def _builder_context(exercise, form=None):
         exercise_type = "model_check"
         declared_aps = []
         parts = []
+        target_formula = ""
     return {
         "modules": list(Topic.objects.all()),
         "operators": BUILDER_OPERATORS,
@@ -754,6 +764,7 @@ def _builder_context(exercise, form=None):
         "builder_types": BUILDER_EXERCISE_TYPES,
         "declared_aps_json": json.dumps(declared_aps),
         "parts_json": json.dumps(parts),
+        "target_formula": target_formula,
     }
 
 
@@ -818,10 +829,27 @@ def test_formula(request):
     graph = payload.get("graph")
     formula = str(payload.get("formula") or "").strip()
     mode = payload.get("mode")
-    if mode not in ("satisfiable", "holds", "solvable"):
+    if mode not in ("satisfiable", "holds", "solvable", "buchi_target"):
         return JsonResponse({"ok": False, "error": "Unknown test mode."})
     if not formula:
         return JsonResponse({"ok": False, "error": "Enter a formula to test."})
+    # buchi_construct has no memo graph — report the target automaton over Σ
+    if mode == "buchi_target":
+        symbols = payload.get("declared_aps")
+        if not isinstance(symbols, list):
+            symbols = []
+        try:
+            info = run_buchi_target_check(formula, symbols)
+        except ValueError as exc:
+            return JsonResponse({"ok": False, "error": str(exc)})
+        if info["empty"]:
+            return JsonResponse({
+                "ok": True,
+                "result": "no word over the alphabet satisfies this — unsolvable",
+            })
+        return JsonResponse({
+            "ok": True, "result": f"accepted by a {info['states']}-state Büchi automaton",
+        })
     # build_kripke has no memo graph — test satisfiability instead
     if mode == "solvable":
         declared_aps = payload.get("declared_aps")
