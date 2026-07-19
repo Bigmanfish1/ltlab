@@ -18,7 +18,7 @@ EXERCISE_TYPE_BADGES = {
     "judge": "∀ Model Checking",
     "build_kripke": "Model a Property",
     "buchi_construct": "Draw a Büchi Automaton",
-    "buchi_word": "Give an Accepting Word",
+    "buchi_word": "Path for Büchi",
 }
 
 # sample labels for the placeholder misconception panel (analytics reworking)
