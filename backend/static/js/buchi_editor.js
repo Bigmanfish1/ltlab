@@ -475,7 +475,7 @@
         if (committed) return;
         committed = true;
         saveSnapshot();
-        edge.data("label", labelInput.value.trim() || "1");
+        edge.data("label", labelInput.value.trim());
         panel.remove();
         document.removeEventListener("mousedown", outsideHandler);
         syncGraphData();

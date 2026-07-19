@@ -12,10 +12,12 @@ Two student tasks share this engine. buchi_construct grades a drawn automaton
 against a target LTL formula by equivalence to `translate(target) ∩ one-hot`.
 buchi_word grades a typed lasso word (one symbol per step) by membership.
 
-Error contract mirrors traces.py: ValueError is a teacher/system fault (a
-malformed label, an over-cap or ill-formed automaton, an unparseable target).
-A wrong student automaton is a False return; a rejected word is a user-facing
-message — neither is an exception.
+Error contract: ValueError signals a structural problem with an automaton — a
+malformed label, an over-cap or ill-formed automaton, an unparseable target.
+It never means a silently-wrong grade; the caller surfaces its message (for a
+student drawing the client validation missed, submit_buchi shows it rather than
+500-ing). A well-formed but wrong student automaton is a False return, and a
+rejected word is a user-facing message.
 """
 
 import re
@@ -179,8 +181,17 @@ def check_buchi_equivalence(automaton_json, target, symbols):
 
 
 def is_deterministic(automaton_json, symbols):
-    """True iff the drawn automaton is deterministic (spot.is_deterministic)."""
+    """True iff the drawn automaton is deterministic.
+
+    A deterministic Büchi automaton has a single initial state (slide 14: I⊆Q;
+    determinism requires |I|=1). build_buchi collapses several initials into one
+    synthesized state, which would hide multi-initiality from spot, so the
+    initial count is checked here before the transition-determinism test.
+    """
     _require_spot()
+    nodes, _ = _real_elements(automaton_json)
+    if sum(1 for n in nodes if n["data"].get("initial")) > 1:
+        return False
     return spot.is_deterministic(build_buchi(automaton_json, symbols))
 
 
@@ -188,8 +199,13 @@ def _symbolic_word_to_props(word_str, symbols):
     """Rewrite a symbol lasso word to a propositional one for spot.parse_word.
 
     `a; b; cycle{a}` over Σ={a,b} → `(a & !b); (b & !a); cycle{(a & !b)}`.
-    Returns (prop_word, None) or (None, user_message) if a token is not a symbol.
+    Returns (prop_word, None) or (None, user_message). Each step must be exactly
+    one symbol: boolean operators (& | !) and parentheses are rejected so a
+    student cannot smuggle a compound letter like `a & b` or `a | b` past the
+    one-symbol-per-step contract.
     """
+    if re.search(r"[&|!()]", word_str):
+        return None, "Each step of the word is exactly one symbol — no & | ! operators."
     terms = _onehot_terms(symbols)
     problem = {}
 
