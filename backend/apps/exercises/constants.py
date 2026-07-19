@@ -21,6 +21,11 @@ EXERCISE_TYPE_BADGES = {
     "buchi_word": "Path for Büchi",
 }
 
+# types whose students type an LTL formula, so the allowed-operator list gates
+# what they can write — the rest answer by drawing, picking a path, or typing a
+# word, and an empty operator list means nothing to them
+FORMULA_INPUT_TYPES = ("model_check", "english_to_formula")
+
 # sample labels for the placeholder misconception panel (analytics reworking)
 MISCONCEPTION_LABELS = {
     "g_vs_f": "G vs F confusion",

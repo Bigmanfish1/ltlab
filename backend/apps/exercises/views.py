@@ -33,6 +33,7 @@ from .constants import (
     BUILDER_OPERATORS,
     DIFFICULTIES,
     EXERCISE_TYPE_BADGES,
+    FORMULA_INPUT_TYPES,
     OPERATOR_DISPLAY,
     OPERATOR_LABELS,
 )
@@ -935,7 +936,7 @@ def _save_exercise(request, exercise):
             f"Editing the graph or formulas reset {reset} student "
             f"submission{'s' if reset != 1 else ''} — students will resubmit.",
         )
-    if not form["allowed_operators"] and saved.exercise_type != "build_kripke":
+    if not form["allowed_operators"] and saved.exercise_type in FORMULA_INPUT_TYPES:
         messages.warning(request, "No operators are enabled — students can only submit atomic propositions.")
     if publishing and saved.exercise_type == "judge":
         key = ", ".join(
