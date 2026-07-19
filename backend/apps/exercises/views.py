@@ -326,18 +326,15 @@ def submit_formula(request, exercise_id):
 def _grade_constraint(graph, formula):
     """Grade one required formula against the student's graph → (holds, message, trace).
 
-    An engine ValueError (e.g. the model never uses a proposition the formula
-    names) is the model failing the requirement, not a system fault.
+    An engine ValueError is the model failing the requirement, not a system
+    fault — every message it raises is already student-actionable ("references
+    proposition(s) not declared on any state", "no initial state", a deadlock),
+    so it is surfaced verbatim rather than replaced with a guess at the cause.
     """
     try:
         result = run_ltl_check(graph, formula)
-    except ValueError:
-        return (
-            False,
-            "Your model does not satisfy this requirement — check that every "
-            "proposition it mentions appears on the right states.",
-            None,
-        )
+    except ValueError as exc:
+        return False, str(exc), None
     if result["result"] == "satisfied":
         return True, "", None
     return False, "Your model has a path that violates this requirement.", result.get("trace")
