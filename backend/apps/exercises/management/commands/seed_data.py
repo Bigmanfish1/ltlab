@@ -262,7 +262,7 @@ BUCHI_WORD_AUTOMATON = {
 }
 
 BUCHI_WORD_EXERCISE = {
-    "title": "Give a word this automaton accepts",
+    "title": "Path for Büchi",
     "description": (
         "Give an infinite word over Σ = {a, b} that this Büchi automaton accepts — "
         "one whose run visits the double-ringed accepting state infinitely often. "
