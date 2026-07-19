@@ -220,9 +220,10 @@
                         For Σ = {a, b}: <span class="font-mono">G F b</span> is “b infinitely often”,
                         <span class="font-mono">F G b</span> is “eventually b only”.
                     </div>
-                    <div class="bg-bg-secondary border border-border-primary rounded p-4">
+                    <div class="bg-bg-secondary border border-border-primary rounded p-4" id="buchi-target-row">
                         <div class="flex items-center gap-2">
                             <input type="text" name="target_formula" id="buchi-target-input"
+                                data-part-field="formula"
                                 value="{{ target_formula }}"
                                 placeholder="G F b"
                                 class="flex-1 bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
@@ -231,6 +232,7 @@
                                 Test
                             </button>
                         </div>
+                        {% include "components/operator_toolbar.html" %}
                         <div id="buchi-target-result" class="hidden font-mono text-[11px] mt-3"></div>
                     </div>
                 </div>
@@ -466,6 +468,15 @@
         }
         const buchiTargetInput = document.getElementById('buchi-target-input');
         const buchiTargetBtn = document.getElementById('buchi-target-test');
+        const buchiTargetRow = document.getElementById('buchi-target-row');
+        if (buchiTargetRow) {
+            // the target input carries data-part-field="formula", so the shared
+            // part-row insert helper works on this row unchanged
+            buchiTargetRow.addEventListener('click', function (e) {
+                const opBtn = e.target.closest('.part-op');
+                if (opBtn) insertIntoFormula(buchiTargetRow, opBtn.dataset.insert);
+            });
+        }
         if (buchiTargetBtn) {
             buchiTargetBtn.addEventListener('click', function () {
                 const out = document.getElementById('buchi-target-result');
