@@ -395,10 +395,18 @@ def submit_kripke(request, exercise_id):
             request, "Verification was stopped — the model could not be processed."
         )
 
+    # the editor posts the whole cy.json() — stylesheet, zoom and pan included —
+    # and none of it is read back, so only the elements are stored per attempt
+    stored_graph = {
+        "elements": {
+            "nodes": elements.get("nodes") or [],
+            "edges": elements.get("edges") or [],
+        }
+    }
     Attempt.objects.create(
         exercise=exercise,
         student=request.profile,
-        answer={"graph": graph},
+        answer={"graph": stored_graph},
         is_correct=all_ok,
         hints_used=_clamped_hints(
             request, [h for p in parts for h in (p.hints or [])]
