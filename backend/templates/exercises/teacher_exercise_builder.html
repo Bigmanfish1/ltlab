@@ -212,9 +212,11 @@
                 </div>
 
                 <div data-type-section="buchi_construct" class="hidden">
-                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">TARGET LANGUAGE</div>
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">HIDDEN ANSWER KEY</div>
                     <div class="text-[12px] text-text-secondary mb-3">
-                        The LTL formula over the alphabet whose language the student's Büchi automaton must accept exactly.
+                        The LTL formula the student's automaton is graded against by language equivalence.
+                        <span class="text-text-primary">Students never see it</span> — describe the language in
+                        the task description instead (e.g. “words where b occurs infinitely often”).
                         For Σ = {a, b}: <span class="font-mono">G F b</span> is “b infinitely often”,
                         <span class="font-mono">F G b</span> is “eventually b only”.
                     </div>

@@ -401,9 +401,8 @@ def submit_buchi(request, exercise_id):
         hints_used=_clamped_hints(request, exercise.hints),
     )
 
-    response = render(request, "exercises/buchi_result.html", {
-        "equivalent": equivalent, "target": exercise.target_formula,
-    })
+    # the target formula is the hidden answer key — never rendered to students
+    response = render(request, "exercises/buchi_result.html", {"equivalent": equivalent})
     return _completion_trigger(response, request, exercise)
 
 

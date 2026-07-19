@@ -232,10 +232,11 @@ BUILD_KRIPKE_EXERCISE = {
 # symbols; target = "b infinitely often" (G F b).
 BUCHI_CONSTRUCT_EXERCISE = {
     "title": "Draw an automaton for “b infinitely often”",
+    # the English language description is the prompt; the LTL target is hidden
     "description": (
         "Draw a Büchi automaton over the alphabet Σ = {a, b} that accepts exactly "
-        "the words in which the symbol b occurs infinitely often — the language "
-        "of G F b. Each step of a word is exactly one symbol."
+        "the words in which the symbol b occurs infinitely often. Each step of a "
+        "word is exactly one symbol."
     ),
     "difficulty": "intermediate",
     "declared_aps": ["a", "b"],
@@ -407,7 +408,7 @@ class Command(BaseCommand):
                 part.hints = hints
                 part.save(update_fields=["hints"])
 
-        Exercise.objects.get_or_create(
+        buchi_ex, _ = Exercise.objects.get_or_create(
             title=BUCHI_CONSTRUCT_EXERCISE["title"],
             topic=ltl_topic,
             defaults={
@@ -423,6 +424,15 @@ class Command(BaseCommand):
                 "allowed_operators": list(BUILDER_OPERATORS),
             },
         )
+        # the prompt must not leak the hidden target, so keep the seeded text
+        # authoritative — re-running repairs a row created before this wording
+        if (
+            buchi_ex.description != BUCHI_CONSTRUCT_EXERCISE["description"]
+            or buchi_ex.target_formula != BUCHI_CONSTRUCT_EXERCISE["target_formula"]
+        ):
+            buchi_ex.description = BUCHI_CONSTRUCT_EXERCISE["description"]
+            buchi_ex.target_formula = BUCHI_CONSTRUCT_EXERCISE["target_formula"]
+            buchi_ex.save(update_fields=["description", "target_formula"])
 
         created = 0
         for student_idx, rows in ATTEMPTS:

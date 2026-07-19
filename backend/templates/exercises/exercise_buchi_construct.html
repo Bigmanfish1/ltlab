@@ -42,10 +42,12 @@
             </div>
 
             <div>
-                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">TARGET LANGUAGE</h2>
+                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">REQUIRED LANGUAGE</h2>
                 <div class="bg-bg-secondary border border-border-primary rounded p-4 mb-5">
-                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-2">ACCEPT EXACTLY</div>
-                    <div class="font-mono text-base text-text-primary">L({{ exercise.target_formula }})</div>
+                    <p class="text-[13px] text-text-primary leading-relaxed">{{ exercise.description }}</p>
+                    <p class="text-[12px] text-text-secondary mt-3">
+                        Your automaton must accept <em>exactly</em> these words — no more, no fewer.
+                    </p>
                 </div>
 
                 <button type="button" id="check-buchi-btn"
