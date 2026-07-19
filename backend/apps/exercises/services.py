@@ -530,6 +530,7 @@ def parse_exercise_form(request):
         # builder page never collide on one name
         "automaton_data": request.POST.get("automaton_data", "").strip(),
         "target_formula": request.POST.get("target_formula", "").strip(),
+        "ask_determinism": request.POST.get("ask_determinism") == "on",
     }
 
 
@@ -776,7 +777,7 @@ def validate_exercise_form(form, exercise, publishing):
     return errors, graph
 
 
-def _grading_signature(graph, allowed_operators, declared_aps, parts, target_formula=None):
+def _grading_signature(graph, allowed_operators, declared_aps, parts, target_formula=None, ask_determinism=False):
     """Stable fingerprint of everything that determines how answers are graded.
 
     parts is a list of (prompt, formula) in position order. Title, description,
@@ -790,6 +791,7 @@ def _grading_signature(graph, allowed_operators, declared_aps, parts, target_for
             "aps": sorted(declared_aps or []),
             "parts": [[p, f] for p, f in parts],
             "target": target_formula,
+            "ask_determinism": ask_determinism,
         },
         sort_keys=True,
         default=str,
@@ -802,6 +804,7 @@ def _exercise_grading_signature(exercise):
         exercise.kripke_structure, exercise.allowed_operators,
         exercise.declared_aps, parts,
         exercise.target_formula if exercise.exercise_type == "buchi_construct" else None,
+        exercise.ask_determinism,
     )
 
 
@@ -867,6 +870,7 @@ def persist_exercise(exercise, form, graph, publishing):
     )
     if exercise.exercise_type == "buchi_construct":
         exercise.target_formula = form["target_formula"]
+        exercise.ask_determinism = form["ask_determinism"]
     exercise.is_published = publishing
     if publishing:
         exercise.ever_published = True

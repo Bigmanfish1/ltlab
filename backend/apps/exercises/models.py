@@ -68,6 +68,9 @@ class Exercise(models.Model):
         max_length=20, choices=EXERCISE_TYPE_CHOICES, default="model_check"
     )
     declared_aps = models.JSONField(default=list, blank=True)
+    # buchi_construct only: also ask whether the drawn automaton is
+    # deterministic (MCL5 p.19), graded against the student's own drawing
+    ask_determinism = models.BooleanField(default=False)
 
     class Meta:
         db_table = "Exercises"

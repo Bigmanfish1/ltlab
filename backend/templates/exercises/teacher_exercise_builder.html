@@ -82,7 +82,7 @@
                         </button>
                         <button type="button" data-type="buchi_word" {% if type_locked %}disabled{% endif %}
                             class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
-                            Give an Accepting Word
+                            Path for Büchi
                         </button>
                     </div>
                     {% if type_locked %}
@@ -251,6 +251,17 @@
                         {% include "components/operator_toolbar.html" %}
                         <div id="buchi-target-result" class="hidden font-mono text-[11px] mt-3"></div>
                     </div>
+
+                    <label class="flex items-start gap-2 mt-4 cursor-pointer">
+                        <input type="checkbox" name="ask_determinism" id="ask-determinism-input"
+                            {% if ask_determinism %}checked{% endif %}
+                            class="accent-accent-orange mt-0.5" />
+                        <span class="text-[12px] text-text-secondary">
+                            <span class="text-text-primary">Also ask whether the automaton is deterministic</span>
+                            — the MCL5 p.19 follow-up. Graded against the automaton the student drew,
+                            so both the drawing and the classification must be right.
+                        </span>
+                    </label>
                 </div>
             </div>
 

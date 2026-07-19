@@ -13,6 +13,7 @@ from django.views.decorators.http import require_POST
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import (
+    run_buchi_determinism_check,
     run_buchi_equivalence_check,
     run_buchi_target_check,
     run_buchi_word_check,
@@ -221,6 +222,10 @@ def _buchi_construct_canvas(request, exercise):
         # start blank for a fresh student (the editor's demo is an answer-shaped
         # automaton); restore their saved drawing on return
         "elements_json": _elements_json(last_automaton) or "[]",
+        "ask_determinism": exercise.ask_determinism,
+        "last_determinism": (
+            (last.answer or {}).get("determinism", "") if last else ""
+        ),
         "autosave_key": f"buchi:{request.profile.id}:{exercise.id}",
         "is_completed": Attempt.objects.filter(
             exercise=exercise, student=request.profile, is_correct=True
@@ -407,9 +412,20 @@ def submit_buchi(request, exercise_id):
     if not isinstance(elements, dict) or not elements.get("nodes"):
         return error_response(request, "Draw an automaton before checking.")
 
+    symbols = list(exercise.declared_aps or [])
+    determinism_answer = (request.POST.get("determinism") or "").strip()
+    if exercise.ask_determinism and determinism_answer not in ("deterministic", "nondeterministic"):
+        return error_response(
+            request, "Also answer whether your automaton is deterministic."
+        )
+
     try:
-        result = run_buchi_equivalence_check(
-            automaton, exercise.target_formula, list(exercise.declared_aps or [])
+        result = run_buchi_equivalence_check(automaton, exercise.target_formula, symbols)
+        # graded against the student's OWN drawing (MCL5 p.19 asks whether the
+        # automata *they* drew are deterministic), not against the target
+        actually_deterministic = (
+            run_buchi_determinism_check(automaton, symbols)["deterministic"]
+            if exercise.ask_determinism else None
         )
     except ValueError as exc:
         return error_response(request, str(exc))
@@ -420,16 +436,30 @@ def submit_buchi(request, exercise_id):
         )
 
     equivalent = result["equivalent"]
+    determinism_ok = True
+    if exercise.ask_determinism:
+        determinism_ok = (
+            determinism_answer == "deterministic"
+        ) == actually_deterministic
+
+    answer = {"automaton": automaton}
+    if exercise.ask_determinism:
+        answer["determinism"] = determinism_answer
     Attempt.objects.create(
         exercise=exercise,
         student=request.profile,
-        answer={"automaton": automaton},
-        is_correct=equivalent,
+        answer=answer,
+        is_correct=equivalent and determinism_ok,
         hints_used=_clamped_hints(request, exercise.hints),
     )
 
     # the target formula is the hidden answer key — never rendered to students
-    response = render(request, "exercises/buchi_result.html", {"equivalent": equivalent})
+    response = render(request, "exercises/buchi_result.html", {
+        "equivalent": equivalent,
+        "ask_determinism": exercise.ask_determinism,
+        "determinism_ok": determinism_ok,
+        "actually_deterministic": actually_deterministic,
+    })
     return _completion_trigger(response, request, exercise)
 
 
@@ -788,6 +818,7 @@ def _builder_context(exercise, form=None):
         declared_aps = form["declared_aps"]
         parts = form["parts"]
         target_formula = form["target_formula"]
+        ask_determinism = form["ask_determinism"]
     elif exercise is not None:
         hints = list(exercise.hints or [])[:3]
         hint_values = hints + [""] * (3 - len(hints))
@@ -817,6 +848,7 @@ def _builder_context(exercise, form=None):
             if exercise.exercise_type == "buchi_construct"
             else ""
         )
+        ask_determinism = exercise.ask_determinism
     else:
         hint_values = ["", "", ""]
         allowed = list(BUILDER_OPERATORS)
@@ -826,6 +858,7 @@ def _builder_context(exercise, form=None):
         declared_aps = []
         parts = []
         target_formula = ""
+        ask_determinism = False
     return {
         "modules": list(Topic.objects.all()),
         "operators": BUILDER_OPERATORS,
@@ -844,6 +877,7 @@ def _builder_context(exercise, form=None):
         "declared_aps_json": json.dumps(declared_aps),
         "parts_json": json.dumps(parts),
         "target_formula": target_formula,
+        "ask_determinism": ask_determinism,
     }
 
 
