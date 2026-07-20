@@ -8,6 +8,8 @@ from apps.exercises.views import (
     exercise_delete,
     exercises,
     manage,
+    submit_buchi,
+    submit_buchi_word,
     submit_formula,
     submit_kripke,
     submit_part,
@@ -30,6 +32,8 @@ urlpatterns = [
     path("exercises/<uuid:exercise_id>/", exercise_canvas, name="exercise_canvas"),
     path('exercises/<uuid:exercise_id>/submit/', submit_formula, name='submit_formula'),
     path('exercises/<uuid:exercise_id>/submit-model/', submit_kripke, name='submit_kripke'),
+    path('exercises/<uuid:exercise_id>/submit-buchi/', submit_buchi, name='submit_buchi'),
+    path('exercises/<uuid:exercise_id>/submit-word/', submit_buchi_word, name='submit_buchi_word'),
     path(
         "exercises/<uuid:exercise_id>/parts/<uuid:part_id>/submit/",
         submit_part,

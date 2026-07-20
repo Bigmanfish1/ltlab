@@ -17,6 +17,8 @@ EXERCISE_TYPE_CHOICES = [
     ("path_exhibit", "Exhibit a satisfying path"),
     ("english_to_formula", "English requirement to formula"),
     ("build_kripke", "Build a Kripke structure that satisfies a formula"),
+    ("buchi_construct", "Draw a Büchi automaton for a formula"),
+    ("buchi_word", "Give a word a Büchi automaton accepts"),
 ]
 
 
@@ -66,6 +68,9 @@ class Exercise(models.Model):
         max_length=20, choices=EXERCISE_TYPE_CHOICES, default="model_check"
     )
     declared_aps = models.JSONField(default=list, blank=True)
+    # buchi_construct only: also ask whether the drawn automaton is
+    # deterministic (MCL5 p.19), graded against the student's own drawing
+    ask_determinism = models.BooleanField(default=False)
 
     class Meta:
         db_table = "Exercises"

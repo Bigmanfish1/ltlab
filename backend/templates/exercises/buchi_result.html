@@ -1,0 +1,36 @@
+{% if equivalent and determinism_ok %}
+<div class="result-flash flex items-start gap-2 p-3 bg-bg-primary border border-accent-lime rounded">
+    <span class="font-mono text-xs text-accent-lime shrink-0">✓ CORRECT</span>
+    <span class="text-xs text-text-primary">Your automaton accepts exactly the required language{% if ask_determinism %}, and you classified it correctly{% endif %} — exercise complete.</span>
+</div>
+{% else %}
+<div class="result-flash flex items-start gap-2 p-3 bg-bg-primary border border-accent-orange rounded">
+    <span class="font-mono text-xs text-accent-orange shrink-0">✗ NOT YET</span>
+    <span class="text-xs text-text-primary">
+        {% if not equivalent %}Your automaton accepts a different language. Check which words it accepts or rejects, which states are accepting, and whether every transition is labelled as you intend.
+        {% else %}Your automaton accepts the right language, but the determinism answer is wrong.{% endif %}
+    </span>
+</div>
+{% endif %}
+
+{% if ask_determinism %}
+<div class="mt-2 space-y-2">
+    <div class="bg-bg-secondary border {% if equivalent %}border-accent-lime{% else %}border-border-primary{% endif %} rounded p-3 flex items-center justify-between">
+        <span class="text-xs text-text-primary">Accepts the required language</span>
+        <span class="font-mono text-[11px] shrink-0 {% if equivalent %}text-accent-lime{% else %}text-accent-orange{% endif %}">{% if equivalent %}✓ YES{% else %}✗ NO{% endif %}</span>
+    </div>
+    <div class="bg-bg-secondary border {% if determinism_ok %}border-accent-lime{% else %}border-border-primary{% endif %} rounded p-3">
+        <div class="flex items-center justify-between">
+            <span class="text-xs text-text-primary">Deterministic or non-deterministic</span>
+            <span class="font-mono text-[11px] shrink-0 {% if determinism_ok %}text-accent-lime{% else %}text-accent-orange{% endif %}">{% if determinism_ok %}✓ CORRECT{% else %}✗ WRONG{% endif %}</span>
+        </div>
+        {% if not determinism_ok %}
+        <p class="text-xs text-text-secondary mt-2">
+            The automaton you drew is
+            <span class="text-text-primary">{% if actually_deterministic %}deterministic{% else %}non-deterministic{% endif %}</span>.
+            {% if not actually_deterministic %}Look for a state with two transitions on the same symbol, or more than one initial state.{% endif %}
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}

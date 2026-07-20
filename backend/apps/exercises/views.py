@@ -13,17 +13,27 @@ from django.views.decorators.http import require_POST
 from apps.accounts.middleware import supabase_login_required, teacher_required
 from apps.checker.operators import disallowed_operators
 from apps.checker.tasks import (
+    run_buchi_determinism_check,
+    run_buchi_equivalence_check,
+    run_buchi_target_check,
+    run_buchi_word_check,
     run_equivalence_check,
     run_ltl_check,
     run_model_solvable_check,
     run_trace_check,
 )
-from apps.checker.views import MAX_FORMULA_CHARS, build_result_context, error_response
+from apps.checker.views import (
+    MAX_FORMULA_CHARS,
+    MAX_NODES,
+    build_result_context,
+    error_response,
+)
 
 from .constants import (
     BUILDER_OPERATORS,
     DIFFICULTIES,
     EXERCISE_TYPE_BADGES,
+    FORMULA_INPUT_TYPES,
     OPERATOR_DISPLAY,
     OPERATOR_LABELS,
 )
@@ -114,6 +124,10 @@ def exercise_canvas(request, exercise_id):
         return _part_canvas(request, exercise, "exercises/exercise_judge.html")
     if exercise.exercise_type == "build_kripke":
         return _build_kripke_canvas(request, exercise)
+    if exercise.exercise_type == "buchi_construct":
+        return _buchi_construct_canvas(request, exercise)
+    if exercise.exercise_type == "buchi_word":
+        return _buchi_word_canvas(request, exercise)
 
     attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
     is_completed = Attempt.objects.filter(
@@ -195,6 +209,64 @@ def _build_kripke_canvas(request, exercise):
     return render(request, "exercises/exercise_build_kripke.html", context)
 
 
+def _buchi_construct_canvas(request, exercise):
+    """Student page for buchi_construct — draw a Büchi automaton for the target."""
+    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
+    # restore the last submitted automaton so a reload keeps the student's work
+    last = (
+        Attempt.objects.filter(exercise=exercise, student=request.profile)
+        .order_by("-created_at")
+        .first()
+    )
+    last_automaton = (
+        last.answer.get("automaton") if last and isinstance(last.answer, dict) else None
+    )
+    context = {
+        "exercise": exercise,
+        "exercise_number": exercise_number,
+        "declared_aps": list(exercise.declared_aps or []),
+        # start blank for a fresh student (the editor's demo is an answer-shaped
+        # automaton); restore their saved drawing on return
+        "elements_json": _elements_json(last_automaton) or "[]",
+        "ask_determinism": exercise.ask_determinism,
+        "last_determinism": (
+            (last.answer or {}).get("determinism", "") if last else ""
+        ),
+        "autosave_key": f"buchi:{request.profile.id}:{exercise.id}",
+        "is_completed": Attempt.objects.filter(
+            exercise=exercise, student=request.profile, is_correct=True
+        ).exists(),
+        "prev_exercise": prev_exercise,
+        "next_exercise": next_exercise,
+        "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
+    }
+    return render(request, "exercises/exercise_buchi_construct.html", context)
+
+
+def _buchi_word_canvas(request, exercise):
+    """Student page for buchi_word — read the fixed automaton, type an accepting word."""
+    exercise_number, prev_exercise, next_exercise = _exercise_nav(exercise.id)
+    last = (
+        Attempt.objects.filter(exercise=exercise, student=request.profile)
+        .order_by("-created_at")
+        .first()
+    )
+    context = {
+        "exercise": exercise,
+        "exercise_number": exercise_number,
+        "declared_aps": list(exercise.declared_aps or []),
+        "elements_json": _elements_json(exercise.kripke_structure),
+        "last_word": (last.answer or {}).get("word", "") if last else "",
+        "is_completed": Attempt.objects.filter(
+            exercise=exercise, student=request.profile, is_correct=True
+        ).exists(),
+        "prev_exercise": prev_exercise,
+        "next_exercise": next_exercise,
+        "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
+    }
+    return render(request, "exercises/exercise_buchi_word.html", context)
+
+
 @supabase_login_required
 @require_POST
 def submit_formula(request, exercise_id):
@@ -260,18 +332,15 @@ def submit_formula(request, exercise_id):
 def _grade_constraint(graph, formula):
     """Grade one required formula against the student's graph → (holds, message, trace).
 
-    An engine ValueError (e.g. the model never uses a proposition the formula
-    names) is the model failing the requirement, not a system fault.
+    An engine ValueError is the model failing the requirement, not a system
+    fault — every message it raises is already student-actionable ("references
+    proposition(s) not declared on any state", "no initial state", a deadlock),
+    so it is surfaced verbatim rather than replaced with a guess at the cause.
     """
     try:
         result = run_ltl_check(graph, formula)
-    except ValueError:
-        return (
-            False,
-            "Your model does not satisfy this requirement — check that every "
-            "proposition it mentions appears on the right states.",
-            None,
-        )
+    except ValueError as exc:
+        return False, str(exc), None
     if result["result"] == "satisfied":
         return True, "", None
     return False, "Your model has a path that violates this requirement.", result.get("trace")
@@ -298,21 +367,46 @@ def submit_kripke(request, exercise_id):
     if not isinstance(elements, dict) or not elements.get("nodes"):
         return error_response(request, "Draw a Kripke structure before checking.")
 
+    # the only path that hands a student-drawn graph to SPOT — run_ltl_check
+    # caps the formula but not the graph, so the sandbox's node cap applies here
+    real_nodes = [
+        n for n in elements["nodes"] if not (n.get("data") or {}).get("phantom")
+    ]
+    if len(real_nodes) > MAX_NODES:
+        return error_response(
+            request,
+            f"Your model has {len(real_nodes)} states — at most {MAX_NODES} are supported.",
+        )
+
     parts = list(exercise.parts.all())
     results = []
     all_ok = bool(parts)
-    for i, part in enumerate(parts, start=1):
-        holds, message, trace = _grade_constraint(graph, part.formula)
-        all_ok = all_ok and holds
-        results.append({
-            "number": i, "formula": part.formula,
-            "ok": holds, "message": message, "trace": trace,
-        })
+    try:
+        for i, part in enumerate(parts, start=1):
+            holds, message, trace = _grade_constraint(graph, part.formula)
+            all_ok = all_ok and holds
+            results.append({
+                "number": i, "formula": part.formula,
+                "ok": holds, "message": message, "trace": trace,
+            })
+    except Exception:
+        logger.exception("run_ltl_check failed during build_kripke submission")
+        return error_response(
+            request, "Verification was stopped — the model could not be processed."
+        )
 
+    # the editor posts the whole cy.json() — stylesheet, zoom and pan included —
+    # and none of it is read back, so only the elements are stored per attempt
+    stored_graph = {
+        "elements": {
+            "nodes": elements.get("nodes") or [],
+            "edges": elements.get("edges") or [],
+        }
+    }
     Attempt.objects.create(
         exercise=exercise,
         student=request.profile,
-        answer={"graph": graph},
+        answer={"graph": stored_graph},
         is_correct=all_ok,
         hints_used=_clamped_hints(
             request, [h for p in parts for h in (p.hints or [])]
@@ -321,6 +415,126 @@ def submit_kripke(request, exercise_id):
 
     response = render(request, "exercises/kripke_result.html", {
         "results": results, "all_ok": all_ok,
+    })
+    return _completion_trigger(response, request, exercise)
+
+
+@supabase_login_required
+@require_POST
+def submit_buchi(request, exercise_id):
+    """Grade a drawn Büchi automaton against the target LTL by language equivalence.
+
+    Records one whole-exercise attempt (buchi_construct has no parts). A drawing
+    problem the client validation missed (unlabelled edge, no initial state,
+    off-alphabet label) is surfaced to the student, not a 500.
+    """
+    exercise = get_object_or_404(published_exercises(), id=exercise_id)
+    if exercise.exercise_type != "buchi_construct":
+        return error_response(request, "This exercise is not a draw-an-automaton task.")
+
+    try:
+        automaton = json.loads(request.POST.get("automaton_data") or "")
+    except json.JSONDecodeError:
+        return error_response(request, "The automaton could not be read.")
+    elements = automaton.get("elements") if isinstance(automaton, dict) else None
+    if not isinstance(elements, dict) or not elements.get("nodes"):
+        return error_response(request, "Draw an automaton before checking.")
+
+    symbols = list(exercise.declared_aps or [])
+    determinism_answer = (request.POST.get("determinism") or "").strip()
+    if exercise.ask_determinism and determinism_answer not in ("deterministic", "nondeterministic"):
+        return error_response(
+            request, "Also answer whether your automaton is deterministic."
+        )
+
+    try:
+        result = run_buchi_equivalence_check(automaton, exercise.target_formula, symbols)
+        # graded against the student's OWN drawing (MCL5 p.19 asks whether the
+        # automata *they* drew are deterministic), not against the target
+        actually_deterministic = (
+            run_buchi_determinism_check(automaton, symbols)["deterministic"]
+            if exercise.ask_determinism else None
+        )
+    except ValueError as exc:
+        return error_response(request, str(exc))
+    except Exception:
+        logger.exception("run_buchi_equivalence_check failed during submission")
+        return error_response(
+            request, "Verification was stopped — the automaton could not be processed."
+        )
+
+    equivalent = result["equivalent"]
+    determinism_ok = True
+    if exercise.ask_determinism:
+        determinism_ok = (
+            determinism_answer == "deterministic"
+        ) == actually_deterministic
+
+    answer = {"automaton": automaton}
+    if exercise.ask_determinism:
+        answer["determinism"] = determinism_answer
+    Attempt.objects.create(
+        exercise=exercise,
+        student=request.profile,
+        answer=answer,
+        is_correct=equivalent and determinism_ok,
+        hints_used=_clamped_hints(request, exercise.hints),
+    )
+
+    # the target formula is the hidden answer key — never rendered to students
+    response = render(request, "exercises/buchi_result.html", {
+        "equivalent": equivalent,
+        "ask_determinism": exercise.ask_determinism,
+        "determinism_ok": determinism_ok,
+        "actually_deterministic": actually_deterministic,
+    })
+    return _completion_trigger(response, request, exercise)
+
+
+@supabase_login_required
+@require_POST
+def submit_buchi_word(request, exercise_id):
+    """Grade a typed lasso word against the exercise's fixed Büchi automaton.
+
+    Records one whole-exercise attempt (buchi_word has no parts). An unreadable
+    or off-alphabet word is student data — it comes back as a rejection with a
+    message, not an error page.
+    """
+    exercise = get_object_or_404(published_exercises(), id=exercise_id)
+    if exercise.exercise_type != "buchi_word":
+        return error_response(request, "This exercise is not an accepting-word task.")
+
+    word = (request.POST.get("word") or "").strip()
+    if len(word) > MAX_FORMULA_CHARS:
+        return error_response(
+            request, f"Word is too long — at most {MAX_FORMULA_CHARS} characters."
+        )
+
+    try:
+        result = run_buchi_word_check(
+            exercise.kripke_structure, word, list(exercise.declared_aps or [])
+        )
+    except ValueError as exc:
+        # the automaton is teacher data — a bad one is not the student's fault
+        logger.warning("buchi_word automaton rejected: %s", exc)
+        return error_response(request, "This exercise's automaton could not be read.")
+    except Exception:
+        logger.exception("run_buchi_word_check failed during submission")
+        return error_response(
+            request, "Verification was stopped — the word could not be processed."
+        )
+
+    accepted = result["accepted"]
+    Attempt.objects.create(
+        exercise=exercise,
+        student=request.profile,
+        answer={"word": word},
+        is_correct=accepted,
+        hints_used=_clamped_hints(request, exercise.hints),
+    )
+
+    response = render(request, "exercises/buchi_word_result.html", {
+        "accepted": accepted, "word_error": result["word_error"], "word": word,
     })
     return _completion_trigger(response, request, exercise)
 
@@ -616,16 +830,25 @@ def _builder_context(exercise, form=None):
     if form is not None:
         hint_values = form["hints"]
         allowed = form["allowed_operators"]
-        try:
-            elements_json = _elements_json(json.loads(form["graph_data"]) if form["graph_data"] else None)
-        except json.JSONDecodeError:
-            elements_json = ""
-        prefill = form
         exercise_type = (
             exercise.exercise_type if type_locked(exercise) else form["exercise_type"]
         )
+        # must match the field validate_exercise_form read, which also keys off
+        # the effective type — a locked exercise ignores the posted type
+        raw_graph = (
+            form["automaton_data"]
+            if exercise_type == "buchi_word"
+            else form["graph_data"]
+        )
+        try:
+            elements_json = _elements_json(json.loads(raw_graph) if raw_graph else None)
+        except json.JSONDecodeError:
+            elements_json = ""
+        prefill = form
         declared_aps = form["declared_aps"]
         parts = form["parts"]
+        target_formula = form["target_formula"]
+        ask_determinism = form["ask_determinism"]
     elif exercise is not None:
         hints = list(exercise.hints or [])[:3]
         hint_values = hints + [""] * (3 - len(hints))
@@ -648,6 +871,14 @@ def _builder_context(exercise, form=None):
              "hints": list(p.hints or [])}
             for p in exercise.parts.all()
         ]
+        # legacy model_check reuses target_formula as its memo answer — only the
+        # Büchi target belongs in the builder field
+        target_formula = (
+            exercise.target_formula or ""
+            if exercise.exercise_type == "buchi_construct"
+            else ""
+        )
+        ask_determinism = exercise.ask_determinism
     else:
         hint_values = ["", "", ""]
         allowed = list(BUILDER_OPERATORS)
@@ -656,6 +887,14 @@ def _builder_context(exercise, form=None):
         exercise_type = "model_check"
         declared_aps = []
         parts = []
+        target_formula = ""
+        ask_determinism = False
+    # the page carries a Kripke editor and a Büchi editor at once; each gets only
+    # its own type's structure so neither boots with the other's shape
+    is_automaton = exercise_type == "buchi_word"
+    automaton_elements_json = elements_json if is_automaton else ""
+    if is_automaton:
+        elements_json = ""
     return {
         "modules": list(Topic.objects.all()),
         "operators": BUILDER_OPERATORS,
@@ -663,6 +902,7 @@ def _builder_context(exercise, form=None):
         "hint_values": hint_values,
         "allowed_operators": allowed,
         "elements_json": elements_json,
+        "automaton_elements_json": automaton_elements_json,
         "prefill": prefill,
         # str: POST re-render carries the id as a string, the edit path as a UUID
         "selected_topic_id": str(prefill["module_id"]) if prefill and prefill["module_id"] else None,
@@ -673,6 +913,8 @@ def _builder_context(exercise, form=None):
         "builder_types": BUILDER_EXERCISE_TYPES,
         "declared_aps_json": json.dumps(declared_aps),
         "parts_json": json.dumps(parts),
+        "target_formula": target_formula,
+        "ask_determinism": ask_determinism,
     }
 
 
@@ -709,7 +951,7 @@ def _save_exercise(request, exercise):
             f"Editing the graph or formulas reset {reset} student "
             f"submission{'s' if reset != 1 else ''} — students will resubmit.",
         )
-    if not form["allowed_operators"] and saved.exercise_type != "build_kripke":
+    if not form["allowed_operators"] and saved.exercise_type in FORMULA_INPUT_TYPES:
         messages.warning(request, "No operators are enabled — students can only submit atomic propositions.")
     if publishing and saved.exercise_type == "judge":
         key = ", ".join(
@@ -737,10 +979,27 @@ def test_formula(request):
     graph = payload.get("graph")
     formula = str(payload.get("formula") or "").strip()
     mode = payload.get("mode")
-    if mode not in ("satisfiable", "holds", "solvable"):
+    if mode not in ("satisfiable", "holds", "solvable", "buchi_target"):
         return JsonResponse({"ok": False, "error": "Unknown test mode."})
     if not formula:
         return JsonResponse({"ok": False, "error": "Enter a formula to test."})
+    # buchi_construct has no memo graph — report the target automaton over Σ
+    if mode == "buchi_target":
+        symbols = payload.get("declared_aps")
+        if not isinstance(symbols, list):
+            symbols = []
+        try:
+            info = run_buchi_target_check(formula, symbols)
+        except ValueError as exc:
+            return JsonResponse({"ok": False, "error": str(exc)})
+        if info["empty"]:
+            return JsonResponse({
+                "ok": True,
+                "result": "no word over the alphabet satisfies this — unsolvable",
+            })
+        return JsonResponse({
+            "ok": True, "result": f"accepted by a {info['states']}-state Büchi automaton",
+        })
     # build_kripke has no memo graph — test satisfiability instead
     if mode == "solvable":
         declared_aps = payload.get("declared_aps")

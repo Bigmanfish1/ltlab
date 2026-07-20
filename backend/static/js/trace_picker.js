@@ -131,7 +131,10 @@
         return (node && node.data("name")) || id;
       };
       if (closedAt < 0) {
-        return path.map(name).join(" → ");
+        // the readout is display-only, so it keeps the "unfinished" marker that
+        // canonicalText must not carry (canonicalText feeds the text input,
+        // where a trailing … would fight the user mid-type)
+        return path.map(name).join(" → ") + " → …";
       }
       const prefixStr = parts.prefix.map(name).join(" → ");
       const cycleStr = "(" + parts.cycle.map(name).join(" → ") + ")ω";
