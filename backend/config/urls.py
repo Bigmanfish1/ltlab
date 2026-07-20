@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
 
-from apps.checker.views import counterexample, verify_ltl
+from apps.checker.views import counterexample, equivalence_check, verify_ltl
 from apps.exercises.views import (
     exercise_builder,
     exercise_canvas,
@@ -28,6 +28,7 @@ urlpatterns = [
     path('exercises/<uuid:exercise_id>/submit/', submit_formula, name='submit_formula'),
     path("sandbox/", sandbox, name="sandbox"),
     path("sandbox/verify/", verify_ltl, name="sandbox_verify"),
+    path("sandbox/equivalence/", equivalence_check, name="sandbox_equivalence"),
     path("sandbox/counterexample/", counterexample, name="sandbox_counterexample"),
     path("teacher/exercises/", teacher_exercises, name="teacher_exercises"),
     path("teacher/exercises/new/", exercise_builder, name="exercise_builder"),

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}ltlab — Sandbox{% endblock %}
 
@@ -56,6 +57,17 @@
       ltlab<span class="text-[#6B6B6B]">/</span>SANDBOX
     </a>
 
+    <!-- Mode switcher -->
+    <div class="flex items-center gap-1 shrink-0">
+      <button type="button" data-mode="basic" onclick="setMode('basic')"
+        class="mode-tab font-mono text-[11px] tracking-[0.12em] uppercase border px-3 py-1.5 rounded transition-colors border-[#FF4D00] text-[#FAFAFA]">Basic</button>
+      <button type="button" data-mode="equivalence" onclick="setMode('equivalence')"
+        class="mode-tab font-mono text-[11px] tracking-[0.12em] uppercase border px-3 py-1.5 rounded transition-colors border-[#1F1F1F] text-[#6B6B6B]">Equivalence</button>
+    </div>
+
+    <!-- Basic-mode top-bar controls (formula bar + run) -->
+    <div id="basic-topbar" class="flex items-center gap-3 flex-1 min-w-0">
+
     <!-- LTL operator palette -->
     <div class="hidden sm:flex items-center gap-1 shrink-0">
       <button onclick="insertOp('G')"  title="Always"      class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">G</button>
@@ -106,10 +118,15 @@
       </svg>
     </button>
 
+    </div><!-- end #basic-topbar -->
+
   </header>
 
   <!-- ── Main workspace ────────────────────────────────────────────── -->
   <div class="flex flex-1 overflow-hidden">
+
+    <!-- Basic mode: Kripke editor + examples sidebar -->
+    <div id="basic-mode" class="flex flex-1 overflow-hidden">
 
     <!-- Kripke-structure editor component (toolbar + canvas + hidden graph input) -->
     <div class="relative flex flex-1 min-w-0">
@@ -220,6 +237,89 @@
       </div>
     </aside>
 
+    </div><!-- end #basic-mode -->
+
+    <!-- Equivalence mode: two-formula comparison + distinguishing model -->
+    <div id="equivalence-mode" class="hidden flex-1 overflow-y-auto">
+      <div class="max-w-[880px] mx-auto px-6 py-8">
+
+        <div class="font-mono text-[11px] text-[#6B6B6B] tracking-[0.12em] mb-1">EQUIVALENCE EXPLORER</div>
+        <p class="text-[13px] text-[#6B6B6B] mb-6">Compare two LTL formulas. When they differ, a concrete behaviour that tells them apart is generated and animated.</p>
+
+        <div class="flex items-stretch gap-3">
+
+          <!-- Formula A -->
+          <div class="flex-1 min-w-0 border border-[#1F1F1F] rounded p-4">
+            <div class="font-mono text-[11px] text-[#6B6B6B] tracking-[0.12em] mb-3">FORMULA&nbsp;A</div>
+            <input id="formula-a" name="formula_a" type="text" value="G F p"
+              placeholder="e.g. G F p"
+              class="formula-input w-full bg-[#0A0A0A] border border-[#2A2A2A] focus:border-[#FF4D00] px-3 py-2 font-mono text-[13px] text-[#FAFAFA] outline-none rounded transition-colors"
+              autocomplete="off" spellcheck="false" />
+            <div class="flex flex-wrap items-center gap-1 mt-3">
+              <button type="button" onclick="insertOp('G')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">G</button>
+              <button type="button" onclick="insertOp('F')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">F</button>
+              <button type="button" onclick="insertOp('X')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">X</button>
+              <button type="button" onclick="insertOp('U')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">U</button>
+              <button type="button" onclick="insertOp('¬')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">¬</button>
+              <button type="button" onclick="insertOp('∧')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">∧</button>
+              <button type="button" onclick="insertOp('∨')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">∨</button>
+              <button type="button" onclick="insertOp('→')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">→</button>
+              <button type="button" onclick="insertParens()" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">()</button>
+            </div>
+          </div>
+
+          <!-- Center relationship glyph -->
+          <div class="flex items-center justify-center shrink-0 w-12">
+            <span id="eq-glyph" class="font-mono text-[24px] text-[#6B6B6B]">?</span>
+          </div>
+
+          <!-- Formula B -->
+          <div class="flex-1 min-w-0 border border-[#1F1F1F] rounded p-4">
+            <div class="font-mono text-[11px] text-[#6B6B6B] tracking-[0.12em] mb-3">FORMULA&nbsp;B</div>
+            <input id="formula-b" name="formula_b" type="text" value="F G p"
+              placeholder="e.g. F G p"
+              class="formula-input w-full bg-[#0A0A0A] border border-[#2A2A2A] focus:border-[#FF4D00] px-3 py-2 font-mono text-[13px] text-[#FAFAFA] outline-none rounded transition-colors"
+              autocomplete="off" spellcheck="false" />
+            <div class="flex flex-wrap items-center gap-1 mt-3">
+              <button type="button" onclick="insertOp('G')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">G</button>
+              <button type="button" onclick="insertOp('F')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">F</button>
+              <button type="button" onclick="insertOp('X')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">X</button>
+              <button type="button" onclick="insertOp('U')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">U</button>
+              <button type="button" onclick="insertOp('¬')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">¬</button>
+              <button type="button" onclick="insertOp('∧')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">∧</button>
+              <button type="button" onclick="insertOp('∨')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">∨</button>
+              <button type="button" onclick="insertOp('→')" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">→</button>
+              <button type="button" onclick="insertParens()" class="op-btn font-mono text-[12px] text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] px-2 py-1 rounded transition-colors border border-transparent hover:border-[#2A2A2A]">()</button>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="flex justify-center mt-6">
+          <button
+            id="compare-btn"
+            hx-post="{% url 'sandbox_equivalence' %}"
+            hx-target="#equivalence-result"
+            hx-swap="innerHTML"
+            hx-include="#formula-a, #formula-b"
+            hx-indicator="#eq-spinner"
+            hx-on:htmx:before-request="disableCompareBtn()"
+            hx-on:htmx:after-request="enableCompareBtn()"
+            class="flex items-center gap-2 bg-[#FF4D00] hover:bg-[#FF6B22] active:bg-[#CC3D00] text-black font-medium text-[13px] px-6 py-2.5 rounded transition-colors">
+            <span id="eq-spinner" class="htmx-indicator">
+              <svg class="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="31.4" stroke-dashoffset="10"/>
+              </svg>
+            </span>
+            Compare
+          </button>
+        </div>
+
+        <div id="equivalence-result" class="mt-8"></div>
+
+      </div>
+    </div><!-- end #equivalence-mode -->
+
   </div><!-- end main workspace -->
 </div><!-- end outer flex -->
 {% endblock %}
@@ -288,10 +388,27 @@ function loadExample(name) {
 }
 
 // ── LTL operator insertion ────────────────────────────────────────────────────
+// Operators insert into whichever formula field was focused last. Basic mode has
+// one field (#ltl-formula); equivalence mode has two (#formula-a, #formula-b).
+let lastFormulaInput = null;
+document.addEventListener('focusin', function (e) {
+  if (e.target && e.target.classList && e.target.classList.contains('formula-input')) {
+    lastFormulaInput = e.target;
+  }
+});
+function currentFormulaInput() {
+  // Prefer the last-focused field, but only if it's still visible on screen.
+  if (lastFormulaInput && lastFormulaInput.offsetParent !== null) return lastFormulaInput;
+  const equiv = document.getElementById('equivalence-mode');
+  const inEquiv = equiv && !equiv.classList.contains('hidden');
+  return document.getElementById(inEquiv ? 'formula-a' : 'ltl-formula');
+}
+
 function insertOp(op) {
-  const input = document.getElementById('ltl-formula');
-  const start = input.selectionStart;
-  const end = input.selectionEnd;
+  const input = currentFormulaInput();
+  if (!input) return;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
   const val = input.value;
   const insert = (start === end) ? op + ' ' : op;
   input.value = val.slice(0, start) + insert + val.slice(end);
@@ -300,9 +417,10 @@ function insertOp(op) {
 }
 
 function insertParens() {
-  const input = document.getElementById('ltl-formula');
-  const start = input.selectionStart;
-  const end = input.selectionEnd;
+  const input = currentFormulaInput();
+  if (!input) return;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
   const val = input.value;
   const selected = val.slice(start, end);
   const insert = '(' + selected + ')';
@@ -365,8 +483,81 @@ document.body.addEventListener('htmx:afterSwap', function(e) {
       drawer.style.minHeight = '100px';
     }
   }
+  // Equivalence result: reflect the verdict glyph/color into the center marker.
+  if (e.detail.target.id === 'equivalence-result') {
+    const meta = document.getElementById('eq-verdict-meta');
+    const glyph = document.getElementById('eq-glyph');
+    if (glyph) {
+      if (meta) {
+        glyph.textContent = meta.getAttribute('data-glyph') || '?';
+        glyph.style.color = meta.getAttribute('data-color') || '#6B6B6B';
+      } else {
+        glyph.textContent = '?';
+        glyph.style.color = '#6B6B6B';
+      }
+    }
+  }
 });
+
+// ── Mode switcher (Basic ⇄ Equivalence) ───────────────────────────────────────
+function currentMode() {
+  const equiv = document.getElementById('equivalence-mode');
+  return (equiv && !equiv.classList.contains('hidden')) ? 'equivalence' : 'basic';
+}
+
+function setMode(mode) {
+  const basic     = document.getElementById('basic-mode');
+  const basicTop  = document.getElementById('basic-topbar');
+  const equiv     = document.getElementById('equivalence-mode');
+  const toEquiv = mode === 'equivalence';
+
+  basic.classList.toggle('hidden', toEquiv);
+  basicTop.classList.toggle('hidden', toEquiv);
+  equiv.classList.toggle('hidden', !toEquiv);
+
+  lastFormulaInput = null;
+
+  // Repaint the segmented control.
+  document.querySelectorAll('.mode-tab').forEach(function (btn) {
+    const active = btn.dataset.mode === mode;
+    btn.classList.toggle('border-[#FF4D00]', active);
+    btn.classList.toggle('text-[#FAFAFA]', active);
+    btn.classList.toggle('border-[#1F1F1F]', !active);
+    btn.classList.toggle('text-[#6B6B6B]', !active);
+  });
+
+  try { localStorage.setItem('ltlab-sandbox-mode', mode); } catch (e) {}
+  if (location.hash !== '#' + mode) history.replaceState(null, '', '#' + mode);
+
+  // The Basic editor's Cytoscape canvas was 0×0 while hidden — resize + refit.
+  if (!toEquiv) {
+    const ed = sandboxEditor();
+    if (ed && ed.cy) { ed.cy.resize(); if (ed.fit) ed.fit(); }
+  }
+}
+
+// ── Compare button in-flight state ────────────────────────────────────────────
+function disableCompareBtn() {
+  const btn = document.getElementById('compare-btn');
+  btn.disabled = true; btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none';
+}
+function enableCompareBtn() {
+  const btn = document.getElementById('compare-btn');
+  btn.disabled = false; btn.style.opacity = ''; btn.style.pointerEvents = '';
+}
+
+// Restore the last-used mode (URL hash wins over localStorage).
+(function () {
+  let mode = 'basic';
+  const hash = (location.hash || '').replace('#', '');
+  if (hash === 'basic' || hash === 'equivalence') mode = hash;
+  else { try { mode = localStorage.getItem('ltlab-sandbox-mode') || 'basic'; } catch (e) {} }
+  setMode(mode);
+})();
 </script>
+
+<!-- Equivalence-mode interactive subformula timeline -->
+<script src="{% static 'js/eq_timeline.js' %}"></script>
 
 <!-- HTMX spinner style -->
 <style>

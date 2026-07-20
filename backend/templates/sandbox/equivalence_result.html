@@ -1,0 +1,125 @@
+{% if status == "error" %}
+<div class="border-l-2 border-[#6B6B6B] bg-[#111111] px-4 py-3 font-mono text-[12px] text-[#6B6B6B] rounded-r">
+  {{ message }}
+</div>
+
+{% elif status == "result" %}
+<div id="eq-verdict-meta" hidden data-glyph="{{ glyph }}" data-color="{{ verdict_color }}"></div>
+<!-- Verdict banner -->
+<div class="border-l-2 rounded-r px-5 py-4" style="border-color: {{ verdict_color }}; background: {{ verdict_bg }};">
+  <div class="flex items-center gap-3">
+    <span class="font-mono text-[28px] leading-none" style="color: {{ verdict_color }};">{{ glyph }}</span>
+    <div>
+      <div class="font-mono text-[14px] tracking-[0.04em]" style="color: {{ verdict_color }};">{{ verdict_title }}</div>
+      <div class="font-mono text-[12px] text-[#6B6B6B] mt-1">{{ summary }}</div>
+    </div>
+  </div>
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4 font-mono text-[13px]">
+    <span class="text-[#FAFAFA] break-all">A&nbsp;=&nbsp;{{ formula_a }}</span>
+    <span style="color: {{ verdict_color }};">{{ glyph }}</span>
+    <span class="text-[#FAFAFA] break-all">B&nbsp;=&nbsp;{{ formula_b }}</span>
+  </div>
+  {% if witnesses.0.divergence %}
+  <div class="font-mono text-[11px] text-[#8A8A8A] mt-3 leading-relaxed">{{ witnesses.0.divergence }}</div>
+  {% endif %}
+</div>
+
+<!-- Formula insight strip (Tier 3) -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+  {% for lbl, ff, fx in facts_pair %}
+  <div class="border border-[#1F1F1F] rounded px-3 py-2.5 bg-[#0C0C0C]">
+    <div class="flex items-center gap-2">
+      <span class="font-mono text-[11px] text-[#6B6B6B]">{{ lbl }}</span>
+      <span class="font-mono text-[12px] text-[#FAFAFA] break-all">{{ ff }}</span>
+    </div>
+    <div class="flex flex-wrap items-center gap-1.5 mt-2">
+      {% if fx.contradiction %}
+        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" style="color:#FF4D00;background:#1F0D0D;">contradiction · unsatisfiable</span>
+      {% elif fx.tautology %}
+        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" style="color:#AEFC00;background:#0D1F0D;">tautology · always true</span>
+      {% else %}
+        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" style="color:#8A8A8A;background:#141414;">satisfiable</span>
+        {% if fx.class_label %}
+        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" style="color:#E0A030;background:#1A160A;" title="{{ fx.class_blurb }}">{{ fx.class_label }}</span>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% if not fx.contradiction and not fx.tautology and fx.class_blurb %}
+    <div class="font-mono text-[10px] text-[#6B6B6B] mt-1.5 leading-relaxed">{{ fx.class_blurb }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if shared_note %}
+<div class="mt-4 font-mono text-[12px] text-[#8A8A8A] leading-relaxed">{{ shared_note }}</div>
+{% endif %}
+
+<!-- ── Interactive subformula timeline (primary explainer) ─────────────────── -->
+<div class="eq-timeline mt-4 border border-[#1F1F1F] rounded bg-[#0A0A0A]" data-timeline="eq-timeline-data">
+  <div class="flex items-center justify-between px-4 py-2.5 border-b border-[#1F1F1F] flex-wrap gap-2">
+    <div class="font-mono text-[11px] tracking-[0.10em] text-[#6B6B6B]">
+      TIMELINE
+      <span class="text-[#8A8A8A]">press play to move through the run one state at a time</span>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button type="button" data-tl-prev class="border border-[#2A2A2A] w-7 h-7 flex items-center justify-center text-[11px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] rounded transition-colors" title="Step back one state">&#9664;</button>
+      <button type="button" data-tl-play class="border border-[#2A2A2A] px-2 h-7 flex items-center justify-center text-[11px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] rounded transition-colors" title="Play the run; it falls back to the loop point at the end">&#9654; play</button>
+      <button type="button" data-tl-next class="border border-[#2A2A2A] w-7 h-7 flex items-center justify-center text-[11px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] rounded transition-colors" title="Step forward one state">&#9654;</button>
+      <span class="w-px h-5 bg-[#1F1F1F] mx-1"></span>
+      <label class="flex items-center gap-1.5 font-mono text-[11px] text-[#C6862E]" title="At the end of the run, time jumps back to this state and repeats from there forever">
+        <span>&#8635;</span><span class="text-[#6B6B6B]">loops back to</span>
+        <select data-tl-loop class="bg-[#0C0C0C] border border-[#2A2A2A] rounded h-7 px-1 font-mono text-[11px] text-[#C6862E] cursor-pointer"></select>
+      </label>
+      <span class="w-px h-5 bg-[#1F1F1F] mx-1"></span>
+      <button type="button" data-tl-del class="border border-[#2A2A2A] px-2 h-7 flex items-center justify-center text-[11px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] rounded transition-colors" title="Remove the last state">&#8722; state</button>
+      <button type="button" data-tl-add class="border border-[#2A2A2A] px-2 h-7 flex items-center justify-center text-[11px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] rounded transition-colors" title="Add a state">+ state</button>
+    </div>
+  </div>
+
+  <div class="px-4 py-2 border-b border-[#1F1F1F] flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-[10px] text-[#6B6B6B]">
+    <span class="flex items-center gap-1.5">
+      <span class="inline-block w-3.5 h-3.5 rounded-sm" style="background:#132708;border:1px solid #2C5216;"></span>this part is true here
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="inline-block w-3.5 h-3.5 rounded-sm flex items-center justify-center leading-none" style="background:#1D3A0E;border:1px solid #4E8A24;color:#AEFC00;font-size:9px;">&#10003;</span>the whole formula is true here
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="inline-block w-3.5 h-3.5 rounded-sm" style="background:#0D0D0D;border:1px solid #1E1E1E;"></span>false here
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="inline-block w-3.5 h-3.5 rounded-sm" style="box-shadow:0 0 0 1px #B8B8B8;background:#0D0D0D;"></span>playhead
+    </span>
+    <span class="text-[#4A4A4A]">hover any square for why</span>
+    <div data-tl-presets class="flex flex-wrap items-center gap-1.5 ml-auto"></div>
+  </div>
+
+  <div class="px-4 py-3 overflow-x-auto">
+    <div class="w-max">
+      <div data-tl-trace></div>
+      <div data-tl-formulas></div>
+    </div>
+  </div>
+
+  <div data-tl-verdict class="px-4 py-3 border-t border-[#1F1F1F]"></div>
+
+  <details class="eq-advanced border-t border-[#1F1F1F]">
+    <summary class="cursor-pointer select-none px-4 py-2.5 font-mono text-[11px] tracking-[0.10em] text-[#6B6B6B] hover:text-[#8A8A8A]">
+      STATE GRAPH
+      <span class="text-[#8A8A8A]">which states each formula holds in, as the run loops</span>
+    </summary>
+    <div class="px-4 pb-2 flex items-center gap-1.5">
+      <button type="button" data-tl-prev class="border border-[#2A2A2A] w-7 h-7 flex items-center justify-center text-[11px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] rounded transition-colors" title="Step back one state">&#9664;</button>
+      <button type="button" data-tl-play class="border border-[#2A2A2A] px-2 h-7 flex items-center justify-center text-[11px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] rounded transition-colors" title="Play the run">&#9654; play</button>
+      <button type="button" data-tl-next class="border border-[#2A2A2A] w-7 h-7 flex items-center justify-center text-[11px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] rounded transition-colors" title="Step forward one state">&#9654;</button>
+      <span class="font-mono text-[10px] text-[#4A4A4A] ml-auto">click any state to jump there</span>
+    </div>
+    <div data-tl-graphs class="grid grid-cols-1 lg:grid-cols-2 gap-3 px-4 pb-4"></div>
+  </details>
+</div>
+{{ timeline|json_script:"eq-timeline-data" }}
+
+<script>
+  if (window.EquivalenceTimeline) window.EquivalenceTimeline.initAll();
+</script>
+{% endif %}
