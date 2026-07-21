@@ -16,11 +16,11 @@
 
         <!-- Filter bar -->
         <div class="flex items-center justify-between mb-6">
-            <div class="flex gap-2" id="difficulty-filters">
-                <button data-difficulty="all" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">All</button>
-                <button data-difficulty="beginner" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Beginner</button>
-                <button data-difficulty="intermediate" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Intermediate</button>
-                <button data-difficulty="advanced" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">Advanced</button>
+            <div class="flex flex-wrap gap-2" id="type-filters">
+                <button data-type="all" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">All</button>
+                {% for t in type_filters %}
+                <button data-type="{{ t.key }}" class="filter-tab px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">{{ t.label }}</button>
+                {% endfor %}
             </div>
             <input
                 id="exercise-search"
@@ -31,28 +31,29 @@
         </div>
 
         <!-- Table -->
-        <div class="bg-bg-secondary border border-border-primary rounded overflow-hidden">
-            <table class="w-full">
+        <div class="bg-bg-secondary border border-border-primary rounded overflow-x-auto">
+            <table class="w-full min-w-[760px]">
                 <thead>
                     <tr class="border-b border-border-primary">
                         <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Exercise Name</th>
                         <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Module</th>
                         <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Attempts</th>
                         <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Class Solved</th>
-                        <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Avg Tries</th>
+                        <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Avg Tries (per part)</th>
                         <th class="text-left px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="exercise-rows">
                     {% for ex in exercises %}
                     <tr class="exercise-row border-b border-border-primary hover:bg-bg-tertiary transition-colors"
-                        data-difficulty="{{ ex.difficulty }}"
+                        data-type="{{ ex.exercise_type }}"
                         data-name="{{ ex.name|lower }}"
                         data-module="{{ ex.module|lower }}"
                         data-id="{{ ex.id }}">
                         <td class="px-5 py-4 text-[13px] text-text-primary">
-                            <span class="inline-flex items-center gap-2">
+                            <span class="inline-flex flex-wrap items-center gap-2">
                                 {{ ex.name }}
+                                <span class="font-mono text-[9px] tracking-[0.12em] uppercase px-1.5 py-0.5 rounded border border-border-secondary text-text-secondary">{{ ex.type_label }}</span>
                                 {% if not ex.is_published %}
                                 <span class="font-mono text-[9px] tracking-[0.12em] uppercase px-1.5 py-0.5 rounded border border-accent-orange text-accent-orange">Draft</span>
                                 {% endif %}
@@ -124,15 +125,15 @@
         const table = tbody.closest('table');
         const thead = table.querySelector('thead');
 
-        let difficulty = 'all';
+        let type = 'all';
         let page = 1;
         let pageSize = 6;
 
         function matches(row) {
             const q = searchInput.value.trim().toLowerCase();
-            const diffOk = difficulty === 'all' || row.dataset.difficulty === difficulty;
+            const typeOk = type === 'all' || row.dataset.type === type;
             const textOk = !q || row.dataset.name.includes(q) || row.dataset.module.includes(q);
-            return diffOk && textOk;
+            return typeOk && textOk;
         }
 
         function computePageSize(rows) {
@@ -180,7 +181,7 @@
 
         tabs.forEach(function (tab) {
             tab.addEventListener('click', function () {
-                difficulty = tab.dataset.difficulty;
+                type = tab.dataset.type;
                 page = 1;
                 setActive(tab);
                 render();
@@ -198,7 +199,7 @@
         });
 
         // JS owns active state — set initial tab before first render.
-        setActive(tabs.find(function (t) { return t.dataset.difficulty === difficulty; }));
+        setActive(tabs.find(function (t) { return t.dataset.type === type; }));
         render();
     })();
 </script>

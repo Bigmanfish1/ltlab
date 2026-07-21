@@ -47,10 +47,48 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-[38%_62%] gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-[38%_62%] gap-8">
 
-            <div>
+            <div class="min-w-0">
                 <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">EXERCISE DETAILS</div>
+
+                <div class="mb-6">
+                    <label class="block text-[13px] text-text-primary mb-2">Exercise Type</label>
+                    <input type="hidden" name="exercise_type" id="type-input" value="{{ exercise_type }}" />
+                    <div class="flex flex-wrap gap-2" id="type-toggle">
+                        <button type="button" data-type="model_check" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
+                            Formalise a Property
+                        </button>
+                        <button type="button" data-type="english_to_formula" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
+                            Requirements → LTL
+                        </button>
+                        <button type="button" data-type="path_exhibit" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
+                            ∃ Model Checking
+                        </button>
+                        <button type="button" data-type="judge" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
+                            ∀ Model Checking
+                        </button>
+                        <button type="button" data-type="build_kripke" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
+                            Model a Property
+                        </button>
+                        <button type="button" data-type="buchi_construct" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
+                            Draw a Büchi Automaton
+                        </button>
+                        <button type="button" data-type="buchi_word" {% if type_locked %}disabled{% endif %}
+                            class="type-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors {% if type_locked %}opacity-60 cursor-not-allowed{% endif %}">
+                            Path for Büchi
+                        </button>
+                    </div>
+                    {% if type_locked %}
+                    <div class="text-[11px] text-text-secondary mt-1">Type is locked once the exercise has been published or attempted.</div>
+                    {% endif %}
+                </div>
 
                 <div class="mb-6">
                     <label class="block text-[13px] text-text-primary mb-2">Exercise Title</label>
@@ -70,7 +108,7 @@
                 <div class="mb-6">
                     <label class="block text-[13px] text-text-primary mb-2">Difficulty</label>
                     <input type="hidden" name="difficulty" id="difficulty-input" value="{% if prefill %}{{ prefill.difficulty }}{% endif %}" />
-                    <div class="flex gap-2" id="difficulty-toggle">
+                    <div class="flex flex-wrap gap-2" id="difficulty-toggle">
                         {% for level in difficulties %}
                         <button type="button" data-difficulty="{{ level }}"
                             class="difficulty-btn px-4 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase border border-border-primary text-text-secondary rounded transition-colors">
@@ -86,53 +124,438 @@
                     <select name="topic" data-field="topic" class="w-full bg-bg-secondary border border-border-primary text-text-primary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors">
                         <option value="">Assign to module...</option>
                         {% for m in modules %}
-                        <option value="{{ m.id }}" {% if selected_topic_id == m.id %}selected{% endif %}>{{ m.title }}</option>
+                        <option value="{{ m.id }}" {% if selected_topic_id == m.id|stringformat:"s" %}selected{% endif %}>{{ m.title }}</option>
                         {% endfor %}
                     </select>
                     <p class="field-error text-[11px] text-accent-orange" data-error-for="topic"></p>
                 </div>
 
-                <label class="block text-[13px] text-text-primary mb-2">Allowed Operators</label>
-                <input type="hidden" name="allowed_operators" id="allowed-input" value="" />
-                <div class="flex flex-wrap gap-2 mb-1" id="operator-toggle" data-selected="{{ allowed_operators|join:',' }}">
-                    {% for op in operators %}
-                    <button type="button" data-op="{{ op }}"
-                        class="operator-btn w-9 h-9 font-mono text-[13px] border border-border-primary text-text-secondary rounded transition-colors">
-                        {{ op }}
-                    </button>
-                    {% endfor %}
+                <div data-type-section="model_check english_to_formula path_exhibit judge">
+                    <label class="block text-[13px] text-text-primary mb-2">Allowed Operators</label>
+                    <input type="hidden" name="allowed_operators" id="allowed-input" value="" />
+                    <div class="flex flex-wrap gap-2 mb-1" id="operator-toggle" data-selected="{{ allowed_operators|join:',' }}">
+                        {% for op in operators %}
+                        <button type="button" data-op="{{ op }}"
+                            class="operator-btn min-w-9 h-9 px-2 font-mono text-[13px] border border-border-primary text-text-secondary rounded transition-colors whitespace-nowrap">
+                            {% if op == "∨" %}∨ / |{% else %}{{ op }}{% endif %}
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <div class="text-[11px] text-text-secondary mb-6">Disabled operators are hidden from students.</div>
                 </div>
-                <div class="text-[11px] text-text-secondary mb-6">Disabled operators are hidden from students.</div>
 
-                <label class="block text-[13px] text-text-primary mb-2">Progressive Hints</label>
-                <div class="space-y-2">
-                    {% for hint in hint_values %}
-                    <input type="text" name="hint_{{ forloop.counter }}" placeholder="Hint {{ forloop.counter }}..."
-                        class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors"
-                        value="{{ hint }}" />
-                    {% endfor %}
+                <div data-type-section="model_check">
+                    <label class="block text-[13px] text-text-primary mb-2">Progressive Hints</label>
+                    <div class="space-y-2">
+                        {% for hint in hint_values %}
+                        <input type="text" name="hint_{{ forloop.counter }}" placeholder="Hint {{ forloop.counter }}..."
+                            class="w-full bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-4 py-2.5 rounded focus:border-border-secondary focus:outline-none transition-colors"
+                            value="{{ hint }}" />
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
 
-            <div>
-                <div class="flex items-center justify-between mb-5">
-                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">KRIPKE STRUCTURE</div>
-                </div>
-                <div class="text-[12px] text-text-secondary mb-3">Students see this model and write an LTL formula that holds on it.</div>
+            <div class="min-w-0">
+                <div data-type-section="model_check path_exhibit judge">
+                    <div class="flex items-center justify-between mb-5">
+                        <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">KRIPKE STRUCTURE</div>
+                    </div>
+                    <div class="text-[12px] text-text-secondary mb-3" data-type-hint="model_check">Students see this model and write an LTL formula that holds on it.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="path_exhibit">Students trace a path through this model that satisfies each formula below.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="judge">Students judge whether each formula below holds on this model, giving a counterexample when it does not.</div>
 
-                <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
-                    {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json %}
+                    <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
+                        {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json %}
+                    </div>
+                </div>
+
+                <div data-type-section="path_exhibit judge" class="hidden mt-2">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">FORMULAS</div>
+                    <div class="text-[12px] text-text-secondary mb-3" data-type-hint="path_exhibit">Publishing checks each formula actually has a satisfying path on the model.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="judge">Formulas may hold or fail on the model — the answer key is shown after publishing.</div>
+                    <div class="space-y-3 mb-4" id="path-parts-rows"></div>
+                    <button type="button" id="path-part-add"
+                        class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
+                        + Add Formula
+                    </button>
+                </div>
+
+                <div data-type-section="buchi_word" class="hidden">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">THE AUTOMATON STUDENTS READ</div>
+                    <div class="text-[12px] text-text-secondary mb-3">
+                        Draw the Büchi automaton shown to students; they must supply a word it accepts.
+                        Publishing checks it accepts at least one word.
+                    </div>
+                    <div class="relative bg-bg-primary border border-border-primary rounded overflow-hidden flex mb-6" style="height: 420px;">
+                        {% include "components/buchi_editor.html" with id="shownmemo" input_name="automaton_data" height="420px" elements_json=automaton_elements_json %}
+                    </div>
+                </div>
+
+                <div data-type-section="english_to_formula build_kripke buchi_construct buchi_word" class="hidden">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5" data-alphabet-heading>ATOMIC PROPOSITIONS</div>
+                    <div class="text-[12px] text-text-secondary mb-3" data-type-hint="english_to_formula">The propositions students may use in their formulas.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="build_kripke">The propositions students may label states with — the requirement formulas may use only these.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="buchi_construct">The alphabet Σ. Each symbol is exclusive — a word has exactly one symbol per step, and transitions are labelled with a symbol or a set like <span class="font-mono">a,b</span>.</div>
+                    <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="buchi_word">The alphabet Σ the automaton is labelled over — students' words use exactly one of these symbols per step.</div>
+                    <input type="hidden" name="declared_aps" id="aps-input" value="" />
+                    <div class="flex flex-wrap items-center gap-2 mb-6" id="ap-chips">
+                        <input type="text" id="ap-entry" placeholder="add proposition + Enter"
+                            class="bg-bg-secondary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[12px] px-3 py-1.5 rounded focus:border-border-secondary focus:outline-none transition-colors w-56" />
+                    </div>
+                </div>
+
+                <input type="hidden" name="parts" id="parts-input" value="" />
+
+                <div data-type-section="english_to_formula" class="hidden">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">REQUIREMENTS</div>
+                    <div class="text-[12px] text-text-secondary mb-3">Each requirement is graded against its hidden target formula by semantic equivalence — any equivalent phrasing counts.</div>
+                    <div class="space-y-4 mb-4" id="parts-rows"></div>
+                    <button type="button" id="part-add"
+                        class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
+                        + Add Requirement
+                    </button>
+                </div>
+
+                <div data-type-section="build_kripke" class="hidden">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">REQUIRED FORMULAS</div>
+                    <div class="text-[12px] text-text-secondary mb-3">Students build a Kripke structure whose every path satisfies all of these. Publishing checks they are jointly satisfiable — that some model can satisfy them all. Test checks one formula in isolation.</div>
+                    <div class="space-y-3 mb-4" id="kripke-parts-rows"></div>
+                    <button type="button" id="kripke-part-add"
+                        class="px-4 py-2 bg-bg-secondary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
+                        + Add Formula
+                    </button>
+                </div>
+
+                <div data-type-section="buchi_construct" class="hidden">
+                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-5">HIDDEN ANSWER KEY</div>
+                    <div class="text-[12px] text-text-secondary mb-3">
+                        The LTL formula the student's automaton is graded against by language equivalence.
+                        <span class="text-text-primary">Students never see it</span> — describe the language in
+                        the task description instead (e.g. “words where b occurs infinitely often”).
+                        For Σ = {a, b}: <span class="font-mono">G F b</span> is “b infinitely often”,
+                        <span class="font-mono">F G b</span> is “eventually b only”.
+                    </div>
+                    <div class="bg-bg-secondary border border-border-primary rounded p-4" id="buchi-target-row">
+                        <div class="flex items-center gap-2">
+                            <input type="text" name="target_formula" id="buchi-target-input"
+                                data-part-field="formula"
+                                value="{{ target_formula }}"
+                                placeholder="G F b"
+                                class="flex-1 bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
+                            <button type="button" id="buchi-target-test"
+                                class="px-4 py-2 bg-bg-primary border border-border-secondary text-text-primary font-mono text-[11px] tracking-[0.12em] uppercase rounded hover:border-accent-orange transition-colors">
+                                Test
+                            </button>
+                        </div>
+                        {% include "components/operator_toolbar.html" %}
+                        <div id="buchi-target-result" class="hidden font-mono text-[11px] mt-3"></div>
+                    </div>
+
+                    <label class="flex items-start gap-2 mt-4 cursor-pointer">
+                        <input type="checkbox" name="ask_determinism" id="ask-determinism-input"
+                            {% if ask_determinism %}checked{% endif %}
+                            class="accent-accent-orange mt-0.5" />
+                        <span class="text-[12px] text-text-primary">
+                            Also ask whether the automaton is deterministic
+                        </span>
+                    </label>
                 </div>
             </div>
 
         </div>
     </form>
 </div>
+
+<template id="part-row-template">
+    <div class="part-row bg-bg-secondary border border-border-primary rounded p-4">
+        <div class="flex items-center justify-between mb-3">
+            <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary part-row-label"></span>
+            <button type="button" class="part-remove font-mono text-[11px] text-text-secondary hover:text-accent-orange transition-colors">REMOVE</button>
+        </div>
+        <textarea rows="2" data-part-field="prompt" placeholder="English requirement, e.g. once in a while someone chooses tea or coffee"
+            class="w-full bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors resize-none mb-2"></textarea>
+        <input type="text" data-part-field="formula" placeholder="Hidden target formula, e.g. G F (tea_chosen | coffee_chosen)"
+            class="w-full bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
+        {% include "components/operator_toolbar.html" %}
+        {% include "components/part_hints.html" %}
+    </div>
+</template>
+
+<template id="path-part-row-template">
+    <div class="part-row bg-bg-secondary border border-border-primary rounded p-3">
+        <div class="flex items-center gap-3">
+            <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary part-row-label shrink-0"></span>
+            <input type="text" data-part-field="formula" placeholder="e.g. F grant"
+                class="flex-1 bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
+            <button type="button" class="part-test font-mono text-[11px] tracking-[0.12em] text-text-secondary border border-border-primary hover:border-border-secondary hover:text-text-primary px-2.5 py-1 rounded transition-colors shrink-0">TEST</button>
+            <button type="button" class="part-remove font-mono text-[11px] text-text-secondary hover:text-accent-orange transition-colors shrink-0">REMOVE</button>
+        </div>
+        {% include "components/operator_toolbar.html" %}
+        {% include "components/part_hints.html" %}
+        <div class="part-test-result text-[11px] font-mono mt-2 hidden"></div>
+    </div>
+</template>
 {% endblock %}
 
 {% block extra_js %}
+{{ declared_aps_json|json_script:"declared-aps-data" }}
+{{ parts_json|json_script:"parts-data" }}
 <script>
     (function () {
+        const typeInput = document.getElementById('type-input');
+        const typeBtns = Array.from(document.querySelectorAll('.type-btn'));
+        const sections = Array.from(document.querySelectorAll('[data-type-section]'));
+        function paintType() {
+            const current = typeInput.value || 'model_check';
+            typeBtns.forEach(function (b) {
+                const on = b.dataset.type === current;
+                b.classList.toggle('bg-accent-orange', on);
+                b.classList.toggle('text-bg-primary', on);
+                b.classList.toggle('border-accent-orange', on);
+                b.classList.toggle('text-text-secondary', !on);
+                b.classList.toggle('border-border-primary', !on);
+            });
+            sections.forEach(function (s) {
+                s.classList.toggle('hidden', s.dataset.typeSection.split(' ').indexOf(current) === -1);
+            });
+            document.querySelectorAll('[data-type-hint]').forEach(function (h) {
+                h.classList.toggle('hidden', h.dataset.typeHint !== current);
+            });
+            const alphabetHeading = document.querySelector('[data-alphabet-heading]');
+            if (alphabetHeading) {
+                alphabetHeading.textContent =
+                    (current === 'buchi_construct' || current === 'buchi_word')
+                        ? 'ALPHABET Σ' : 'ATOMIC PROPOSITIONS';
+            }
+        }
+        typeBtns.forEach(function (b) {
+            b.addEventListener('click', function () {
+                if (b.disabled) return;
+                if (b.dataset.type === typeInput.value) return;
+                const savedParts = document.querySelectorAll('.part-row[data-part-id]:not([data-part-id=""])').length;
+                if (savedParts && !confirm('Changing the exercise type discards its saved parts. Continue?')) return;
+                typeInput.value = b.dataset.type;
+                paintType();
+            });
+        });
+        paintType();
+
+        const apsInput = document.getElementById('aps-input');
+        const apChips = document.getElementById('ap-chips');
+        const apEntry = document.getElementById('ap-entry');
+        const aps = JSON.parse(JSON.parse(document.getElementById('declared-aps-data').textContent));
+        function syncAps() { apsInput.value = JSON.stringify(aps); }
+        function renderAps() {
+            apChips.querySelectorAll('.ap-chip').forEach(function (c) { c.remove(); });
+            aps.forEach(function (ap, i) {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'ap-chip font-mono text-[12px] px-3 py-1.5 bg-bg-primary border border-border-secondary text-text-primary rounded hover:border-accent-orange transition-colors';
+                chip.textContent = ap + ' ×';
+                chip.addEventListener('click', function () {
+                    aps.splice(i, 1); renderAps(); syncAps();
+                });
+                apChips.insertBefore(chip, apEntry);
+            });
+            syncAps();
+        }
+        apEntry.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            const name = apEntry.value.trim();
+            if (name && aps.indexOf(name) === -1) { aps.push(name); renderAps(); }
+            apEntry.value = '';
+        });
+        renderAps();
+
+        const partsInput = document.getElementById('parts-input');
+        const containers = {
+            english_to_formula: {
+                rows: document.getElementById('parts-rows'),
+                template: document.getElementById('part-row-template'),
+                label: 'REQUIREMENT ',
+            },
+            path_exhibit: {
+                rows: document.getElementById('path-parts-rows'),
+                template: document.getElementById('path-part-row-template'),
+                label: 'FORMULA ',
+            },
+            build_kripke: {
+                rows: document.getElementById('kripke-parts-rows'),
+                template: document.getElementById('path-part-row-template'),
+                label: 'REQUIREMENT ',
+            },
+        };
+        containers.judge = containers.path_exhibit;
+        function activeContainer() { return containers[typeInput.value] || null; }
+        function collectParts() {
+            const c = activeContainer();
+            if (!c) return [];
+            return Array.from(c.rows.querySelectorAll('.part-row')).map(function (row) {
+                const prompt = row.querySelector('[data-part-field="prompt"]');
+                const hints = Array.from(row.querySelectorAll('[data-part-hint]'))
+                    .map(function (h) { return h.value.trim(); })
+                    .filter(Boolean);
+                return {
+                    id: row.dataset.partId || '',
+                    prompt: prompt ? prompt.value.trim() : '',
+                    formula: row.querySelector('[data-part-field="formula"]').value.trim(),
+                    hints: hints,
+                };
+            });
+        }
+        function syncParts() { partsInput.value = JSON.stringify(collectParts()); }
+        function relabelParts(c) {
+            c.rows.querySelectorAll('.part-row-label').forEach(function (l, i) {
+                l.textContent = c.label + (i + 1);
+            });
+        }
+        function addPartRow(c, data) {
+            const row = c.template.content.firstElementChild.cloneNode(true);
+            row.dataset.partId = (data && data.id) || '';
+            if (data) {
+                const prompt = row.querySelector('[data-part-field="prompt"]');
+                if (prompt) prompt.value = data.prompt || '';
+                row.querySelector('[data-part-field="formula"]').value = data.formula || '';
+                const hintInputs = row.querySelectorAll('[data-part-hint]');
+                (data.hints || []).forEach(function (h, i) {
+                    if (hintInputs[i]) hintInputs[i].value = h;
+                });
+                if ((data.hints || []).length) row.querySelector('.part-hints').open = true;
+            }
+            row.querySelectorAll('[data-part-field], [data-part-hint]').forEach(function (f) {
+                f.addEventListener('input', syncParts);
+            });
+            row.querySelector('.part-remove').addEventListener('click', function () {
+                row.remove(); relabelParts(c); syncParts();
+            });
+            c.rows.appendChild(row);
+            relabelParts(c);
+            syncParts();
+        }
+        document.getElementById('part-add').addEventListener('click', function () {
+            addPartRow(containers.english_to_formula, null);
+        });
+        document.getElementById('path-part-add').addEventListener('click', function () {
+            addPartRow(containers.path_exhibit, null);
+        });
+        document.getElementById('kripke-part-add').addEventListener('click', function () {
+            addPartRow(containers.build_kripke, null);
+        });
+        typeBtns.forEach(function (b) { b.addEventListener('click', syncParts); });
+        function insertIntoFormula(row, text) {
+            const input = row.querySelector('[data-part-field="formula"]');
+            const start = input.selectionStart ?? input.value.length;
+            const end = input.selectionEnd ?? start;
+            input.value = input.value.slice(0, start) + text + input.value.slice(end);
+            const caret = text === '()' ? start + 1 : start + text.length;
+            input.focus();
+            input.setSelectionRange(caret, caret);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        function showTestResult(row, ok, text) {
+            const out = row.querySelector('.part-test-result');
+            if (!out) return;
+            out.textContent = text;
+            out.classList.remove('hidden', 'text-accent-lime', 'text-accent-orange');
+            out.classList.add(ok ? 'text-accent-lime' : 'text-accent-orange');
+        }
+        const TEST_MESSAGES = {
+            satisfiable: [true, 'Satisfiable — students can find a path on this model.'],
+            unsatisfiable: [false, 'No satisfying path on this model — students could never solve it.'],
+            holds: [true, 'Holds on this model.'],
+            violated: [false, 'Does not hold on this model — students must give a counterexample.'],
+            solvable: [true, 'Satisfiable — some Kripke structure can satisfy this requirement.'],
+            unsolvable: [false, 'Unsatisfiable — no Kripke structure can ever satisfy this.'],
+        };
+        function runFormulaTest(row) {
+            const formula = row.querySelector('[data-part-field="formula"]').value.trim();
+            const graphField = document.querySelector('input[name="graph_data"]');
+            let graph = null;
+            try { graph = graphField && graphField.value ? JSON.parse(graphField.value) : null; } catch (e) { graph = null; }
+            let mode = 'satisfiable';
+            if (typeInput.value === 'judge') mode = 'holds';
+            else if (typeInput.value === 'build_kripke') mode = 'solvable';
+            fetch("{% url 'test_formula' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('input[name="csrfmiddlewaretoken"]').value,
+                },
+                body: JSON.stringify({ graph: graph, formula: formula, mode: mode, declared_aps: apsInput.value ? JSON.parse(apsInput.value) : [] }),
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                if (!data.ok) { showTestResult(row, false, data.error); return; }
+                const m = TEST_MESSAGES[data.result] || [false, data.result];
+                showTestResult(row, m[0], m[1]);
+            }).catch(function () {
+                showTestResult(row, false, 'The test request failed — try again.');
+            });
+        }
+        const buchiTargetInput = document.getElementById('buchi-target-input');
+        const buchiTargetBtn = document.getElementById('buchi-target-test');
+        const buchiTargetRow = document.getElementById('buchi-target-row');
+        if (buchiTargetRow) {
+            // the target input carries data-part-field="formula", so the shared
+            // part-row insert helper works on this row unchanged
+            buchiTargetRow.addEventListener('click', function (e) {
+                const opBtn = e.target.closest('.part-op');
+                if (opBtn) insertIntoFormula(buchiTargetRow, opBtn.dataset.insert);
+            });
+        }
+        if (buchiTargetBtn) {
+            buchiTargetBtn.addEventListener('click', function () {
+                const out = document.getElementById('buchi-target-result');
+                const formula = buchiTargetInput.value.trim();
+                out.classList.remove('hidden', 'text-accent-lime', 'text-accent-orange');
+                if (!formula) {
+                    out.textContent = 'Enter the target formula to test.';
+                    out.classList.add('text-accent-orange');
+                    return;
+                }
+                out.textContent = 'Testing…';
+                fetch("{% url 'test_formula' %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('input[name="csrfmiddlewaretoken"]').value,
+                    },
+                    body: JSON.stringify({
+                        formula: formula,
+                        mode: 'buchi_target',
+                        declared_aps: apsInput.value ? JSON.parse(apsInput.value) : [],
+                    }),
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    out.classList.remove('text-accent-lime', 'text-accent-orange');
+                    const bad = !data.ok || /unsolvable/.test(data.result || '');
+                    out.textContent = data.ok ? data.result : data.error;
+                    out.classList.add(bad ? 'text-accent-orange' : 'text-accent-lime');
+                }).catch(function () {
+                    out.textContent = 'The test request failed — try again.';
+                    out.classList.add('text-accent-orange');
+                });
+            });
+        }
+
+        [containers.english_to_formula.rows, containers.path_exhibit.rows, containers.build_kripke.rows].forEach(function (rows) {
+            rows.addEventListener('click', function (e) {
+                const opBtn = e.target.closest('.part-op');
+                if (opBtn) {
+                    insertIntoFormula(opBtn.closest('.part-row'), opBtn.dataset.insert);
+                    return;
+                }
+                const testBtn = e.target.closest('.part-test');
+                if (testBtn) runFormulaTest(testBtn.closest('.part-row'));
+            });
+        });
+        const existingParts = JSON.parse(JSON.parse(document.getElementById('parts-data').textContent));
+        const prefillContainer = activeContainer();
+        if (prefillContainer) {
+            existingParts.forEach(function (p) { addPartRow(prefillContainer, p); });
+            if (!existingParts.length) addPartRow(prefillContainer, null);
+        }
+        syncParts();
+
         const diffInput = document.getElementById('difficulty-input');
         const diffBtns = Array.from(document.querySelectorAll('.difficulty-btn'));
         function setDifficulty(active) {

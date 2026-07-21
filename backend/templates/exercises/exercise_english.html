@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ exercise.title }} - ModelCheck Edu{% endblock %}
+
+{% block content %}
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<div class="min-h-screen bg-bg-primary">
+    {% include "header.html" %}
+    {% include "components/exercise_header.html" %}
+
+    <div class="max-w-[1280px] mx-auto px-12 py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-8">
+            <div>
+                <div class="mb-6">
+                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">SCENARIO</h2>
+                    <p class="text-text-primary text-base leading-relaxed">
+                        {{ exercise.description }}
+                    </p>
+                </div>
+
+                <div class="mb-6">
+                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">ATOMIC PROPOSITIONS</h2>
+                    <div class="flex flex-wrap gap-2">
+                        {% for ap in declared_aps %}
+                        <button type="button" onclick="insertText('{{ ap }}')"
+                            class="font-mono text-[12px] px-3 py-1.5 bg-bg-secondary border border-border-secondary text-text-primary rounded hover:border-accent-orange transition-colors">{{ ap }}</button>
+                        {% endfor %}
+                    </div>
+                    <div class="text-[11px] text-text-secondary mt-2">Click a proposition to insert it into the active formula.</div>
+                </div>
+
+                <div class="space-y-6">
+                    {% for row in part_rows %}
+                    <div data-part-card class="bg-bg-secondary border {% if row.solved %}border-accent-lime{% else %}border-border-primary{% endif %} rounded p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">REQUIREMENT {{ row.number }}</span>
+                            {% if row.solved %}
+                            <span class="font-mono text-[11px] text-accent-lime">✓ SOLVED</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-text-primary text-sm leading-relaxed mb-4">“{{ row.part.prompt }}”</p>
+
+                        <div class="flex items-center gap-1 pb-2 flex-wrap">
+                            {% for b in operator_buttons %}
+                            <button type="button" onclick="insertText('{{ b.op }}')" title="{{ b.label }}"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">{{ b.op }}</button>
+                            {% endfor %}
+                            <button type="button" onclick="insertParens()" title="Parentheses"
+                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">()</button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="flex-1 bg-bg-primary border border-border-secondary focus-within:border-accent-orange transition-colors rounded px-3 py-2">
+                                <input type="text" name="formula" id="formula-{{ row.part.id }}"
+                                    data-part-input placeholder="Your LTL formula for this requirement"
+                                    class="w-full bg-transparent text-text-primary font-mono text-base outline-none"
+                                    autocomplete="off" />
+                            </div>
+                            <button type="button" data-submit-part
+                                hx-post="{% url 'submit_part' exercise.id row.part.id %}"
+                                hx-target="#part-result-{{ row.part.id }}"
+                                hx-swap="innerHTML"
+                                hx-include="#formula-{{ row.part.id }}, #hints-used-{{ row.part.id }}"
+                                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                                class="px-5 py-2 bg-accent-orange hover:opacity-90 transition-opacity rounded text-sm font-medium text-text-primary shrink-0">
+                                Check
+                            </button>
+                        </div>
+                        {% include "components/student_part_hints.html" %}
+                        <div id="part-result-{{ row.part.id }}" class="mt-3"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div>
+                <div>
+                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">OPERATORS</h2>
+                    <div class="bg-bg-secondary border border-border-primary rounded p-4">
+                        <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+                            <div class="text-text-secondary">X φ</div>
+                            <div class="text-text-primary">Next</div>
+                            <div class="text-text-secondary">G φ</div>
+                            <div class="text-text-primary">Always</div>
+                            <div class="text-text-secondary">F φ</div>
+                            <div class="text-text-primary">Eventually</div>
+                            <div class="text-text-secondary">φ U ψ</div>
+                            <div class="text-text-primary">Until</div>
+                            <div class="text-text-secondary">¬ φ</div>
+                            <div class="text-text-primary">Not</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let activeInput = null;
+
+document.querySelectorAll('[data-part-input]').forEach((input) => {
+    input.addEventListener('focus', () => { activeInput = input; });
+});
+
+function insertText(text) {
+    const input = activeInput || document.querySelector('[data-part-input]');
+    if (!input) return;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    input.value = input.value.slice(0, start) + text + input.value.slice(end);
+    const newPos = start + text.length;
+    input.focus();
+    input.setSelectionRange(newPos, newPos);
+}
+
+function insertParens() {
+    const input = activeInput || document.querySelector('[data-part-input]');
+    if (!input) return;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const selected = input.value.slice(start, end);
+    input.value = input.value.slice(0, start) + '(' + selected + ')' + input.value.slice(end);
+    const newPos = selected ? start + selected.length + 2 : start + 1;
+    input.focus();
+    input.setSelectionRange(newPos, newPos);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-part-input]').forEach((input) => {
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const card = input.closest('[data-part-card]');
+                const btn = card && card.querySelector('[data-submit-part]');
+                if (btn) btn.click();
+            }
+        });
+    });
+
+    // reload after the final part is solved so COMPLETED and SOLVED badges refresh
+    document.body.addEventListener('exerciseSolved', () => {
+        setTimeout(() => location.reload(), 1200);
+    });
+});
+</script>
+<script src="{% static 'js/part_hints.js' %}"></script>
+{% endblock %}

@@ -1,4 +1,18 @@
+from .buchi import (
+    automaton_language_empty,
+    check_buchi_equivalence,
+    is_deterministic,
+    target_automaton_states,
+    target_language_empty,
+    word_accepted,
+)
 from .engine import analyze_lasso, check_ltl, cytoscape_to_kripke, validate_request
+from .equivalence import (
+    check_equivalence,
+    formulas_jointly_satisfiable,
+    validate_formula_submission,
+)
+from .traces import evaluate_lasso, validate_lasso
 
 
 def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
@@ -45,3 +59,100 @@ def run_ltl_check(kripke_graph: dict, ltl_formula: str) -> dict:
     result["kripke_graph"] = kripke_graph
 
     return result
+
+
+def run_trace_check(graph: dict, formula: str, prefix: list[str], cycle: list[str]) -> dict:
+    """Verify a student-selected lasso path and evaluate the formula on it.
+
+    Returns {"path_ok": bool, "path_error": str | None, "holds": bool | None}.
+    A broken path (not a real path of the graph, wrong start, open cycle) is
+    student data: path_ok=False with a user-facing path_error and holds=None.
+    ValueError is raised only for system/teacher problems — unparseable
+    formula, complexity caps, malformed graph, oversized trace.
+    """
+    validate_request(graph, formula)
+    error = validate_lasso(graph, prefix, cycle)
+    if error is not None:
+        return {"path_ok": False, "path_error": error, "holds": None}
+    return {
+        "path_ok": True,
+        "path_error": None,
+        "holds": evaluate_lasso(graph, formula, prefix, cycle),
+    }
+
+
+def run_equivalence_check(target: str, submitted: str, declared_aps: list[str]) -> dict:
+    """Grade a submitted formula against a hidden target by language equivalence.
+
+    The submission is validated against the caps and the exercise's declared AP
+    list first (ValueError on violation, surfaced to the user). The target is
+    teacher data validated at publish time, so a target parse failure here also
+    raises ValueError rather than being masked as a wrong answer.
+
+    Returns {"equivalent": bool, "formula": str}.
+    """
+    validate_formula_submission(submitted, declared_aps)
+    return {
+        "equivalent": check_equivalence(target, submitted),
+        "formula": submitted,
+    }
+
+
+def run_model_solvable_check(formulas: list[str], declared_aps: list[str]) -> dict:
+    """Whether some Kripke structure can satisfy every required formula at once.
+
+    Backs the build_kripke publish gate and the builder Test button. Raises
+    ValueError on an invalid formula. Returns {"solvable": bool}.
+    """
+    return {"solvable": formulas_jointly_satisfiable(formulas, declared_aps)}
+
+
+def run_buchi_equivalence_check(automaton: dict, target: str, declared_aps: list[str]) -> dict:
+    """Grade a drawn Büchi automaton against a target LTL by language equivalence.
+
+    A malformed automaton (bad label, no initial state, over cap) is a
+    teacher/system fault and raises ValueError. A well-formed but wrong student
+    automaton returns {"equivalent": False}.
+    """
+    return {"equivalent": check_buchi_equivalence(automaton, target, declared_aps)}
+
+
+def run_buchi_determinism_check(automaton: dict, declared_aps: list[str]) -> dict:
+    """Whether the drawn automaton is deterministic. Returns {"deterministic": bool}."""
+    return {"deterministic": is_deterministic(automaton, declared_aps)}
+
+
+def run_buchi_word_check(automaton: dict, word: str, declared_aps: list[str]) -> dict:
+    """Grade a typed lasso word against a fixed automaton by membership.
+
+    The automaton is teacher data (raises on a bad one); the word is student
+    data. Returns {"accepted": bool, "word_error": str | None} — a rejected or
+    unreadable word is accepted=False with a user-facing word_error.
+    """
+    accepted, message = word_accepted(automaton, word, declared_aps)
+    return {"accepted": accepted, "word_error": message or None}
+
+
+def run_buchi_shown_automaton_check(automaton: dict, declared_aps: list[str]) -> dict:
+    """Publish gate for buchi_word's fixed automaton.
+
+    Raises ValueError if it cannot be compiled (bad label, no initial state).
+    Returns {"empty": bool} — an empty language means no accepting word exists,
+    so students could never solve the exercise.
+    """
+    return {"empty": automaton_language_empty(automaton, declared_aps)}
+
+
+def run_buchi_target_check(target: str, declared_aps: list[str]) -> dict:
+    """Publish gate / builder Test for a buchi_construct target LTL formula.
+
+    Validates the target parses and stays within the formula caps and the
+    declared alphabet (ValueError on violation), and reports the target
+    automaton's state count plus whether its language is empty over Σ (an empty
+    one is unsolvable). Returns {"states": int, "empty": bool}.
+    """
+    validate_formula_submission(target, declared_aps)
+    return {
+        "states": target_automaton_states(target, declared_aps),
+        "empty": target_language_empty(target, declared_aps),
+    }

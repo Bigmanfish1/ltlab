@@ -7,40 +7,11 @@
 <div class="min-h-screen bg-bg-primary">
     {% include "header.html" %}
     <!-- Header -->
-    <div class="border-b border-border-primary">
-        <div class="max-w-[1280px] mx-auto px-12 py-6">
-            <div class="flex items-center justify-between mb-2">
-                <div>
-                    <h1 class="text-2xl text-text-primary font-semibold tracking-tight">
-                       Exercise {{ exercise_number }} · {{ exercise.title }}
-                    </h1>
-                    <div class="flex items-center mt-2">
-                        {% if is_completed %}
-                        <span class="font-mono text-[11px] px-2 py-1 bg-accent-lime text-bg-primary rounded">
-                            ✓ COMPLETED
-                        </span>
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    {% if prev_exercise %}
-                    <a href="{% url 'exercise_canvas' prev_exercise.id %}" class="px-3 py-2 bg-bg-secondary border border-border-secondary hover:border-accent-orange transition-colors rounded text-sm">
-                        ← Prev
-                    </a>
-                    {% endif %}
-                    {% if next_exercise %}
-                    <a href="{% url 'exercise_canvas' next_exercise.id %}" class="px-3 py-2 bg-bg-secondary border border-border-secondary hover:border-accent-orange transition-colors rounded text-sm">
-                        Next →
-                    </a>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
+    {% include "components/exercise_header.html" %}
 
     <!-- Main Content -->
     <div class="max-w-[1280px] mx-auto px-12 py-8">
-        <div class="grid grid-cols-[60%_40%] gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-8">
             <!-- Left Column: Kripke Model & Formula Input -->
             <div>
                 <!-- Exercise Description -->
