@@ -79,7 +79,7 @@ def exercises(request):
             'best_attempt': None,
         })
 
-    return render(request, 'exercises/exercises.html', {'exercises_data': exercises_data})
+    return render(request, 'exercises/student/list.html', {'exercises_data': exercises_data})
 
 
 def _exercise_nav(exercise_id):
@@ -114,14 +114,14 @@ def exercise_canvas(request, exercise_id):
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     if exercise.exercise_type == "english_to_formula":
         return _part_canvas(
-            request, exercise, "exercises/exercise_english.html",
+            request, exercise, "exercises/student/english.html",
             declared_aps=list(exercise.declared_aps or []),
             operator_buttons=_operator_buttons(exercise),
         )
     if exercise.exercise_type == "path_exhibit":
-        return _part_canvas(request, exercise, "exercises/exercise_path.html")
+        return _part_canvas(request, exercise, "exercises/student/path.html")
     if exercise.exercise_type == "judge":
-        return _part_canvas(request, exercise, "exercises/exercise_judge.html")
+        return _part_canvas(request, exercise, "exercises/student/judge.html")
     if exercise.exercise_type == "build_kripke":
         return _build_kripke_canvas(request, exercise)
     if exercise.exercise_type == "buchi_construct":
@@ -147,7 +147,7 @@ def exercise_canvas(request, exercise_id):
         'next_exercise': next_exercise,
         'type_badge': EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
     }
-    return render(request, 'exercises/exercise_canvas.html', context)
+    return render(request, 'exercises/student/model_check.html', context)
 
 
 def _part_rows(exercise, student):
@@ -206,7 +206,7 @@ def _build_kripke_canvas(request, exercise):
         "next_exercise": next_exercise,
         "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
     }
-    return render(request, "exercises/exercise_build_kripke.html", context)
+    return render(request, "exercises/student/build_kripke.html", context)
 
 
 def _buchi_construct_canvas(request, exercise):
@@ -240,7 +240,7 @@ def _buchi_construct_canvas(request, exercise):
         "next_exercise": next_exercise,
         "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
     }
-    return render(request, "exercises/exercise_buchi_construct.html", context)
+    return render(request, "exercises/student/buchi_construct.html", context)
 
 
 def _buchi_word_canvas(request, exercise):
@@ -264,7 +264,7 @@ def _buchi_word_canvas(request, exercise):
         "next_exercise": next_exercise,
         "type_badge": EXERCISE_TYPE_BADGES.get(exercise.exercise_type, ""),
     }
-    return render(request, "exercises/exercise_buchi_word.html", context)
+    return render(request, "exercises/student/buchi_word.html", context)
 
 
 @supabase_login_required
@@ -413,7 +413,7 @@ def submit_kripke(request, exercise_id):
         ),
     )
 
-    response = render(request, "exercises/kripke_result.html", {
+    response = render(request, "exercises/student/_partials/kripke.html", {
         "results": results, "all_ok": all_ok,
     })
     return _completion_trigger(response, request, exercise)
@@ -482,7 +482,7 @@ def submit_buchi(request, exercise_id):
     )
 
     # the target formula is the hidden answer key — never rendered to students
-    response = render(request, "exercises/buchi_result.html", {
+    response = render(request, "exercises/student/_partials/buchi.html", {
         "equivalent": equivalent,
         "ask_determinism": exercise.ask_determinism,
         "determinism_ok": determinism_ok,
@@ -533,14 +533,14 @@ def submit_buchi_word(request, exercise_id):
         hints_used=_clamped_hints(request, exercise.hints),
     )
 
-    response = render(request, "exercises/buchi_word_result.html", {
+    response = render(request, "exercises/student/_partials/buchi_word.html", {
         "accepted": accepted, "word_error": result["word_error"], "word": word,
     })
     return _completion_trigger(response, request, exercise)
 
 
 def _part_result(request, part, status, message):
-    return render(request, "exercises/part_result.html", {
+    return render(request, "exercises/student/_partials/part.html", {
         "part": part,
         "status": status,
         "message": message,
@@ -794,7 +794,7 @@ def teacher_exercises(request):
         {"key": t, "label": EXERCISE_TYPE_BADGES.get(t, t)}
         for t in BUILDER_EXERCISE_TYPES
     ]
-    return render(request, "exercises/teacher_exercises.html", {
+    return render(request, "exercises/teacher/list.html", {
         "exercises": exercise_rows(),
         "type_filters": type_filters,
     })
@@ -930,7 +930,7 @@ def exercise_builder(request, exercise_id=None):
         topic = _topic_or_none(request.GET.get("topic", ""))
         if topic is not None:
             context["selected_topic_id"] = str(topic.id)
-    return render(request, "exercises/teacher_exercise_builder.html", context)
+    return render(request, "exercises/teacher/builder.html", context)
 
 
 def _save_exercise(request, exercise):
@@ -940,7 +940,7 @@ def _save_exercise(request, exercise):
     if errors:
         for error in errors:
             messages.error(request, error)
-        return render(request, "exercises/teacher_exercise_builder.html", _builder_context(exercise, form))
+        return render(request, "exercises/teacher/builder.html", _builder_context(exercise, form))
 
     saved = persist_exercise(exercise, form, graph, publishing)
     messages.success(request, "Exercise published." if publishing else "Draft saved.")
