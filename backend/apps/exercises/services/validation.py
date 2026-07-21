@@ -11,7 +11,7 @@ from apps.checker.tasks import (
 )
 from apps.checker.views import _PROP_NAME_RE, _RESERVED_PROP_NAMES
 
-from ..constants import DIFFICULTIES, OPERATOR_DISPLAY, OPERATOR_LABELS
+from ..constants import DIFFICULTIES, operator_label
 from .common import BUILDER_EXERCISE_TYPES, _effective_type, _topic_exists
 
 
@@ -69,16 +69,11 @@ def _validate_english_parts(form, errors):
         # no permitted formula could ever be equivalent to it
         bad = disallowed_operators(part["formula"], form["allowed_operators"])
         if bad:
-            labels = ", ".join(sorted(_operator_label(t) for t in bad))
+            labels = ", ".join(sorted(operator_label(t) for t in bad))
             errors.append(
                 f"Requirement {i} target uses operators students can't enter: {labels}. "
                 "Enable them under Allowed Operators or rewrite the target."
             )
-
-
-def _operator_label(token):
-    shown = OPERATOR_DISPLAY.get(token, token)
-    return f"{shown} ({OPERATOR_LABELS[token]})" if token in OPERATOR_LABELS else shown
 
 
 def _validate_judge_parts(form, graph, errors):

@@ -21,16 +21,11 @@ from apps.checker.views import (
     error_response,
 )
 
-from ..constants import OPERATOR_DISPLAY, OPERATOR_LABELS
+from ..constants import operator_label
 from ..models import Attempt, ExercisePart
 from .common import _clamped_hints, _completion_trigger, published_exercises
 
 logger = logging.getLogger(__name__)
-
-
-def _operator_error_label(token):
-    shown = OPERATOR_DISPLAY.get(token, token)
-    return f"{shown} ({OPERATOR_LABELS[token]})" if token in OPERATOR_LABELS else shown
 
 
 @supabase_login_required
@@ -60,7 +55,7 @@ def submit_formula(request, exercise_id):
     if exercise.allowed_operators is not None:
         bad = disallowed_operators(formula, exercise.allowed_operators)
         if bad:
-            labels = sorted(_operator_error_label(t) for t in bad)
+            labels = sorted(operator_label(t) for t in bad)
             return error_response(
                 request,
                 "These operators aren't allowed for this exercise: " + ", ".join(labels) + ".",
@@ -484,7 +479,7 @@ def submit_part(request, exercise_id, part_id):
     if exercise.allowed_operators is not None:
         bad = disallowed_operators(formula, exercise.allowed_operators)
         if bad:
-            labels = sorted(_operator_error_label(t) for t in bad)
+            labels = sorted(operator_label(t) for t in bad)
             return _part_result(
                 request, part, "error",
                 "These operators aren't allowed for this exercise: " + ", ".join(labels) + ".",
