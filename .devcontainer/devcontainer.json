@@ -2,7 +2,7 @@
   "name": "ltlab",
   "dockerComposeFile": "../docker-compose.yml",
   "service": "web",
-  "runServices": ["web", "db", "redis", "worker"],
+  "runServices": ["web", "db"],
   "workspaceFolder": "/workspace",
   "remoteUser": "vscode",
   "features": {

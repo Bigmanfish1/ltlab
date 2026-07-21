@@ -8,6 +8,7 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required
 
+from .engine import formula_relationship
 from .tasks import run_ltl_check
 
 logger = logging.getLogger(__name__)
@@ -214,6 +215,170 @@ def verify_ltl(request):
     graph_json = json.dumps(engine_result["kripke_graph"])
     context = build_result_context(engine_result, graph_json)
     return render(request, "sandbox/result.html", context)
+
+
+# Plain-English summary per relationship, keyed for the result template.
+# (Project style: no em dashes in user-facing prose.)
+_EQ_SUMMARY = {
+    "equivalent": "Both accept exactly the same runs, so either one can stand in "
+                  "for the other.",
+    "a_stronger": "Every run that satisfies A also satisfies B, but not the other "
+                  "way round. A asks for more.",
+    "b_stronger": "Every run that satisfies B also satisfies A, but not the other "
+                  "way round. B asks for more.",
+    "incomparable": "Neither one covers the other. Each accepts runs the other "
+                    "rejects.",
+}
+
+# (border/text color, banner background, title) per relationship.
+_EQ_VERDICT_STYLE = {
+    "equivalent":   ("#AEFC00", "#0D1F0D", "Equivalent"),
+    "a_stronger":   ("#E0A030", "#1A160A", "One-way implication"),
+    "b_stronger":   ("#E0A030", "#1A160A", "One-way implication"),
+    "incomparable": ("#FF4D00", "#1F0D0D", "Not equivalent"),
+}
+
+
+def _eq_error(request, message: str):
+    """Render the equivalence result panel with a grey error banner."""
+    return render(
+        request,
+        "sandbox/equivalence_result.html",
+        {"status": "error", "message": message},
+    )
+
+
+@supabase_login_required
+@require_POST
+def equivalence_check(request):
+    formula_a = request.POST.get("formula_a", "").strip()
+    formula_b = request.POST.get("formula_b", "").strip()
+
+    if not formula_a or not formula_b:
+        return _eq_error(request, "Enter a formula in both A and B to compare them.")
+
+    for label, value in (("A", formula_a), ("B", formula_b)):
+        if len(value) > MAX_FORMULA_CHARS:
+            return _eq_error(
+                request,
+                f"Formula {label} is too long ({len(value)} characters) — the "
+                f"explorer supports at most {MAX_FORMULA_CHARS} characters.",
+            )
+
+    try:
+        result = formula_relationship(formula_a, formula_b)
+    except ValueError as exc:
+        return _eq_error(request, str(exc))
+    except Exception:
+        logger.exception("Equivalence check failed unexpectedly")
+        return _eq_error(
+            request,
+            "Comparison was stopped — the formulas could not be processed.",
+        )
+
+    # Build a fresh context (never mutate the lru_cached result). Each witness
+    # gets a unique editor id and its elements serialized for the read-only graph;
+    # the trace stays a Python object for json_script embedding.
+    witnesses = []
+    for i, w in enumerate(result["witnesses"]):
+        eid = f"eq-witness-{i}"
+        witnesses.append({
+            "eid": eid,
+            "trace_eid": f"{eid}-eq-trace",
+            "satisfies": w["satisfies"],
+            "violates": w["violates"],
+            "a_accepts": w["satisfies"] == "A",
+            "b_accepts": w["satisfies"] == "B",
+            "violation_kind": w.get("violation_kind", ""),
+            "divergence": w.get("divergence", ""),
+            "elements_json": json.dumps(w["elements"]),
+            "trace": w["trace"],
+        })
+
+    # Equivalent formulas have no distinguishing model; instead we show one
+    # behaviour they both accept (or nothing, if both are contradictions).
+    shared = result.get("shared_example")
+    shared_example = None
+    if shared:
+        eid = "eq-shared"
+        shared_example = {
+            "eid": eid,
+            "trace_eid": f"{eid}-eq-trace",
+            "a_accepts": True,
+            "b_accepts": True,
+            "elements_json": json.dumps(shared["elements"]),
+            "trace": shared["trace"],
+        }
+
+    # (label, formula text, facts dict) rows for the insight strip.
+    facts_pair = [
+        ("A", formula_a, result.get("facts_a") or {}),
+        ("B", formula_b, result.get("facts_b") or {}),
+    ]
+
+    # Interactive timeline data: the syntax trees of A and B plus a set of
+    # preset traces (the distinguishing witnesses, or one both accept). The
+    # browser evaluates every subformula over whichever trace the student edits.
+    def _cols_loop(trace):
+        cols = [list(s["props"]) for s in trace]
+        loop = next((i for i, s in enumerate(trace) if s.get("cycle_start")), 0)
+        return cols, loop
+
+    presets = []
+    for w in result["witnesses"]:
+        cols, loop = _cols_loop(w["trace"])
+        presets.append({
+            "name": f"{w['satisfies']} accepts it, {w['violates']} rejects it",
+            "cols": cols, "loop": loop, "distinguishing": True,
+        })
+    if shared:
+        cols, loop = _cols_loop(shared["trace"])
+        presets.append({
+            "name": "both accept this trace", "cols": cols, "loop": loop,
+            "distinguishing": False,
+        })
+    if not presets:
+        # Contradictions: no accepting trace exists, but the student can still
+        # build one and watch both formulas reject it. Seed a short empty trace.
+        presets.append({
+            "name": "empty trace", "cols": [[], []], "loop": 0,
+            "distinguishing": False,
+        })
+
+    timeline = {
+        "aps": result.get("aps", []),
+        "formulas": [
+            {"label": "A", "text": formula_a, "ast": result["ast_a"]},
+            {"label": "B", "text": formula_b, "ast": result["ast_b"]},
+        ],
+        "presets": presets,
+    }
+
+    relationship = result["relationship"]
+    vcolor, vbg, vtitle = _EQ_VERDICT_STYLE.get(
+        relationship, ("#6B6B6B", "#111111", "Result")
+    )
+
+    return render(
+        request,
+        "sandbox/equivalence_result.html",
+        {
+            "status": "result",
+            "relationship": relationship,
+            "glyph": result["glyph"],
+            "summary": _EQ_SUMMARY.get(relationship, ""),
+            "verdict_color": vcolor,
+            "verdict_bg": vbg,
+            "verdict_title": vtitle,
+            "formula_a": formula_a,
+            "formula_b": formula_b,
+            "facts_pair": facts_pair,
+            "witnesses": witnesses,
+            "shared_example": shared_example,
+            "shared_note": result.get("note", ""),
+            "timeline": timeline,
+        },
+    )
 
 
 @supabase_login_required

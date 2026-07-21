@@ -42,6 +42,8 @@ Each trace step consumed by the counterexample page template has:
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 try:
     import spot  # type: ignore[import]
     _SPOT_AVAILABLE = True
@@ -165,17 +167,18 @@ def _count_temporal_ops(f, ops: dict) -> int:
 
 # ── Pre-flight validation (PRIMARY DoS guard — call before translate()) ───────
 
-def validate_request(graph: dict, formula_str: str) -> None:
-    """Validate the formula and graph before the expensive SPOT translation.
+def validate_formula(formula_str: str):
+    """Parse + cap a single LTL formula; return the parsed ``spot.formula``.
 
-    Must be called at the top of run_ltl_check, before spot.translate().
-    Raises ValueError with a user-friendly message on any violation so the
-    check fails cleanly instead of blowing up memory/CPU.
+    This is the formula-only half of the pre-flight guard, shared by the model
+    checker (``validate_request``) and the equivalence explorer
+    (``formula_relationship``).  Raises ValueError with a user-facing message.
 
     Checks (in order):
       1. Formula parses successfully.
-      2. AST-level structural caps (prevent 2^n blowup in translate()).
-      3. Formula APs are a subset of propositions declared on graph states.
+      2. It is a pure LTL formula (rejects SERE/rational operators, which can
+         crash SPOT natively when rebuilt — see misconceptions.py).
+      3. AST-level structural caps (prevent 2^n blowup in translate()).
     """
     _require_spot()
 
@@ -184,6 +187,15 @@ def validate_request(graph: dict, formula_str: str) -> None:
         f = spot.formula(normalised)
     except (SyntaxError, RuntimeError) as exc:
         raise ValueError(f"Invalid LTL formula: {exc}") from exc
+
+    try:
+        is_ltl = f.is_ltl_formula()
+    except Exception:
+        is_ltl = True
+    if not is_ltl:
+        raise ValueError(
+            "Only LTL formulas are supported here (no SERE / rational operators)."
+        )
 
     ops = _op_constants()
 
@@ -209,6 +221,24 @@ def validate_request(graph: dict, formula_str: str) -> None:
             f"Formula references {len(formula_aps)} distinct propositions — "
             f"the sandbox supports at most {MAX_FORMULA_APS}."
         )
+
+    return f
+
+
+def validate_request(graph: dict, formula_str: str) -> None:
+    """Validate the formula and graph before the expensive SPOT translation.
+
+    Must be called at the top of run_ltl_check, before spot.translate().
+    Raises ValueError with a user-friendly message on any violation so the
+    check fails cleanly instead of blowing up memory/CPU.
+
+    Checks (in order):
+      1-3. Everything ``validate_formula`` covers (parse, LTL-only, structural caps).
+      4.   Formula APs are a subset of propositions declared on graph states.
+    """
+    f = validate_formula(formula_str)
+    ops = _op_constants()
+    formula_aps = _collect_formula_aps_set(f, ops)
 
     # ── AP subset: formula must not reference undeclared propositions ─────────
     elements = graph.get("elements", {})
@@ -668,10 +698,15 @@ def _classify(f, word: "_LassoWord", formula_str: str, ops: dict) -> tuple:
     if tag == "F":
         body = f[0]
         bf = _focus(body, formula_str)
+        ever = any(word.holds(body, k) for k in range(N))
         for i in range(N):
             if word.holds(body, i):
                 setp(i, STATUS_SATISFIED, bf,
                      f"{ps(i)} — '{u(body)}' holds here, fulfilling the eventually.")
+            elif ever:
+                setp(i, STATUS_PENDING, bf,
+                     f"{ps(i)} — still waiting for '{u(body)}' here; the eventually "
+                     "is fulfilled elsewhere in the run.")
             else:
                 setp(i, STATUS_PENDING, bf,
                      f"{ps(i)} — still waiting for '{u(body)}'; it never occurs "
@@ -759,12 +794,20 @@ def _classify(f, word: "_LassoWord", formula_str: str, ops: dict) -> tuple:
         if child is not None and _op_tag(child, ops) != "ap" and _op_tag(child, ops) != "unknown":
             return _classify(child, word, formula_str, ops)
 
-    # ── Fallback: only the initial state is constrained ───────────────────────
+    # ── Fallback: a Boolean / atomic formula only constrains the initial state ─
+    # It may be either satisfied or violated by the word (the equivalence
+    # explorer classifies both formulas, not just the failing one), so decide
+    # from its actual truth value rather than assuming a counterexample.
     ff = _focus(f, formula_str)
+    holds0 = word.holds(f, 0)
     for i in range(N):
         if i == 0:
-            setp(i, STATUS_VIOLATING, ff,
-                 f"{ps(i)} — '{u(f)}' is false at the initial state.")
+            if holds0:
+                setp(i, STATUS_SATISFIED, ff,
+                     f"{ps(i)} — '{u(f)}' holds at the initial state, as required.")
+            else:
+                setp(i, STATUS_VIOLATING, ff,
+                     f"{ps(i)} — '{u(f)}' is false at the initial state.")
         else:
             setp(i, STATUS_VACUOUS, "",
                  f"{ps(i)} — only the initial state matters for this formula.")
@@ -870,3 +913,506 @@ def analyze_lasso(
         "violation_kind": kind,
         "violating_subformula": viol_sub,
     }
+
+
+# ── 4. Formula equivalence explorer ──────────────────────────────────────────
+#
+# Compare two LTL formulas A and B and, when they differ, produce a concrete
+# *distinguishing model*: an ultimately-periodic word (a lasso) that satisfies
+# one formula but not the other.  A word satisfying ``A ∧ ¬B`` is a witness that
+# A is not implied by B; symmetrically for ``B ∧ ¬A``.  The witness is rendered
+# as a read-only Kripke lasso (same Cytoscape shape the editor consumes) so the
+# UI can animate it exactly like the counterexample page.
+#
+# Relationship keys (nuanced, via language containment):
+#   equivalent   A ≡ B                     (glyph ≡)
+#   a_stronger   L(A) ⊊ L(B)  (A ⊨ B)      (glyph ⊋)  → witness: B ∧ ¬A
+#   b_stronger   L(B) ⊊ L(A)  (B ⊨ A)      (glyph ⊊)  → witness: A ∧ ¬B
+#   incomparable neither implies the other (glyph ≢)  → both witnesses
+
+
+def _label_props(label, ap_vars: list) -> list[str]:
+    """Decode one BDD transition label into a concrete set of true APs.
+
+    We pick a single satisfying minterm by greedily restricting the label:
+    an AP is taken as true only when that is still consistent with the choices
+    made so far, otherwise false.  This always yields a valid assignment even
+    when the label is a disjunction (e.g. ``a | b``).
+    """
+    props: list[str] = []
+    cur = label
+    false_bdd = None
+    for name, var in ap_vars:
+        ith = _bdd_ithvar(var)
+        if false_bdd is None:
+            false_bdd = ith & _bdd_nithvar(var)
+        if (cur & ith) != false_bdd:
+            cur = cur & ith
+            props.append(name)
+        else:
+            cur = cur & _bdd_nithvar(var)
+    return props
+
+
+def _no_em(text: str) -> str:
+    """Remove em / en dashes from user-facing prose (project style: none allowed).
+
+    The per-state reasons produced by ``_classify`` are reused verbatim in the
+    equivalence explorer; that helper writes them with " — " separators, so we
+    rewrite those to a colon here rather than duplicating the reason strings.
+    """
+    if not text:
+        return text
+    return (
+        text
+        .replace(" — ", ": ")
+        .replace("—", ": ")
+        .replace(" – ", ": ")
+        .replace("–", "-")
+    )
+
+
+# ── Tier 3: language-level facts about a single formula ───────────────────────
+#
+# These feed the "formula insight" strip so students see *why* two formulas
+# relate the way they do (e.g. both are tautologies, or one is a contradiction),
+# and learn the temporal-hierarchy class of what they typed.
+
+_MP_CLASS_LABEL = {
+    "safety":      "Safety",
+    "guarantee":   "Guarantee",
+    "obligation":  "Obligation",
+    "recurrence":  "Recurrence",
+    "persistence": "Persistence",
+    "reactivity":  "Reactivity",
+}
+
+# One-line, em-dash-free descriptions of each Manna-Pnueli class.
+_MP_CLASS_BLURB = {
+    "Safety":      "nothing bad ever happens; a violation would show up at a finite point.",
+    "Guarantee":   "something good happens at least once.",
+    "Obligation":  "a Boolean combination of safety and guarantee requirements.",
+    "Recurrence":  "something good keeps happening infinitely often.",
+    "Persistence": "from some point on, a condition holds forever after.",
+    "Reactivity":  "a general response pattern; the most expressive class.",
+}
+
+
+def _formula_facts(f) -> dict:
+    """Language-level facts about one formula for the insight strip.
+
+    Returns satisfiable / tautology / contradiction flags plus the formula's
+    Manna-Pnueli temporal class (safety, recurrence, ...). Best-effort: any SPOT
+    hiccup degrades to conservative defaults rather than raising.
+    """
+    satisfiable = True
+    tautology = False
+    try:
+        satisfiable = not spot.translate(f).is_empty()
+        tautology = spot.translate(spot.formula.Not(f)).is_empty()
+    except Exception:
+        pass
+
+    try:
+        primary = spot.mp_class(f, "v").split()[0]
+    except Exception:
+        primary = ""
+    class_label = _MP_CLASS_LABEL.get(primary, "")
+
+    return {
+        "satisfiable":   satisfiable,
+        "contradiction": not satisfiable,
+        "tautology":     tautology,
+        "class_label":   class_label,
+        "class_blurb":   _MP_CLASS_BLURB.get(class_label, ""),
+    }
+
+
+def _formula_ast(f, ops: dict) -> dict:
+    """Serialise an LTL formula as a JSON-friendly syntax tree.
+
+    The interactive timeline renders one row per subformula and re-evaluates
+    every node over the (editable) trace in the browser, so it needs the whole
+    tree: an operator tag, the node's Unicode text (used as the row label) and,
+    for atoms, the proposition name.
+    """
+    tag = _op_tag(f, ops)
+    node = {"op": tag, "text": _unicode_inner(str(f))}
+    if tag == "ap":
+        node["name"] = f.ap_name()
+    elif tag not in ("tt", "ff"):
+        node["children"] = [_formula_ast(f[i], ops) for i in range(f.size())]
+    return node
+
+
+def _collect_aps(node: dict, out: list) -> None:
+    """Depth-first collect of atomic-proposition names from a ``_formula_ast`` tree."""
+    if node.get("op") == "ap" and node["name"] not in out:
+        out.append(node["name"])
+    for ch in node.get("children", []):
+        _collect_aps(ch, out)
+
+
+def _lasso_to_witness(run, aut) -> dict | None:
+    """Turn a SPOT accepting run into a Kripke-lasso witness dict.
+
+    Returns ``{"elements": [...cytoscape...], "trace": [...]}`` or None if the
+    run has no cycle (should not happen for a genuine accepting run).
+    """
+    try:
+        run = run.reduce()
+    except Exception:
+        pass
+
+    prefix_steps = list(run.prefix)
+    cycle_steps = list(run.cycle)
+    if not cycle_steps:
+        return None
+
+    ap_vars = [(ap.ap_name(), aut.register_ap(ap)) for ap in aut.ap()]
+
+    order = prefix_steps + cycle_steps
+    cycle_start = len(prefix_steps)
+    n = len(order)
+
+    props_by_pos = [_label_props(step.label, ap_vars) for step in order]
+
+    elements: list[dict] = []
+    for i in range(n):
+        elements.append({
+            "data": {
+                "id": f"w{i}",
+                "name": f"s{i}",
+                "label": f"s{i}",
+                "props": props_by_pos[i],
+                "initial": i == 0,
+            },
+            "position": {"x": 90 + i * 130, "y": 200},
+        })
+    # chain edges + the loop-closing back-edge (makes the graph a total lasso)
+    for i in range(n - 1):
+        elements.append({"data": {"id": f"we{i}", "source": f"w{i}", "target": f"w{i + 1}"}})
+    elements.append({
+        "data": {"id": "we_loop", "source": f"w{n - 1}", "target": f"w{cycle_start}"}
+    })
+
+    trace = []
+    for i in range(n):
+        trace.append({
+            "state": f"w{i}",
+            "name": f"s{i}",
+            "props": props_by_pos[i],
+            "in_cycle": i >= cycle_start,
+            "cycle_start": i == cycle_start,
+            "cycle_back": i == n - 1,
+        })
+
+    return {"elements": elements, "trace": trace}
+
+
+def _truth_trace(witness: dict, fa, fb, ops: dict) -> "_LassoWord":
+    """Attach the per-position truth of A and B along the witness word.
+
+    Equivalence is defined by the *language* of a formula (the set of behaviours
+    it accepts), so the honest way to show two formulas differ is to take one
+    concrete behaviour and evaluate BOTH on it, position by position.  We reuse
+    ``_LassoWord`` (standard LTL suffix satisfaction) so ``a_holds`` at position i
+    means "the run from state i onward satisfies A".
+
+    Each trace step gains ``a_holds`` / ``b_holds`` (bool), ``agree`` and
+    ``diverges`` (= they disagree here).  Returns the ``_LassoWord`` for reuse.
+    """
+    props_by_pos = [list(s["props"]) for s in witness["trace"]]
+    cycle_start = next(
+        (i for i, s in enumerate(witness["trace"]) if s.get("cycle_start")), 0
+    )
+    word = _LassoWord(props_by_pos, cycle_start, ops)
+    for i, step in enumerate(witness["trace"]):
+        a = word.holds(fa, i)
+        b = word.holds(fb, i)
+        step["a_holds"] = a
+        step["b_holds"] = b
+        step["agree"] = (a == b)
+        step["diverges"] = (a != b)
+    return word
+
+
+def _eq_reasons(witness: dict) -> None:
+    """Per-step, equivalence-framed explanation (distinct from the model-checker).
+
+    Reads the ``a_holds`` / ``b_holds`` already attached by ``_truth_trace`` and
+    phrases each step in terms of A vs B agreeing or disagreeing, with position 0
+    (the whole run) called out as the decisive comparison.  No em dashes.
+    """
+    for i, step in enumerate(witness["trace"]):
+        name = step["name"]
+        av = "true" if step["a_holds"] else "false"
+        bv = "true" if step["b_holds"] else "false"
+        if step["agree"]:
+            both = "true" if step["a_holds"] else "false"
+            step["reason"] = (
+                f"From {name} onward, A and B agree: both are {both}."
+            )
+        elif i == 0:
+            step["reason"] = (
+                f"Reading the whole run from {name}, A is {av} but B is {bv}. "
+                f"This behaviour is inside one formula's language and outside the "
+                f"other's, so on its own it proves A and B are not equivalent."
+            )
+        else:
+            step["reason"] = (
+                f"From {name} onward, A is {av} but B is {bv}, so the two formulas "
+                f"make different claims about this part of the run."
+            )
+
+
+def _dual_classify(witness: dict, fa, fb, word: "_LassoWord", ops: dict) -> None:
+    """Attach per-step, per-formula mechanism status and reason for BOTH formulas.
+
+    This is the heart of the "two parallel runs" view.  Showing the same word
+    twice with a bare true/false checkmark per formula is opaque: the two lanes
+    look identical and never explain *why* one formula is satisfied and the other
+    is not.  Instead we reuse the model checker's ``_classify`` for each formula,
+    so every state carries the same trusted, plain-English judgement the Kripke
+    counterexample page uses: the requirement holds here (satisfied), is still
+    open (pending), or concretely breaks here (violating).  The satisfied
+    formula's lane then resolves to green, while the violated one either waits
+    forever (a liveness difference) or shows a red break state (a safety one) so
+    the contrast between the lanes is real and self-explaining.
+
+    Each trace step gains ``a_status`` / ``b_status`` (satisfied / pending /
+    violating / vacuous) and ``a_reason`` / ``b_reason`` (em-dash-free prose).
+    """
+    def lane(f):
+        stat, _h, reasons, _k, _vs = _classify(f, word, _unicode_inner(str(f)), ops)
+        # ``_classify`` explains a formula as a counterexample, so its VIOLATING
+        # marks assume the word breaks the formula.  When the word *accepts* this
+        # formula (it holds at position 0) there is no genuine break: those marks
+        # are states past the point where the obligation was already discharged,
+        # so present them as unconstrained rather than as a false "breaks here".
+        if word.holds(f, 0):
+            for i, s in enumerate(stat):
+                if s == STATUS_VIOLATING:
+                    stat[i] = STATUS_VACUOUS
+                    reasons[i] = (
+                        f"{_props_str(word.props[i])} — the obligation was already "
+                        "met earlier, so this state is unconstrained."
+                    )
+        return stat, reasons
+
+    a_stat, a_reasons = lane(fa)
+    b_stat, b_reasons = lane(fb)
+    for i, step in enumerate(witness["trace"]):
+        step["a_status"] = a_stat[i]
+        step["a_reason"] = _no_em(a_reasons[i])
+        step["b_status"] = b_stat[i]
+        step["b_reason"] = _no_em(b_reasons[i])
+
+
+def _eq_divergence_caption(hold_label: str, viol_label: str, viol_unicode: str,
+                           kind: str, break_names: list[str]) -> str:
+    """One-line "why they differ" caption for a witness run."""
+    lead = f"The run below satisfies {hold_label} but not {viol_label}"
+    if kind == KIND_SAFETY and break_names:
+        where = (
+            break_names[0] if len(break_names) == 1
+            else ", ".join(break_names)
+        )
+        return lead + f", which breaks at {where}."
+    return lead + (
+        f". Nothing breaks {viol_label} at any one state; it fails only because "
+        f"the loop repeats forever without ever getting there."
+    )
+
+
+def _annotate_witness(witness: dict, fa, fb, viol_label: str) -> None:
+    """Attach truth trace, equivalence reasons and the headline explainer."""
+    ops = _op_constants()
+    word = _truth_trace(witness, fa, fb, ops)
+    _eq_reasons(witness)
+    _dual_classify(witness, fa, fb, word, ops)
+
+    # Classify the violated formula only to learn the *character* of the
+    # difference (safety vs liveness) and, for safety, the concrete break state.
+    f_violate = fa if viol_label == "A" else fb
+    viol_unicode = _unicode_inner(str(f_violate))
+    statuses, _h, _r, kind, _vs = _classify(f_violate, word, viol_unicode, ops)
+    break_names = [
+        witness["trace"][i]["name"]
+        for i, s in enumerate(statuses) if s == STATUS_VIOLATING
+    ]
+    hold_label = "B" if viol_label == "A" else "A"
+    witness["violation_kind"] = kind
+    witness["divergence"] = _eq_divergence_caption(
+        hold_label, viol_label, viol_unicode, kind, break_names
+    )
+
+
+def _witness(fa, fb, viol_label: str) -> dict | None:
+    """Build a witness word that satisfies one formula but violates the other.
+
+    ``viol_label`` ("A" or "B") says which formula the witness must violate; the
+    other is the one it satisfies.  The returned witness carries the per-position
+    A/B truth trace and the equivalence explainer.
+    """
+    f_violate = fa if viol_label == "A" else fb
+    f_hold = fb if viol_label == "A" else fa
+    conj = spot.formula.And([f_hold, spot.formula.Not(f_violate)])
+    try:
+        aut = spot.translate(conj)
+    except Exception:
+        return None
+    run = aut.accepting_run()
+    if run is None:
+        return None
+    w = _lasso_to_witness(run, aut)
+    if w is None:
+        return None
+    _annotate_witness(w, fa, fb, viol_label)
+    return w
+
+
+def _shared_example(fa, fb) -> dict | None:
+    """One behaviour that satisfies A (used to illustrate the equivalent case).
+
+    Returns None when A is unsatisfiable (a contradiction has no models).  The
+    trace still carries the A/B truth rows; because the formulas are equivalent
+    they agree at every position, which is the visual point: the two rows match.
+    """
+    try:
+        aut = spot.translate(fa)
+    except Exception:
+        return None
+    run = aut.accepting_run()
+    if run is None:
+        return None
+    w = _lasso_to_witness(run, aut)
+    if w is None:
+        return None
+    ops = _op_constants()
+    word = _truth_trace(w, fa, fb, ops)
+    _eq_reasons(w)
+    _dual_classify(w, fa, fb, word, ops)
+    return w
+
+
+@lru_cache(maxsize=1024)
+def _relationship_cached(a_str: str, b_str: str) -> dict:
+    """Classify A vs B and build witnesses.  Keyed on canonical formula strings.
+
+    Pure and deterministic → memoised.  A classroom converges on a handful of
+    pairs, so repeat calls are O(1) with zero SPOT work.  Callers must treat the
+    returned dict as read-only (it is shared across cache hits).
+    """
+    fa = spot.formula(a_str)
+    fb = spot.formula(b_str)
+
+    facts_a = _formula_facts(fa)
+    facts_b = _formula_facts(fb)
+
+    # Syntax trees + the union of propositions feed the interactive timeline,
+    # which evaluates each subformula of A and B over a trace the student edits.
+    ast_a = _formula_ast(fa, _op_constants())
+    ast_b = _formula_ast(fb, _op_constants())
+    aps: list[str] = []
+    _collect_aps(ast_a, aps)
+    _collect_aps(ast_b, aps)
+    ast_bundle = {"ast_a": ast_a, "ast_b": ast_b, "aps": aps}
+
+    if spot.are_equivalent(fa, fb):
+        return {
+            "relationship": "equivalent",
+            "glyph": "≡",
+            "facts_a": facts_a,
+            "facts_b": facts_b,
+            "witnesses": [],
+            "shared_example": _shared_example(fa, fb),
+            "note": _equivalent_note(facts_a, facts_b),
+            **ast_bundle,
+        }
+
+    # spot.contains(X, Y) means L(Y) ⊆ L(X)  (see tests/checker/test_adversarial.py)
+    a_in_b = spot.contains(fb, fa)   # L(A) ⊆ L(B)  → A implies B (A stronger)
+    b_in_a = spot.contains(fa, fb)   # L(B) ⊆ L(A)  → B implies A (B stronger)
+
+    witnesses: list[dict] = []
+    if a_in_b and not b_in_a:
+        relationship, glyph = "a_stronger", "⊋"
+        w = _witness(fa, fb, "A")    # violates A (so satisfies B)
+        if w:
+            witnesses.append({"satisfies": "B", "violates": "A", **w})
+    elif b_in_a and not a_in_b:
+        relationship, glyph = "b_stronger", "⊊"
+        w = _witness(fa, fb, "B")    # violates B (so satisfies A)
+        if w:
+            witnesses.append({"satisfies": "A", "violates": "B", **w})
+    else:
+        relationship, glyph = "incomparable", "≢"
+        wa = _witness(fa, fb, "B")   # violates B (so satisfies A)
+        if wa:
+            witnesses.append({"satisfies": "A", "violates": "B", **wa})
+        wb = _witness(fa, fb, "A")   # violates A (so satisfies B)
+        if wb:
+            witnesses.append({"satisfies": "B", "violates": "A", **wb})
+
+    return {
+        "relationship": relationship,
+        "glyph": glyph,
+        "facts_a": facts_a,
+        "facts_b": facts_b,
+        "witnesses": witnesses,
+        "shared_example": None,
+        "note": "",
+        **ast_bundle,
+    }
+
+
+def _equivalent_note(facts_a: dict, facts_b: dict) -> str:
+    """Explain *why* two equivalent formulas coincide, when it is instructive."""
+    if facts_a["tautology"] and facts_b["tautology"]:
+        return ("Both formulas are tautologies: they hold on every possible "
+                "behaviour, so they are trivially equivalent.")
+    if facts_a["contradiction"] and facts_b["contradiction"]:
+        return ("Both formulas are contradictions: no behaviour satisfies either "
+                "one, so they are trivially equivalent.")
+    return ("SPOT verified that both formulas accept exactly the same set of "
+            "behaviours. Here is one behaviour they both accept:")
+
+
+def formula_relationship(formula_a: str, formula_b: str) -> dict:
+    """Compare two LTL formulas; return their relationship and distinguishing models.
+
+    Returns a dict:
+      relationship   : "equivalent" | "a_stronger" | "b_stronger" | "incomparable"
+      glyph          : ≡ / ⊋ / ⊊ / ≢
+      facts_a/facts_b: language-level facts per formula (satisfiable, tautology,
+                       contradiction, temporal class) for the insight strip
+      witnesses      : list of {satisfies, violates, elements, trace,
+                       violation_kind, divergence}.  Each trace step carries
+                       status / reason / diverges marking the divergence point.
+                       Empty when equivalent.
+      shared_example : {elements, trace} both formulas accept (equivalent case
+                       only; None when they are contradictions or not equivalent)
+      note           : plain-English note for the equivalent case ("" otherwise)
+
+    Raises ValueError (user-facing) when either formula fails to parse, is not
+    pure LTL, exceeds the structural caps, or the two together reference more
+    than MAX_FORMULA_APS distinct propositions.
+    """
+    _require_spot()
+
+    fa = validate_formula(formula_a)
+    fb = validate_formula(formula_b)
+
+    # Combined-AP cap: the witness translations below build A ∧ ¬B, whose AP set
+    # is the union — keep it bounded so translate() stays fast.
+    ops = _op_constants()
+    combined_aps = _collect_formula_aps_set(fa, ops) | _collect_formula_aps_set(fb, ops)
+    if len(combined_aps) > MAX_FORMULA_APS:
+        raise ValueError(
+            f"Together the two formulas reference {len(combined_aps)} distinct "
+            f"propositions — the explorer supports at most {MAX_FORMULA_APS}."
+        )
+
+    # Canonical strings dedupe syntactic variants (spacing, parens) in the cache.
+    return _relationship_cached(str(fa), str(fb))

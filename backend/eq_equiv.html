@@ -1,0 +1,233 @@
+
+<div id="eq-verdict-meta" hidden data-glyph="≡" data-color="#AEFC00"></div>
+<!-- Verdict banner -->
+<div class="border-l-2 rounded-r px-5 py-4" style="border-color: #AEFC00; background: #0D1F0D;">
+  <div class="flex items-center gap-3">
+    <span class="font-mono text-[28px] leading-none" style="color: #AEFC00;">≡</span>
+    <div>
+      <div class="font-mono text-[14px] tracking-[0.04em]" style="color: #AEFC00;">Equivalent</div>
+      <div class="font-mono text-[12px] text-[#6B6B6B] mt-1">These formulas are logically equivalent. They accept exactly the same behaviours.</div>
+    </div>
+  </div>
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4 font-mono text-[13px]">
+    <span class="text-[#FAFAFA] break-all">A&nbsp;=&nbsp;!(G p)</span>
+    <span style="color: #AEFC00;">≡</span>
+    <span class="text-[#FAFAFA] break-all">B&nbsp;=&nbsp;F !p</span>
+  </div>
+  
+  <div class="font-mono text-[11px] text-[#8A8A8A] mt-3 leading-relaxed">A implies B and B implies A, so the two are interchangeable.</div>
+  
+</div>
+
+<!-- Formula insight strip (Tier 3) -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+  
+  <div class="border border-[#1F1F1F] rounded px-3 py-2.5 bg-[#0C0C0C]">
+    <div class="flex items-center gap-2">
+      <span class="font-mono text-[11px] text-[#6B6B6B]">A</span>
+      <span class="font-mono text-[12px] text-[#FAFAFA] break-all">!(G p)</span>
+    </div>
+    <div class="flex flex-wrap items-center gap-1.5 mt-2">
+      
+        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" style="color:#8A8A8A;background:#141414;">satisfiable</span>
+        
+        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" style="color:#E0A030;background:#1A160A;" title="something good happens at least once.">Guarantee</span>
+        
+      
+    </div>
+    
+    <div class="font-mono text-[10px] text-[#6B6B6B] mt-1.5 leading-relaxed">something good happens at least once.</div>
+    
+  </div>
+  
+  <div class="border border-[#1F1F1F] rounded px-3 py-2.5 bg-[#0C0C0C]">
+    <div class="flex items-center gap-2">
+      <span class="font-mono text-[11px] text-[#6B6B6B]">B</span>
+      <span class="font-mono text-[12px] text-[#FAFAFA] break-all">F !p</span>
+    </div>
+    <div class="flex flex-wrap items-center gap-1.5 mt-2">
+      
+        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" style="color:#8A8A8A;background:#141414;">satisfiable</span>
+        
+        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" style="color:#E0A030;background:#1A160A;" title="something good happens at least once.">Guarantee</span>
+        
+      
+    </div>
+    
+    <div class="font-mono text-[10px] text-[#6B6B6B] mt-1.5 leading-relaxed">something good happens at least once.</div>
+    
+  </div>
+  
+</div>
+
+<!-- Lead-in: what to look for -->
+
+<div class="mt-4 font-mono text-[12px] text-[#8A8A8A] leading-relaxed">SPOT verified that both formulas accept exactly the same set of behaviours. Here is one behaviour they both accept:</div>
+
+
+
+<!-- ── Interactive subformula timeline (primary explainer) ─────────────────── -->
+<div class="eq-timeline mt-4 border border-[#1F1F1F] rounded bg-[#0A0A0A]" data-timeline="eq-timeline-data">
+  <div class="flex items-center justify-between px-4 py-2.5 border-b border-[#1F1F1F] flex-wrap gap-2">
+    <div class="font-mono text-[11px] tracking-[0.10em] text-[#6B6B6B]">
+      INTERACTIVE TIMELINE
+      <span class="text-[#8A8A8A]">edit the trace and watch both formulas react</span>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button type="button" data-tl-del class="border border-[#2A2A2A] px-2 h-7 flex items-center justify-center text-[11px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] rounded transition-colors" title="Remove the last state">&#8722; state</button>
+      <button type="button" data-tl-add class="border border-[#2A2A2A] px-2 h-7 flex items-center justify-center text-[11px] text-[#FAFAFA] font-mono hover:bg-[#1A1A1A] rounded transition-colors" title="Add a state">+ state</button>
+    </div>
+  </div>
+
+  <div class="px-4 py-2.5 border-b border-[#1F1F1F]">
+    <div class="font-mono text-[10px] text-[#6B6B6B] leading-relaxed">
+      Time runs left to right. Click a proposition cell to flip it on or off in
+      that state; the loop marker (&#8635;) is where the trace repeats forever, and
+      you can click any state header to move it. Each formula below is split into
+      its parts, one row per subformula: a lit cell means that part is
+      <span style="color:#AEFC00;">true</span> at that moment. Read from the atoms
+      up to the whole formula to see how its truth is built. The two whole-formula
+      rows are the verdict.
+    </div>
+    <div data-tl-presets class="flex flex-wrap items-center gap-1.5 mt-2.5"></div>
+  </div>
+
+  <div class="px-4 py-3 overflow-x-auto">
+    <div class="w-max">
+      <div data-tl-trace></div>
+      <div data-tl-formulas></div>
+    </div>
+  </div>
+
+  <div data-tl-verdict class="px-4 py-3 border-t border-[#1F1F1F]"></div>
+</div>
+<script id="eq-timeline-data" type="application/json">{"aps": ["p"], "formulas": [{"label": "A", "text": "!(G p)", "ast": {"op": "F", "text": "F\u00acp", "children": [{"op": "Not", "text": "\u00acp", "children": [{"op": "ap", "text": "p", "name": "p"}]}]}}, {"label": "B", "text": "F !p", "ast": {"op": "F", "text": "F\u00acp", "children": [{"op": "Not", "text": "\u00acp", "children": [{"op": "ap", "text": "p", "name": "p"}]}]}}], "presets": [{"name": "both accept this trace", "cols": [[], ["p"]], "loop": 1, "distinguishing": false}]}</script>
+
+<!-- ── Advanced: state-graph view of the sample traces (collapsed) ─────────── -->
+
+<details class="eq-advanced mt-4 border border-[#1F1F1F] rounded bg-[#0A0A0A]">
+  <summary class="cursor-pointer select-none px-4 py-2.5 font-mono text-[11px] tracking-[0.10em] text-[#6B6B6B] hover:text-[#8A8A8A]">
+    ADVANCED: state-graph view of these traces
+  </summary>
+  <div class="px-4 pb-4 pt-1 font-mono text-[10px] text-[#6B6B6B] leading-relaxed">
+    The same sample traces drawn as Kripke lassos (a state graph whose last cycle
+    repeats forever). The timeline above is the same information laid out over
+    time, which is usually easier to read.
+  </div>
+  
+  
+  <div class="mx-4 mb-4 border border-[#1F1F1F] rounded">
+    <div class="px-3 py-2 border-b border-[#1F1F1F] font-mono text-[10px] text-[#AEFC00]">a trace both accept</div>
+    <div class="flex" style="height: 180px; background: #0A0A0A;">
+      
+
+
+
+<div class="kripke-editor flex flex-1 min-w-0 min-h-0"
+     style="height: 180px;">
+
+  
+
+  <!-- Canvas area -->
+  <div class="flex-1 relative overflow-hidden" style="background:#0A0A0A;">
+    <div id="eq-shared-cy" class="kripke-cy absolute inset-0"></div>
+
+    <!-- Hidden input: serialized graph, submitted with any wrapping form. -->
+    <input type="hidden" id="eq-shared-graph-data"
+           name="eq_unused" value="" />
+
+    
+
+    <!-- Node hover tooltip -->
+    <div id="eq-shared-node-tooltip"
+      class="absolute pointer-events-none select-none hidden z-50" style="max-width: 200px;">
+      <div class="bg-[#111111] border border-[#2A2A2A] rounded-md overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.6)]">
+        <div id="eq-shared-node-tooltip-name"
+          class="px-3 py-1.5 font-mono text-[12px] font-semibold text-[#FAFAFA] bg-[#1A1A1A]"></div>
+        <div id="eq-shared-node-tooltip-props"
+          class="px-3 py-1.5 font-mono text-[11px] text-[#6B6B6B] leading-relaxed break-all"></div>
+      </div>
+    </div>
+
+    <!-- Proposition chip overlay — HTML layer synchronized to node positions -->
+    <div id="eq-shared-prop-chips-layer"
+         style="position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5;"></div>
+  </div>
+</div>
+
+
+<script type="application/json" id="eq-shared-elements">[{"data": {"id": "w0", "name": "s0", "label": "s0", "props": [], "initial": true}, "position": {"x": 90, "y": 200}}, {"data": {"id": "w1", "name": "s1", "label": "s1", "props": ["p"], "initial": false}, "position": {"x": 220, "y": 200}}, {"data": {"id": "we0", "source": "w0", "target": "w1"}}, {"data": {"id": "we_loop", "source": "w1", "target": "w1"}}]</script>
+
+
+<style>
+  #eq-shared-cy { width: 100%; height: 100%; }
+</style>
+
+<script>
+(function () {
+  var ID = "eq-shared";
+  var CYTOSCAPE_SRC = "https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js";
+  var EDITOR_SRC = "/static/js/kripke_editor.js";
+
+  function ready(fn) {
+    if (document.readyState !== "loading") fn();
+    else document.addEventListener("DOMContentLoaded", fn);
+  }
+
+  // Load a script once; de-dupe concurrent/repeated requests by data-kripke.
+  function ensureScript(src, key, cb) {
+    var existing = document.querySelector('script[data-kripke="' + key + '"]');
+    if (existing) {
+      if (existing.getAttribute("data-loaded")) cb();
+      else existing.addEventListener("load", cb);
+      return;
+    }
+    var s = document.createElement("script");
+    s.src = src;
+    s.setAttribute("data-kripke", key);
+    s.addEventListener("load", function () { s.setAttribute("data-loaded", "1"); cb(); });
+    document.head.appendChild(s);
+  }
+
+  function boot() {
+    var cfg = { id: ID, editable: false };
+    var elTag = document.getElementById(ID + "-elements");
+    if (elTag) {
+      try { cfg.elements = JSON.parse(elTag.textContent); } catch (e) {}
+    }
+    window.initKripkeEditor(cfg);
+  }
+
+  ready(function () {
+    var withCytoscape = function () {
+      if (window.initKripkeEditor) return boot();
+      ensureScript(EDITOR_SRC, "editor", boot);
+    };
+    if (window.cytoscape) withCytoscape();
+    else ensureScript(CYTOSCAPE_SRC, "cytoscape", withCytoscape);
+  });
+})();
+</script>
+
+
+    </div>
+  </div>
+  
+</details>
+
+
+<script>
+  if (window.EquivalenceTimeline) window.EquivalenceTimeline.initAll();
+  // Kripke graphs inside the collapsed panel render at zero size; re-fit them
+  // whenever the panel is opened.
+  document.querySelectorAll(".eq-advanced").forEach(function (adv) {
+    adv.addEventListener("toggle", function () {
+      if (!adv.open) return;
+      var eds = window.KripkeEditors || {};
+      Object.keys(eds).forEach(function (k) {
+        try { eds[k].cy.resize(); eds[k].cy.fit(eds[k].cy.elements("[!phantom]"), 40); } catch (e) {}
+      });
+    });
+  });
+</script>
+
