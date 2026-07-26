@@ -9,6 +9,11 @@ OPERATOR_LABELS = {
 OPERATOR_DISPLAY = {"∨": "∨ / |"}
 DIFFICULTIES = ["beginner", "intermediate", "advanced"]
 
+
+def operator_label(token):
+    shown = OPERATOR_DISPLAY.get(token, token)
+    return f"{shown} ({OPERATOR_LABELS[token]})" if token in OPERATOR_LABELS else shown
+
 # badge text per exercise type — compact forms of the builder's type labels
 # (module terminology: MCL3 p.2/3 "formalising", p.27 universal/existential MC)
 EXERCISE_TYPE_BADGES = {
