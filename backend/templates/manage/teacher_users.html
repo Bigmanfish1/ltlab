@@ -22,7 +22,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for u in users %}
+                    {% for u in page %}
                     <tr class="border-b border-border-primary last:border-0">
                         <td class="px-5 py-4 text-[14px] text-text-primary">{{ u.name|default:"—" }}</td>
                         <td class="px-5 py-4 text-[13px] text-text-secondary font-mono">{{ u.email }}</td>
@@ -38,6 +38,7 @@
                             {% else %}
                             <form method="post" action="{% url 'set_user_role' u.id %}" class="inline">
                                 {% csrf_token %}
+                                <input type="hidden" name="page" value="{{ page.number }}">
                                 {% if u.role == 'teacher' %}
                                 <input type="hidden" name="role" value="student">
                                 <button type="submit" class="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded border border-border-secondary text-text-secondary hover:border-accent-orange hover:text-text-primary transition-colors">

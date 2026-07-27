@@ -200,10 +200,10 @@ def teacher_required(view_func):
 def teacher_page(redirect_to="home"):
     """Teacher-only GET page that steps aside during a "view as student" preview.
 
-    Gates on the real role (like teacher_required), but when the teacher is
-    previewing the student view it redirects to the student-facing equivalent so
-    the preview stays immersive. Mutating routes keep using teacher_required so
-    they always act on the real role — including the toggle-back endpoint.
+    Gates on the real role (like teacher_required); while previewing it redirects
+    to redirect_to — the student list for teacher_exercises, the dashboard ("home")
+    otherwise. Mutating routes keep using teacher_required so they always act on
+    the real role — including the toggle-back endpoint.
     """
     def decorator(view_func):
         @functools.wraps(view_func)
