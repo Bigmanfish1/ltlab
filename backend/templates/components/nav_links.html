@@ -25,4 +25,9 @@
           {% if request.resolver_match.url_name == 'manage' or request.resolver_match.url_name == 'exercise_builder' or request.resolver_match.url_name == 'exercise_edit' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
     Manage
 </a>
+<a href="{% url 'manage_users' %}"
+  class="font-mono text-[11px] tracking-[0.12em] uppercase transition-colors {{ link_extra }}
+          {% if request.resolver_match.url_name == 'manage_users' %}text-text-primary font-bold{% else %}text-text-secondary hover:text-text-primary{% endif %}">
+    Roles
+</a>
 {% endif %}
