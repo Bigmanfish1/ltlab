@@ -11,6 +11,7 @@ from .auth_cookies import clear_auth_cookies, set_auth_cookies
 from .constants import LOGIN_URL
 from .jwt_auth import SupabaseUser, is_session_revoked, verify_token
 from .models import Profile
+from .view_as import is_previewing
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,15 @@ class SupabaseAuthMiddleware:
                 # lookup) surfaces instead of being mislabelled a JWT failure.
                 if not is_session_revoked(claims.get("session_id")):
                     _attach_profile(request, SupabaseUser(claims))
+
+        # Downgrade-only preview: a real teacher may render the student view.
+        # effective_role drives display/dispatch only — never authorization.
+        request.is_previewing = is_previewing(request)
+        request.effective_role = (
+            Profile.ROLE_STUDENT
+            if request.is_previewing
+            else (request.profile.role if request.profile else None)
+        )
 
         response = self.get_response(request)
 
@@ -185,3 +195,26 @@ def teacher_required(view_func):
             return redirect("/")
         return view_func(request, *args, **kwargs)
     return wrapper
+
+
+def teacher_page(redirect_to="home"):
+    """Teacher-only GET page that steps aside during a "view as student" preview.
+
+    Gates on the real role (like teacher_required), but when the teacher is
+    previewing the student view it redirects to the student-facing equivalent so
+    the preview stays immersive. Mutating routes keep using teacher_required so
+    they always act on the real role — including the toggle-back endpoint.
+    """
+    def decorator(view_func):
+        @functools.wraps(view_func)
+        def wrapper(request, *args, **kwargs):
+            bounce = _redirect_if_no_profile(request)
+            if bounce is not None:
+                return bounce
+            if request.profile.role != Profile.ROLE_TEACHER:
+                return redirect("/")
+            if getattr(request, "is_previewing", False):
+                return redirect(redirect_to)
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator
