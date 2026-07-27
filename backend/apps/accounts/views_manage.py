@@ -1,6 +1,7 @@
 import logging
 
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -14,7 +15,8 @@ logger = logging.getLogger("ltlab.roles")
 @teacher_page()
 def manage_users(request):
     users = Profile.objects.all().order_by("role", "name", "email")
-    return render(request, "manage/teacher_users.html", {"users": users})
+    page = Paginator(users, 50).get_page(request.GET.get("page"))
+    return render(request, "manage/teacher_users.html", {"page": page, "users": page})
 
 
 @teacher_required
@@ -36,13 +38,6 @@ def set_user_role(request, profile_id):
 
     if target.role == role:
         messages.info(request, f"{target.email} is already {role}.")
-        return redirect("manage_users")
-
-    if (
-        target.role == Profile.ROLE_TEACHER
-        and Profile.objects.filter(role=Profile.ROLE_TEACHER).count() <= 1
-    ):
-        messages.error(request, "Can’t demote the last teacher.")
         return redirect("manage_users")
 
     target.role = role

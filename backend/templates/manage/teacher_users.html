@@ -59,6 +59,18 @@
                 </tbody>
             </table>
         </div>
+
+        {% if page.has_other_pages %}
+        <div class="flex items-center justify-between mt-4 font-mono text-[10px] tracking-[0.12em] uppercase text-text-secondary">
+            {% if page.has_previous %}
+            <a href="?page={{ page.previous_page_number }}" class="hover:text-text-primary transition-colors">← Prev</a>
+            {% else %}<span class="opacity-40">← Prev</span>{% endif %}
+            <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+            {% if page.has_next %}
+            <a href="?page={{ page.next_page_number }}" class="hover:text-text-primary transition-colors">Next →</a>
+            {% else %}<span class="opacity-40">Next →</span>{% endif %}
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
