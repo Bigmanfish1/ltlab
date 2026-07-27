@@ -1,3 +1,8 @@
+  {% if request.is_previewing %}
+  <div class="bg-accent-lime/10 border-b border-accent-lime/40 px-6 py-1.5 flex items-center justify-center gap-2 text-center">
+      <span class="font-mono text-[10px] tracking-[0.12em] uppercase text-accent-lime">Viewing as student · nothing you submit is recorded</span>
+  </div>
+  {% endif %}
   <header class="relative border-b border-slate-800 px-6 h-12 flex items-center justify-between gap-4 bg-bg-primary">
       <div class="font-mono text-sm font-semibold tracking-tight text-text-primary shrink-0">
           LTLab
@@ -7,6 +12,7 @@
       </nav>
       <div class="flex items-center gap-3 shrink-0">
           {% if request.supabase_user %}
+          <div class="hidden md:flex items-center">{% include "components/view_as_toggle.html" %}</div>
           <span class="hidden lg:block font-mono text-[11px] text-text-secondary truncate max-w-[180px]">{{ request.supabase_user.email }}</span>
           <form method="post" action="{% url 'accounts:logout' %}" class="hidden md:flex items-center">
               {% csrf_token %}
@@ -29,6 +35,7 @@
       {% include "components/nav_links.html" with link_extra="block py-1" %}
       <div class="border-t border-slate-800 pt-3 flex flex-col gap-3">
           {% if request.supabase_user %}
+          {% include "components/view_as_toggle.html" %}
           <span class="font-mono text-[11px] text-text-secondary break-all">{{ request.supabase_user.email }}</span>
           <form method="post" action="{% url 'accounts:logout' %}">
               {% csrf_token %}

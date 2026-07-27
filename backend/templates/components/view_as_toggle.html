@@ -1,0 +1,30 @@
+{% if request.profile.role == 'teacher' %}
+<div class="inline-flex items-center gap-0.5 rounded-full border border-border-secondary bg-bg-secondary p-0.5 select-none"
+     role="group" aria-label="View as">
+  {% if request.is_previewing %}
+  <form method="post" action="{% url 'accounts:view_as_teacher' %}" class="contents">
+    {% csrf_token %}
+    <button type="submit"
+            class="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded-full text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
+      Teacher
+    </button>
+  </form>
+  <span aria-current="true"
+        class="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded-full bg-accent-lime text-bg-primary">
+    Student
+  </span>
+  {% else %}
+  <span aria-current="true"
+        class="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded-full bg-accent-lime text-bg-primary">
+    Teacher
+  </span>
+  <form method="post" action="{% url 'accounts:view_as_student' %}" class="contents">
+    {% csrf_token %}
+    <button type="submit"
+            class="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1 rounded-full text-text-secondary hover:text-text-primary transition-colors cursor-pointer">
+      Student
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}

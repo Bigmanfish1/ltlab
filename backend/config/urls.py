@@ -21,6 +21,7 @@ from apps.exercises.views import (
     topic_update,
     topic_visibility,
 )
+from apps.accounts.views_manage import manage_users, set_user_role
 from apps.home.views import home, teacher_results, teacher_student_detail
 from config.api import api
 from config.views import sandbox
@@ -53,6 +54,8 @@ urlpatterns = [
     path("teacher/manage/topics/<uuid:topic_id>/delete/", topic_delete, name="topic_delete"),
     path("teacher/manage/topics/<uuid:topic_id>/visibility/", topic_visibility, name="topic_visibility"),
     path("teacher/manage/topics/reorder/", topic_reorder, name="topic_reorder"),
+    path("teacher/manage/users/", manage_users, name="manage_users"),
+    path("teacher/manage/users/<uuid:profile_id>/role/", set_user_role, name="set_user_role"),
     path("teacher/exercises/<uuid:exercise_id>/delete/", exercise_delete, name="exercise_delete"),
     path("results/", teacher_results, name="results"),
     path("results/student/<uuid:student_id>/", teacher_student_detail, name="teacher_student_detail"),

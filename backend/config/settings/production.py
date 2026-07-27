@@ -35,5 +35,6 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {
         "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+        "ltlab.roles": {"handlers": ["console"], "level": "INFO", "propagate": False},
     },
 }

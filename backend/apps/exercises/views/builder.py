@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from apps.accounts.middleware import teacher_required
+from apps.accounts.middleware import teacher_page, teacher_required
 from apps.checker.tasks import (
     run_buchi_target_check,
     run_ltl_check,
@@ -49,7 +49,7 @@ def _topic_or_none(pk):
         return None
 
 
-@teacher_required
+@teacher_page("exercises")
 def teacher_exercises(request):
     type_filters = [
         {"key": t, "label": EXERCISE_TYPE_BADGES.get(t, t)}
@@ -61,7 +61,7 @@ def teacher_exercises(request):
     })
 
 
-@teacher_required
+@teacher_page()
 def manage(request):
     topics = list(Topic.objects.select_related("unlocks_after").prefetch_related("exercises"))
     modules = []

@@ -28,6 +28,17 @@ from .common import _clamped_hints, _completion_trigger, published_exercises
 logger = logging.getLogger(__name__)
 
 
+def record_attempt(request, **fields):
+    """Persist an Attempt, unless a teacher is previewing the student view.
+
+    In preview the submission is still graded and feedback shown, but nothing is
+    recorded — keeps class analytics, streaks, and unlock state clean.
+    """
+    if getattr(request, "is_previewing", False):
+        return None
+    return Attempt.objects.create(**fields)
+
+
 @supabase_login_required
 @require_POST
 def submit_formula(request, exercise_id):
@@ -75,7 +86,7 @@ def submit_formula(request, exercise_id):
 
     hints_used = _clamped_hints(request, exercise.hints)
 
-    Attempt.objects.create(
+    record_attempt(request,
         exercise=exercise,
         student=student,
         formula_input=formula,
@@ -164,7 +175,7 @@ def submit_kripke(request, exercise_id):
             "edges": elements.get("edges") or [],
         }
     }
-    Attempt.objects.create(
+    record_attempt(request,
         exercise=exercise,
         student=request.profile,
         answer={"graph": stored_graph},
@@ -234,7 +245,7 @@ def submit_buchi(request, exercise_id):
     answer = {"automaton": automaton}
     if exercise.ask_determinism:
         answer["determinism"] = determinism_answer
-    Attempt.objects.create(
+    record_attempt(request,
         exercise=exercise,
         student=request.profile,
         answer=answer,
@@ -286,7 +297,7 @@ def submit_buchi_word(request, exercise_id):
         )
 
     accepted = result["accepted"]
-    Attempt.objects.create(
+    record_attempt(request,
         exercise=exercise,
         student=request.profile,
         answer={"word": word},
@@ -343,7 +354,7 @@ def _submit_path_part(request, exercise, part):
         )
 
     is_correct = bool(result["path_ok"] and result["holds"])
-    Attempt.objects.create(
+    record_attempt(request,
         exercise=exercise,
         student=request.profile,
         part=part,
@@ -436,7 +447,7 @@ def _submit_judge_part(request, exercise, part):
         else:
             message = "The formula holds on your chosen path — find a path where it fails."
 
-    Attempt.objects.create(
+    record_attempt(request,
         exercise=exercise,
         student=request.profile,
         part=part,
@@ -498,7 +509,7 @@ def submit_part(request, exercise_id, part_id):
 
     is_correct = result["equivalent"]
 
-    Attempt.objects.create(
+    record_attempt(request,
         exercise=exercise,
         student=request.profile,
         part=part,
