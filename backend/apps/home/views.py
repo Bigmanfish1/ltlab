@@ -6,7 +6,11 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.accounts.middleware import supabase_login_required, teacher_required
+from apps.accounts.middleware import (
+    supabase_login_required,
+    teacher_page,
+    teacher_required,
+)
 from apps.accounts.models import Profile
 from apps.exercises import services
 from apps.exercises.models import Attempt, Exercise, Topic
@@ -21,7 +25,7 @@ def home(request):
     content is gated by the same mechanism every future page/endpoint uses
     rather than an ad-hoc role check here.
     """
-    if request.profile.role == Profile.ROLE_TEACHER:
+    if request.effective_role == Profile.ROLE_TEACHER:
         return teacher_dashboard(request)
     return student_dashboard(request)
 
@@ -144,7 +148,7 @@ def teacher_dashboard(request):
     return render(request, "dashboard/teacher_dashboard.html", context)
 
 
-@teacher_required
+@teacher_page()
 def teacher_results(request):
     data = services.results_data()
     metrics = data["metrics"]
@@ -163,7 +167,7 @@ def teacher_results(request):
     return render(request, "results/teacher_results.html", context)
 
 
-@teacher_required
+@teacher_page()
 def teacher_student_detail(request, student_id):
     student = get_object_or_404(Profile, pk=student_id, role=Profile.ROLE_STUDENT)
     return render(request, "results/teacher_student_detail.html", services.student_detail(student))

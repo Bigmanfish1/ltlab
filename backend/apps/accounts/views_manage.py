@@ -4,8 +4,9 @@ from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from .middleware import teacher_page, teacher_required
+from .middleware import supabase_login_required, teacher_page, teacher_required
 from .models import Profile
+from .view_as import clear_view_as, set_view_as_student
 
 logger = logging.getLogger("ltlab.roles")
 
@@ -49,3 +50,19 @@ def set_user_role(request, profile_id):
     logger.info("role change: %s -> %s by %s", target.email, role, request.profile.email)
     messages.success(request, f"{target.email} is now {role}.")
     return redirect("manage_users")
+
+
+@teacher_required
+@require_POST
+def enter_view_as_student(request):
+    response = redirect("home")
+    set_view_as_student(response, request.is_secure())
+    return response
+
+
+@supabase_login_required
+@require_POST
+def exit_view_as(request):
+    response = redirect("home")
+    clear_view_as(response)
+    return response
