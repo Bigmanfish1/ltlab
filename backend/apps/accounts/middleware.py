@@ -207,14 +207,9 @@ def teacher_page(redirect_to="home"):
     """
     def decorator(view_func):
         @functools.wraps(view_func)
-        def wrapper(request, *args, **kwargs):
-            bounce = _redirect_if_no_profile(request)
-            if bounce is not None:
-                return bounce
-            if request.profile.role != Profile.ROLE_TEACHER:
-                return redirect("/")
+        def guarded(request, *args, **kwargs):
             if getattr(request, "is_previewing", False):
                 return redirect(redirect_to)
             return view_func(request, *args, **kwargs)
-        return wrapper
+        return teacher_required(guarded)
     return decorator

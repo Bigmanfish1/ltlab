@@ -1,9 +1,3 @@
-{% comment %}
-Segmented Teacher|Student control. Shown only to a real teacher. The active side
-is a static highlighted label; the other side is a POST button that flips the
-signed "view-as" cookie. Real role is unchanged — this only swaps the rendered
-view.
-{% endcomment %}
 {% if request.profile.role == 'teacher' %}
 <div class="inline-flex items-center gap-0.5 rounded-full border border-border-secondary bg-bg-secondary p-0.5 select-none"
      role="group" aria-label="View as">
