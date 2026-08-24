@@ -263,6 +263,9 @@
     }
 
     // ── Tool selection ──────────────────────────────────────────────────────
+    // internal tool ids stay node/edge; the UI speaks Kripke-structure terms
+    const TOOL_LABELS = { node: "STATE", edge: "TRANSITION", label: "LABEL", delete: "DELETE" };
+
     function setTool(tool) {
       if (!editable) return;
       if (edgeSource) {
@@ -285,7 +288,7 @@
           activeBtn.classList.add("text-[#FAFAFA]");
         }
       }
-      setIndicator("MODE: " + tool.toUpperCase());
+      setIndicator("MODE: " + (TOOL_LABELS[tool] || tool.toUpperCase()));
       cy.userPanningEnabled(tool !== "edge");
     }
     function setIndicator(text) {
@@ -640,7 +643,7 @@
           if (!edgeSource) {
             edgeSource = node;
             node.addClass("edge-source");
-            setIndicator("MODE: EDGE — click target (or same node for self-loop)");
+            setIndicator("MODE: TRANSITION — click target (or same state for self-loop)");
           } else if (edgeSource.id() === node.id()) {
             if (cy.edges(`[source = "${node.id()}"][target = "${node.id()}"]`).length > 0) {
               warn("A self-loop already exists on state <b>" + (node.data("name") || node.id()) + "</b>.");
@@ -651,7 +654,7 @@
             }
             edgeSource.removeClass("edge-source");
             edgeSource = null;
-            setIndicator("MODE: EDGE");
+            setIndicator("MODE: TRANSITION");
           } else {
             const srcId = edgeSource.id();
             const tgtId = node.id();
@@ -664,7 +667,7 @@
             }
             edgeSource.removeClass("edge-source");
             edgeSource = null;
-            setIndicator("MODE: EDGE");
+            setIndicator("MODE: TRANSITION");
           }
           return;
         }
@@ -685,7 +688,7 @@
         if (currentTool === "edge" && edgeSource) {
           edgeSource.removeClass("edge-source");
           edgeSource = null;
-          setIndicator("MODE: EDGE");
+          setIndicator("MODE: TRANSITION");
         }
       });
 

@@ -37,13 +37,13 @@
        class="w-12 bg-[#111111] border-r border-[#1F1F1F] flex flex-col items-center py-3 gap-1 shrink-0 z-10">
 
     <!-- node -->
-    <button type="button" data-tool="node" title="Select / double-click canvas to add node (N)"
+    <button type="button" data-tool="node" title="Select / double-click canvas to add state (N)"
       class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/></svg>
     </button>
 
     <!-- edge -->
-    <button type="button" data-tool="edge" title="Add edge (E)"
+    <button type="button" data-tool="edge" title="Add transition (E)"
       class="tool-btn relative w-full flex items-center justify-center py-3 text-[#6B6B6B] hover:text-[#FAFAFA] hover:bg-[#1A1A1A] transition-colors">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
     </button>
@@ -108,13 +108,13 @@
     <!-- Tool mode indicator -->
     <div id="{{ eid }}-indicator"
       class="absolute top-3 left-3 font-mono text-[11px] text-[#6B6B6B] bg-[#111111] border border-[#1F1F1F] px-2 py-1 rounded pointer-events-none select-none">
-      MODE: NODE
+      MODE: STATE
     </div>
 
     <!-- No-initial-state hint -->
     <div id="{{ eid }}-no-initial-hint"
       class="absolute top-3 left-1/2 -translate-x-1/2 font-mono text-[11px] text-[#6B6B6B] bg-[#111111] border border-[#1F1F1F] px-3 py-1 rounded pointer-events-none select-none hidden">
-      No initial state — select a node and press&nbsp;<span class="text-[#FAFAFA]">I</span>
+      No initial state — select a state and press&nbsp;<span class="text-[#FAFAFA]">I</span>
     </div>
 
     <!-- Empty canvas placeholder -->
