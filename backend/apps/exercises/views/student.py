@@ -98,7 +98,12 @@ def _part_rows(exercise, student):
         ).values_list("part_id", flat=True)
     )
     return [
-        {"part": p, "number": i, "solved": p.id in correct_part_ids}
+        {
+            "part": p,
+            "number": i,
+            "solved": p.id in correct_part_ids,
+            "input_id": f"formula-{p.id}",
+        }
         for i, p in enumerate(parts, start=1)
     ]
 
