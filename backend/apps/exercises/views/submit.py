@@ -24,7 +24,13 @@ from apps.checker.views import (
 
 from ..constants import operator_label
 from ..models import Attempt, ExercisePart
-from .common import _clamped_hints, _completion_trigger, published_exercises
+from .common import (
+    _clamped_hints,
+    add_trigger,
+    _completion_trigger,
+    graded_trigger,
+    published_exercises,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +116,9 @@ def submit_formula(request, exercise_id):
         {"attempts": _attempt_history(exercise, student), "oob": True},
         request=request,
     ))
+    graded_trigger(response, is_correct)
     if is_correct:
-        response["HX-Trigger"] = "exerciseSolved"
+        add_trigger(response, "exerciseSolved")
     return response
 
 
@@ -202,6 +209,7 @@ def submit_kripke(request, exercise_id):
     response = render(request, "exercises/student/_partials/kripke.html", {
         "results": results, "all_ok": all_ok,
     })
+    graded_trigger(response, all_ok)
     return _completion_trigger(response, request, exercise)
 
 
@@ -274,6 +282,7 @@ def submit_buchi(request, exercise_id):
         "determinism_ok": determinism_ok,
         "actually_deterministic": actually_deterministic,
     })
+    graded_trigger(response, equivalent and determinism_ok)
     return _completion_trigger(response, request, exercise)
 
 
@@ -322,15 +331,20 @@ def submit_buchi_word(request, exercise_id):
     response = render(request, "exercises/student/_partials/buchi_word.html", {
         "accepted": accepted, "word_error": result["word_error"], "word": word,
     })
+    graded_trigger(response, accepted)
     return _completion_trigger(response, request, exercise)
 
 
 def _part_result(request, part, status, message):
-    return render(request, "exercises/student/_partials/part.html", {
+    response = render(request, "exercises/student/_partials/part.html", {
         "part": part,
         "status": status,
         "message": message,
     })
+    # "error" is a rejected submission, not a wrong answer — no verdict for it
+    if status in ("correct", "incorrect"):
+        graded_trigger(response, status == "correct")
+    return response
 
 
 def _parse_trace_field(request, name):
