@@ -47,6 +47,22 @@
     return audioCtx;
   }
 
+  // Triad notes overlap, so the bus carries a limiter rather than trusting
+  // three envelopes to sum under full scale.
+  function bus(ctx) {
+    if (!ctx._ltlabBus) {
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -6;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.12;
+      limiter.connect(ctx.destination);
+      ctx._ltlabBus = limiter;
+    }
+    return ctx._ltlabBus;
+  }
+
   function tone(ctx, freq, startAt, duration, gainPeak) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -55,7 +71,7 @@
     gain.gain.setValueAtTime(0.0001, startAt);
     gain.gain.exponentialRampToValueAtTime(gainPeak, startAt + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(bus(ctx));
     osc.start(startAt);
     osc.stop(startAt + duration + 0.02);
   }
@@ -85,7 +101,7 @@
   function play(correct) {
     if (muted()) return;
     const notes = correct ? PASS : FAIL;
-    const peak = correct ? 0.28 : 0.3;
+    const peak = correct ? 0.7 : 0.75;
     schedule((ctx, now) => {
       notes.forEach((n) => tone(ctx, n.freq, now + n.at, n.dur, peak));
     });
@@ -112,7 +128,7 @@
         setMuted(nowMuted);
         if (!nowMuted) {
           schedule((ctx, now) => {
-            PASS.forEach((n) => tone(ctx, n.freq, now + n.at, n.dur, 0.28));
+            PASS.forEach((n) => tone(ctx, n.freq, now + n.at, n.dur, 0.7));
           });
         }
       });
