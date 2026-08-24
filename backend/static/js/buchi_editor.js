@@ -355,6 +355,7 @@
       if (cy.nodes().filter((n) => !n.data("phantom")).length === 0) return;
       saveSnapshot();
       cy.elements().remove();
+      nodeCounter = 0;
       updateInitialHint();
       updateEmptyCanvasHint();
       syncGraphData();
@@ -646,8 +647,9 @@
         }
       });
 
-      cy.on("dblclick", function (evt) {
+      cy.on("tap", function (evt) {
         if (evt.target !== cy) return;
+        if (currentTool !== "node") return;
         saveSnapshot();
         const nid = nextNodeId();
         const isFirst = cy.nodes().filter((n) => !n.data("phantom")).length === 0;
@@ -710,6 +712,7 @@
             else if (action === "redo") redoAction();
             else if (action === "toggle-initial") toggleInitial();
             else if (action === "toggle-accepting") toggleAccepting();
+            else if (action === "recenter") cy.fit(cy.elements("[!phantom]"), 80);
             else if (action === "clear") clearCanvas();
           });
         });

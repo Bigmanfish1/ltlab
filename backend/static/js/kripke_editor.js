@@ -347,6 +347,7 @@
       if (cy.nodes().filter((n) => !n.data("phantom")).length === 0) return;
       saveSnapshot();
       cy.elements().remove();
+      nodeCounter = 0;
       updateInitialHint();
       updateEmptyCanvasHint();
       rebuildAllChips();
@@ -692,9 +693,10 @@
         }
       });
 
-      // Double-click empty canvas: add node (works in every tool mode)
-      cy.on("dblclick", function (evt) {
+      // Click empty canvas in the state tool: add a state
+      cy.on("tap", function (evt) {
         if (evt.target !== cy) return;
+        if (currentTool !== "node") return;
         saveSnapshot();
         const nid = nextNodeId();
         const isFirstInitial = cy.nodes().filter((n) => !n.data("phantom") && n.data("initial")).length === 0;
@@ -750,6 +752,7 @@
             if (action === "undo") undoAction();
             else if (action === "redo") redoAction();
             else if (action === "toggle-initial") toggleInitial();
+            else if (action === "recenter") cy.fit(cy.elements("[!phantom]"), 80);
             else if (action === "clear") clearCanvas();
           });
         });
