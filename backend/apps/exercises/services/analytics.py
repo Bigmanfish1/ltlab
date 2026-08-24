@@ -351,8 +351,8 @@ def recent_activity(limit=6):
 def _fmt_lasso(answer):
     prefix = answer.get("prefix") or []
     cycle = answer.get("cycle") or []
-    cycle_str = "(" + " → ".join(cycle) + ")ω"
-    return " → ".join(prefix) + " → " + cycle_str if prefix else cycle_str
+    cycle_str = "(" + ", ".join(cycle) + ")ω"
+    return ", ".join(prefix) + ", " + cycle_str if prefix else cycle_str
 
 
 def _attempt_display(attempt):
