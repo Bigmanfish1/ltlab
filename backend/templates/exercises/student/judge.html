@@ -43,7 +43,7 @@
                         </div>
                         <div class="font-mono text-base text-text-primary mb-3">{{ row.part.formula }}</div>
                         <div class="flex items-center gap-2">
-                            <button type="button"
+                            <button type="button" data-claim-holds
                                 hx-post="{% url 'submit_part' exercise.id row.part.id %}"
                                 hx-target="#part-result-{{ row.part.id }}"
                                 hx-swap="innerHTML"
@@ -108,18 +108,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     boot();
 
+    function closeAllViolatedPanels() {
+        document.querySelectorAll('[data-violated-panel]').forEach((p) => p.classList.add('hidden'));
+        document.querySelectorAll('[data-part-card]').forEach((c) => c.classList.remove('border-accent-orange'));
+    }
+
     document.querySelectorAll('[data-claim-violated]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const card = btn.closest('[data-part-card]');
             const panel = card.querySelector('[data-violated-panel]');
             const wasOpen = !panel.classList.contains('hidden');
-            document.querySelectorAll('[data-violated-panel]').forEach((p) => p.classList.add('hidden'));
-            document.querySelectorAll('[data-part-card]').forEach((c) => c.classList.remove('border-accent-orange'));
+            closeAllViolatedPanels();
             if (!wasOpen) {
                 panel.classList.remove('hidden');
                 card.classList.add('border-accent-orange');
             }
         });
+    });
+
+    document.querySelectorAll('[data-claim-holds]').forEach((btn) => {
+        btn.addEventListener('click', closeAllViolatedPanels);
     });
 
     let warnTimer = null;
