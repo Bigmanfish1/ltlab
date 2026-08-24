@@ -71,15 +71,23 @@
     else run();
   }
 
+  // C major arpeggiated up for a pass, two notes stepping down for a fail
+  const PASS = [
+    { freq: 523.25, at: 0.00, dur: 0.28 },
+    { freq: 659.25, at: 0.06, dur: 0.28 },
+    { freq: 783.99, at: 0.12, dur: 0.28 },
+  ];
+  const FAIL = [
+    { freq: 392, at: 0.00, dur: 0.15 },
+    { freq: 294, at: 0.14, dur: 0.26 },
+  ];
+
   function play(correct) {
     if (muted()) return;
+    const notes = correct ? PASS : FAIL;
+    const peak = correct ? 0.28 : 0.3;
     schedule((ctx, now) => {
-      if (correct) {
-        tone(ctx, 660, now, 0.16, 0.35);
-        tone(ctx, 990, now + 0.15, 0.24, 0.35);
-      } else {
-        tone(ctx, 200, now, 0.34, 0.3);
-      }
+      notes.forEach((n) => tone(ctx, n.freq, now + n.at, n.dur, peak));
     });
   }
 
@@ -103,7 +111,9 @@
         const nowMuted = !muted();
         setMuted(nowMuted);
         if (!nowMuted) {
-          schedule((ctx, now) => tone(ctx, 880, now, 0.16, 0.35));
+          schedule((ctx, now) => {
+            PASS.forEach((n) => tone(ctx, n.freq, now + n.at, n.dur, 0.28));
+          });
         }
       });
     }
