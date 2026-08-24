@@ -51,6 +51,17 @@ def _validate_buchi_construct(form, errors):
         )
 
 
+def _check_operators(formula, allowed_operators, label, errors):
+    """Flag a teacher-authored formula that uses operators students can't enter."""
+    bad = disallowed_operators(formula, allowed_operators)
+    if bad:
+        labels = ", ".join(sorted(operator_label(t) for t in bad))
+        errors.append(
+            f"{label} uses operators students can't enter: {labels}. "
+            "Enable them under Allowed Operators or rewrite the formula."
+        )
+
+
 def _validate_english_parts(form, errors):
     if not form["parts"]:
         errors.append("Add at least one requirement with a target formula.")
@@ -67,13 +78,7 @@ def _validate_english_parts(form, errors):
             continue
         # a target using an operator students can't enter is unsolvable —
         # no permitted formula could ever be equivalent to it
-        bad = disallowed_operators(part["formula"], form["allowed_operators"])
-        if bad:
-            labels = ", ".join(sorted(operator_label(t) for t in bad))
-            errors.append(
-                f"Requirement {i} target uses operators students can't enter: {labels}. "
-                "Enable them under Allowed Operators or rewrite the target."
-            )
+        _check_operators(part["formula"], form["allowed_operators"], f"Requirement {i} target", errors)
 
 
 def _validate_judge_parts(form, graph, errors):
@@ -88,6 +93,8 @@ def _validate_judge_parts(form, graph, errors):
             validate_request(graph, part["formula"])
         except ValueError as exc:
             errors.append(f"Formula {i}: {exc}")
+            continue
+        _check_operators(part["formula"], form["allowed_operators"], f"Formula {i}", errors)
 
 
 def judge_answer_key(exercise):
@@ -126,8 +133,10 @@ def _validate_path_parts(form, graph, errors):
         if not satisfiable:
             errors.append(
                 f"Formula {i} ({part['formula']}) has no satisfying path on this "
-                "model — students could never solve it."
+                "structure — students could never solve it."
             )
+            continue
+        _check_operators(part["formula"], form["allowed_operators"], f"Formula {i}", errors)
 
 
 def _validate_build_kripke_parts(form, errors):
@@ -206,6 +215,11 @@ def validate_exercise_form(form, exercise, publishing):
         graph = exercise.kripke_structure
 
     if publishing and not errors:
+        if exercise_type in ("model_check", "english_to_formula") and not form["allowed_operators"]:
+            errors.append(
+                "No operators are enabled — students could only submit a bare atomic "
+                "proposition. Enable the operators this exercise needs."
+            )
         if exercise_type == "english_to_formula":
             _validate_declared_aps(form["declared_aps"], errors)
             _validate_english_parts(form, errors)

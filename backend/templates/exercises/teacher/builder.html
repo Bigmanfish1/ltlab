@@ -165,8 +165,12 @@
                     <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="path_exhibit">Students trace a path through this structure that satisfies each formula listed.</div>
                     <div class="text-[12px] text-text-secondary mb-3 hidden" data-type-hint="judge">Students judge whether each formula listed holds on this structure, giving a counterexample when it does not.</div>
 
-                    <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
+                    <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-2" style="height: 420px;">
                         {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json %}
+                    </div>
+                    <div class="text-[12px] text-text-secondary mb-4">
+                        Students will see these atoms:
+                        <span id="graph-atoms" class="font-mono text-text-primary">none yet</span>
                     </div>
                 </div>
 
@@ -638,6 +642,30 @@
                 if (focusable && focusable.focus) focusable.focus();
             }
         });
+    })();
+</script>
+<script>
+    (function () {
+        // surface the drawn structure's atoms so a task description naming
+        // different ones is obvious while authoring
+        function refreshGraphAtoms() {
+            const out = document.getElementById('graph-atoms');
+            const field = document.getElementById('memo-graph-data');
+            if (!out || !field) return;
+            let atoms;
+            try {
+                const graph = JSON.parse(field.value || '{}');
+                const nodes = ((graph.elements || {}).nodes) || [];
+                atoms = Array.from(new Set([].concat.apply([], nodes.map(function (n) {
+                    return ((n.data || {}).props) || [];
+                })))).sort();
+            } catch (err) {
+                return;
+            }
+            out.textContent = atoms.length ? atoms.join(', ') : 'none yet';
+        }
+        document.addEventListener('kripke:change', refreshGraphAtoms);
+        setTimeout(refreshGraphAtoms, 300);
     })();
 </script>
 {% endblock %}

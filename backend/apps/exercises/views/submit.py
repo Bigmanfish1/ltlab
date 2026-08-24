@@ -29,6 +29,14 @@ from .common import _clamped_hints, _completion_trigger, published_exercises
 logger = logging.getLogger(__name__)
 
 
+def _operator_rejection(exercise, bad):
+    """Name the operators the student used and the ones they may use instead."""
+    used = ", ".join(sorted(operator_label(t) for t in bad))
+    allowed = ", ".join(exercise.allowed_operators or [])
+    message = f"These operators aren't allowed for this exercise: {used}."
+    return f"{message} Allowed here: {allowed}." if allowed else message
+
+
 def _attempt_history(exercise, student):
     return Attempt.objects.filter(exercise=exercise, student=student).order_by("-created_at")
 
@@ -71,11 +79,7 @@ def submit_formula(request, exercise_id):
     if exercise.allowed_operators is not None:
         bad = disallowed_operators(formula, exercise.allowed_operators)
         if bad:
-            labels = sorted(operator_label(t) for t in bad)
-            return error_response(
-                request,
-                "These operators aren't allowed for this exercise: " + ", ".join(labels) + ".",
-            )
+            return error_response(request, _operator_rejection(exercise, bad))
 
     try:
         result = run_ltl_check(graph, formula)
@@ -500,11 +504,7 @@ def submit_part(request, exercise_id, part_id):
     if exercise.allowed_operators is not None:
         bad = disallowed_operators(formula, exercise.allowed_operators)
         if bad:
-            labels = sorted(operator_label(t) for t in bad)
-            return _part_result(
-                request, part, "error",
-                "These operators aren't allowed for this exercise: " + ", ".join(labels) + ".",
-            )
+            return _part_result(request, part, "error", _operator_rejection(exercise, bad))
 
     try:
         result = run_equivalence_check(part.formula, formula, exercise.declared_aps or [])
