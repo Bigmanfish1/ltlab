@@ -9,6 +9,7 @@
     operator_buttons  list of {op,label} from _operator_buttons.  Default none
     placeholder       input placeholder text.
     input_text_class  Tailwind size class for the input.          Default text-lg
+    value             initial contents of the input.
 {% endcomment %}
 <div data-formula-editor class="bg-bg-secondary border-2 border-border-primary rounded p-4">
     {% if aps %}
@@ -23,7 +24,7 @@
 
     <div class="flex items-center gap-1 mb-3 flex-wrap">
         {% for b in operator_buttons %}
-        <button type="button" data-insert="{{ b.op }}" title="{{ b.label }}"
+        <button type="button" data-insert="{{ b.token|default:b.op }}" title="{{ b.label }}"
             class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">{{ b.op }}</button>
         {% empty %}
         <span class="font-mono text-[11px] text-text-secondary">This exercise allows atomic propositions only — no operators.</span>
@@ -37,6 +38,7 @@
     <div class="bg-bg-primary border border-border-secondary focus-within:border-accent-orange transition-colors rounded px-3 py-2">
         <input type="text" id="{{ input_id }}" name="{{ input_name|default:'formula' }}"
             data-formula-input placeholder="{{ placeholder|default:'Enter your formula' }}"
+            value="{{ value|default_if_none:'' }}"
             class="w-full bg-transparent text-text-primary font-mono {{ input_text_class|default:'text-lg' }} outline-none"
             autocomplete="off" />
     </div>

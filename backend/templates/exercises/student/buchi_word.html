@@ -37,35 +37,16 @@
 
             <div>
                 <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR ACCEPTING WORD</h2>
-                <div class="bg-bg-secondary border border-border-primary rounded p-4 mb-5">
-                    <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-2">WORD  prefix·(cycle)ω</div>
-                    <input type="text" id="word-input" name="word" value="{{ last_word }}"
-                        placeholder="a → (b)ω" autocomplete="off"
-                        class="w-full bg-bg-primary border border-border-primary text-text-primary placeholder-text-secondary font-mono text-[13px] px-3 py-2 rounded focus:border-border-secondary focus:outline-none transition-colors" />
-                    <div class="mt-3 flex flex-wrap items-center gap-1.5">
-                        <span class="font-mono text-[10px] tracking-[0.12em] uppercase text-text-secondary mr-1">Insert</span>
-                        {% for ap in declared_aps %}
-                        <button type="button" data-insert-word="{{ ap }}"
-                            class="word-insert px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-primary">{{ ap }}</button>
-                        {% endfor %}
-                        <button type="button" data-insert-word=" → "
-                            class="word-insert px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-primary">→</button>
-                        <button type="button" data-insert-word="("
-                            class="word-insert px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-primary">(</button>
-                        <button type="button" data-insert-word=")"
-                            class="word-insert px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-primary">)</button>
-                        <button type="button" data-insert-word="ω"
-                            class="word-insert px-2 py-1 bg-bg-secondary border border-border-secondary hover:border-text-secondary transition-colors rounded text-xs font-mono text-text-primary">ω</button>
-                    </div>
-                    <p class="text-[12px] text-text-secondary mt-3 leading-relaxed">
-                        One symbol per step. Put the part that repeats forever in
-                        <span class="font-mono text-text-primary">( )ω</span>. For example
-                        <span class="font-mono text-text-primary">a → (b)ω</span> is
-                        <span class="font-mono">a b b b …</span>, and
-                        <span class="font-mono text-text-primary">(a → b)ω</span> is
-                        <span class="font-mono">a b a b …</span>
-                    </p>
-                </div>
+                <div class="font-mono text-[11px] tracking-[0.12em] text-text-secondary mb-2">WORD  prefix·(cycle)ω</div>
+                {% include "components/formula_editor.html" with input_id="word-input" input_name="word" aps=declared_aps operator_buttons=word_symbols value=last_word input_text_class="text-[13px]" placeholder="a, (b)ω" %}
+                <p class="text-[12px] text-text-secondary mt-3 mb-5 leading-relaxed">
+                    One symbol per step. Put the part that repeats forever in
+                    <span class="font-mono text-text-primary">( )ω</span>. For example
+                    <span class="font-mono text-text-primary">a, (b)ω</span> is
+                    <span class="font-mono">a b b b …</span>, and
+                    <span class="font-mono text-text-primary">(a, b)ω</span> is
+                    <span class="font-mono">a b a b …</span>
+                </p>
 
                 <button type="button" id="check-word-btn"
                     hx-post="{% url 'submit_buchi_word' exercise.id %}"
@@ -83,6 +64,7 @@
     </div>
 </div>
 
+<script src="{% static 'js/formula_input.js' %}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('word-input');
@@ -92,20 +74,6 @@ document.addEventListener('DOMContentLoaded', () => {
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); btn.click(); }
     });
-
-    // Insert buttons drop their token at the caret, matching the path picker
-    document.querySelectorAll('.word-insert').forEach((b) => {
-        b.addEventListener('click', () => {
-            const tok = b.dataset.insertWord;
-            const start = input.selectionStart != null ? input.selectionStart : input.value.length;
-            const end = input.selectionEnd != null ? input.selectionEnd : input.value.length;
-            input.value = input.value.slice(0, start) + tok + input.value.slice(end);
-            const caret = start + tok.length;
-            input.focus();
-            input.setSelectionRange(caret, caret);
-        });
-    });
-
 });
 </script>
 <script src="{% static 'js/exercise_progress.js' %}"></script>

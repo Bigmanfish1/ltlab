@@ -203,6 +203,10 @@ def _buchi_word_canvas(request, exercise):
         "declared_aps": list(exercise.declared_aps or []),
         "elements_json": _elements_json(exercise.kripke_structure),
         "last_word": (last.answer or {}).get("word", "") if last else "",
+        "word_symbols": [
+            {"op": ",", "token": ", ", "label": "Separator"},
+            {"op": "ω", "label": "Omega"},
+        ],
         "is_completed": Attempt.objects.filter(
             exercise=exercise, student=request.profile, is_correct=True
         ).exists(),
