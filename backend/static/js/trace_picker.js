@@ -106,6 +106,9 @@
       if (readoutEl) readoutEl.textContent = renderReadout(parts);
       if (textInput && document.activeElement !== textInput) {
         textInput.value = canonicalText();
+        // unfocused .value leaves the caret at 0, so chip inserts would prepend
+        const end = textInput.value.length;
+        textInput.setSelectionRange(end, end);
       }
       updateControls();
       if (config.onChange) config.onChange(getState());
@@ -134,11 +137,11 @@
         // the readout is display-only, so it keeps the "unfinished" marker that
         // canonicalText must not carry (canonicalText feeds the text input,
         // where a trailing … would fight the user mid-type)
-        return path.map(name).join(" → ") + " → …";
+        return path.map(name).join(", ") + ", …";
       }
-      const prefixStr = parts.prefix.map(name).join(" → ");
-      const cycleStr = "(" + parts.cycle.map(name).join(" → ") + ")ω";
-      return prefixStr ? prefixStr + " → " + cycleStr : cycleStr;
+      const prefixStr = parts.prefix.map(name).join(", ");
+      const cycleStr = "(" + parts.cycle.map(name).join(", ") + ")ω";
+      return prefixStr ? prefixStr + ", " + cycleStr : cycleStr;
     }
 
     function paint() {
@@ -249,9 +252,13 @@
       return null;
     }
 
+    const ARROW_RE = /→|->/;
+    const ARROW_MESSAGE =
+      "→ means implication in formulas. Separate path states with commas: s0, (s1)ω.";
+
     function tokenize(part) {
       return part
-        .split(/→|->|,|\s+/)
+        .split(/,|\s+/)
         .map((t) => t.trim())
         .filter(Boolean);
     }
@@ -264,7 +271,8 @@
         return false;
       };
       const raw = String(text || "").trim();
-      if (!raw) return fail("Type a path like s0 → (s1 → s2)ω.");
+      if (!raw) return fail("Type a path like s0, (s1, s2)ω.");
+      if (ARROW_RE.test(raw)) return fail(ARROW_MESSAGE);
       const match = raw.match(/^([^()]*)\(([^()]*)\)\s*(ω|\^ω|\^w|w)?\s*$/);
       if (!match) return fail("Wrap the repeating cycle in parentheses: prefix (cycle)ω.");
       const prefixTokens = tokenize(match[1]);
@@ -299,10 +307,10 @@
     function canonicalText() {
       const parts = split();
       if (!path.length) return "";
-      if (closedAt < 0) return path.join(" → ");
-      const pre = parts.prefix.join(" → ");
-      const cyc = "(" + parts.cycle.join(" → ") + ")ω";
-      return pre ? pre + " → " + cyc : cyc;
+      if (closedAt < 0) return path.join(", ");
+      const pre = parts.prefix.join(", ");
+      const cyc = "(" + parts.cycle.join(", ") + ")ω";
+      return pre ? pre + ", " + cyc : cyc;
     }
 
     // Typed entry highlights the graph as you go: a complete closed lasso paints
@@ -316,6 +324,7 @@
     function applyLive(text) {
       const raw = String(text || "").trim();
       if (!raw) { reset(); return; }
+      if (ARROW_RE.test(raw)) { warn(ARROW_MESSAGE); return; }
       if (/^[^()]*\([^()]*\)\s*(ω|\^ω|\^w|w)?\s*$/.test(raw) && applyText(raw, true)) return;
       const tokens = statesFromText(raw);
       const ids = [];
@@ -363,7 +372,7 @@
       });
     }
     buildBar(config.symbolBar, [
-      { label: "→", tok: " → " },
+      { label: ",", tok: ", " },
       { label: "(", tok: "(" },
       { label: ")", tok: ")" },
       { label: "ω", tok: "ω" },
