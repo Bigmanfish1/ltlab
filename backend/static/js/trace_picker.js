@@ -64,12 +64,15 @@
     const textInput = config.textInput ? document.querySelector(config.textInput) : null;
     const undoBtn = config.undoBtn ? document.querySelector(config.undoBtn) : null;
     const resetBtn = config.resetBtn ? document.querySelector(config.resetBtn) : null;
+    const inputErrorEl = document.querySelector(config.inputError || "#trace-input-error");
 
     const styles = cy.style().json().concat(PICKER_STYLES);
     cy.style().fromJson(styles).update();
 
     let path = [];        // clicked node ids, in order
     let closedAt = -1;    // index in path where the cycle starts; -1 = open
+    // set when sync() rewrites an unfocused input, whose caret then sits at 0
+    let caretStale = false;
 
     function realNodes() {
       return cy.nodes().filter((n) => !n.data("phantom"));
@@ -106,9 +109,8 @@
       if (readoutEl) readoutEl.textContent = renderReadout(parts);
       if (textInput && document.activeElement !== textInput) {
         textInput.value = canonicalText();
-        // unfocused .value leaves the caret at 0, so chip inserts would prepend
-        const end = textInput.value.length;
-        textInput.setSelectionRange(end, end);
+        caretStale = true;
+        showArrowError(false);
       }
       updateControls();
       if (config.onChange) config.onChange(getState());
@@ -321,10 +323,17 @@
       return tokenize(cleaned);
     }
 
+    function showArrowError(show) {
+      if (!inputErrorEl) return;
+      inputErrorEl.textContent = show ? ARROW_MESSAGE : "";
+      inputErrorEl.classList.toggle("hidden", !show);
+    }
+
     function applyLive(text) {
       const raw = String(text || "").trim();
+      showArrowError(ARROW_RE.test(raw));
       if (!raw) { reset(); return; }
-      if (ARROW_RE.test(raw)) { warn(ARROW_MESSAGE); return; }
+      if (ARROW_RE.test(raw)) return;
       if (/^[^()]*\([^()]*\)\s*(ω|\^ω|\^w|w)?\s*$/.test(raw) && applyText(raw, true)) return;
       const tokens = statesFromText(raw);
       const ids = [];
@@ -339,12 +348,14 @@
 
     function insertToken(tok) {
       if (!textInput) return;
-      const start = textInput.selectionStart != null ? textInput.selectionStart : textInput.value.length;
-      const end = textInput.selectionEnd != null ? textInput.selectionEnd : textInput.value.length;
+      const len = textInput.value.length;
+      const start = caretStale || textInput.selectionStart == null ? len : textInput.selectionStart;
+      const end = caretStale || textInput.selectionEnd == null ? len : textInput.selectionEnd;
       textInput.value = textInput.value.slice(0, start) + tok + textInput.value.slice(end);
       const caret = start + tok.length;
       textInput.focus();
       textInput.setSelectionRange(caret, caret);
+      caretStale = false;
       applyLive(textInput.value);
     }
 
@@ -377,9 +388,17 @@
       { label: ")", tok: ")" },
       { label: "ω", tok: "ω" },
     ], "text-text-primary", (it) => insertToken(it.tok));
+    function needsSeparator() {
+      if (!textInput) return false;
+      const len = textInput.value.length;
+      const at = caretStale || textInput.selectionStart == null ? len : textInput.selectionStart;
+      const before = textInput.value.slice(0, at).replace(/\s+$/, "");
+      return before !== "" && !/[,(]$/.test(before);
+    }
+
     buildBar(config.stateBar,
       realNodes().map((n) => ({ label: n.data("name") || n.id() })),
-      "text-text-primary", (it) => insertToken(it.label));
+      "text-text-primary", (it) => insertToken(needsSeparator() ? ", " + it.label : it.label));
 
     cy.on("tap", "node", handleTap);
     paint();
