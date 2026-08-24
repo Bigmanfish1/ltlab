@@ -35,6 +35,11 @@ from .common import (
 logger = logging.getLogger(__name__)
 
 
+def _rejected(request, message):
+    """A refused submission — sounds the same as a wrong answer."""
+    return graded_trigger(error_response(request, message), False)
+
+
 def _operator_rejection(exercise, bad):
     """Name the operators the student used and the ones they may use instead."""
     used = ", ".join(sorted(operator_label(t) for t in bad))
@@ -72,28 +77,28 @@ def submit_formula(request, exercise_id):
 
     formula = request.POST.get('formula', '').strip()
     if not formula:
-        return error_response(request, "Enter a formula to check.")
+        return _rejected(request, "Enter a formula to check.")
     if len(formula) > MAX_FORMULA_CHARS:
-        return error_response(
+        return _rejected(
             request, f"Formula is too long — at most {MAX_FORMULA_CHARS} characters."
         )
 
     graph = exercise.kripke_structure
     if not graph:
-        return error_response(request, "This exercise has no model to check against.")
+        return _rejected(request, "This exercise has no model to check against.")
 
     if exercise.allowed_operators is not None:
         bad = disallowed_operators(formula, exercise.allowed_operators)
         if bad:
-            return error_response(request, _operator_rejection(exercise, bad))
+            return _rejected(request, _operator_rejection(exercise, bad))
 
     try:
         result = run_ltl_check(graph, formula)
     except ValueError as exc:
-        return error_response(request, str(exc))
+        return _rejected(request, str(exc))
     except Exception:
         logger.exception("run_ltl_check failed during exercise submission")
-        return error_response(
+        return _rejected(
             request, "Verification was stopped — the formula or graph could not be processed."
         )
 
@@ -150,15 +155,15 @@ def submit_kripke(request, exercise_id):
     """
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     if exercise.exercise_type != "build_kripke":
-        return error_response(request, "This exercise is not a build-a-model task.")
+        return _rejected(request, "This exercise is not a build-a-model task.")
 
     try:
         graph = json.loads(request.POST.get("graph_data") or "")
     except json.JSONDecodeError:
-        return error_response(request, "The Kripke structure could not be read.")
+        return _rejected(request, "The Kripke structure could not be read.")
     elements = graph.get("elements") if isinstance(graph, dict) else None
     if not isinstance(elements, dict) or not elements.get("nodes"):
-        return error_response(request, "Draw a Kripke structure before checking.")
+        return _rejected(request, "Draw a Kripke structure before checking.")
 
     # the only path that hands a student-drawn graph to SPOT — run_ltl_check
     # caps the formula but not the graph, so the sandbox's node cap applies here
@@ -166,7 +171,7 @@ def submit_kripke(request, exercise_id):
         n for n in elements["nodes"] if not (n.get("data") or {}).get("phantom")
     ]
     if len(real_nodes) > MAX_NODES:
-        return error_response(
+        return _rejected(
             request,
             f"Your model has {len(real_nodes)} states — at most {MAX_NODES} are supported.",
         )
@@ -184,7 +189,7 @@ def submit_kripke(request, exercise_id):
             })
     except Exception:
         logger.exception("run_ltl_check failed during build_kripke submission")
-        return error_response(
+        return _rejected(
             request, "Verification was stopped — the model could not be processed."
         )
 
@@ -224,20 +229,20 @@ def submit_buchi(request, exercise_id):
     """
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     if exercise.exercise_type != "buchi_construct":
-        return error_response(request, "This exercise is not a draw-an-automaton task.")
+        return _rejected(request, "This exercise is not a draw-an-automaton task.")
 
     try:
         automaton = json.loads(request.POST.get("automaton_data") or "")
     except json.JSONDecodeError:
-        return error_response(request, "The automaton could not be read.")
+        return _rejected(request, "The automaton could not be read.")
     elements = automaton.get("elements") if isinstance(automaton, dict) else None
     if not isinstance(elements, dict) or not elements.get("nodes"):
-        return error_response(request, "Draw an automaton before checking.")
+        return _rejected(request, "Draw an automaton before checking.")
 
     symbols = list(exercise.declared_aps or [])
     determinism_answer = (request.POST.get("determinism") or "").strip()
     if exercise.ask_determinism and determinism_answer not in ("deterministic", "nondeterministic"):
-        return error_response(
+        return _rejected(
             request, "Also answer whether your automaton is deterministic."
         )
 
@@ -250,10 +255,10 @@ def submit_buchi(request, exercise_id):
             if exercise.ask_determinism else None
         )
     except ValueError as exc:
-        return error_response(request, str(exc))
+        return _rejected(request, str(exc))
     except Exception:
         logger.exception("run_buchi_equivalence_check failed during submission")
-        return error_response(
+        return _rejected(
             request, "Verification was stopped — the automaton could not be processed."
         )
 
@@ -297,11 +302,11 @@ def submit_buchi_word(request, exercise_id):
     """
     exercise = get_object_or_404(published_exercises(), id=exercise_id)
     if exercise.exercise_type != "buchi_word":
-        return error_response(request, "This exercise is not an accepting-word task.")
+        return _rejected(request, "This exercise is not an accepting-word task.")
 
     word = (request.POST.get("word") or "").strip()
     if len(word) > MAX_FORMULA_CHARS:
-        return error_response(
+        return _rejected(
             request, f"Word is too long — at most {MAX_FORMULA_CHARS} characters."
         )
 
@@ -312,10 +317,10 @@ def submit_buchi_word(request, exercise_id):
     except ValueError as exc:
         # the automaton is teacher data — a bad one is not the student's fault
         logger.warning("buchi_word automaton rejected: %s", exc)
-        return error_response(request, "This exercise's automaton could not be read.")
+        return _rejected(request, "This exercise's automaton could not be read.")
     except Exception:
         logger.exception("run_buchi_word_check failed during submission")
-        return error_response(
+        return _rejected(
             request, "Verification was stopped — the word could not be processed."
         )
 
@@ -341,9 +346,7 @@ def _part_result(request, part, status, message):
         "status": status,
         "message": message,
     })
-    # "error" is a rejected submission, not a wrong answer — no verdict for it
-    if status in ("correct", "incorrect"):
-        graded_trigger(response, status == "correct")
+    graded_trigger(response, status == "correct")
     return response
 
 
