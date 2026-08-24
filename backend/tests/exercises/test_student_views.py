@@ -1,3 +1,5 @@
+import json
+
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.contrib.sessions.backends.db import SessionStore
 from django.http import Http404
@@ -16,6 +18,12 @@ from apps.exercises import views
 from apps.exercises.constants import BUILDER_OPERATORS
 from apps.exercises.models import Attempt, Exercise, ExercisePart, Topic
 from apps.exercises.services import solved_exercise_ids
+
+
+def triggers(response):
+    """The response's HTMX triggers as a dict — the header carries several."""
+    raw = response.get("HX-Trigger")
+    return json.loads(raw) if raw else {}
 
 # s0 --a--> s1 --b--> s0 ; "true" holds, "G a" is violated at s1
 GRAPH = {
@@ -104,13 +112,23 @@ class GradingTests(StudentViewTestCase):
         self.assertContains(response, "too long")
         self.assertFalse(Attempt.objects.filter(exercise=self.published).exists())
 
-    def test_correct_submission_triggers_reload(self):
+    def test_correct_submission_signals_completion(self):
         response = views.submit_formula(self._post({"formula": "true"}), self.published.id)
-        self.assertEqual(response["HX-Trigger"], "exerciseSolved")
+        self.assertIn("exerciseSolved", triggers(response))
 
-    def test_wrong_submission_has_no_reload_trigger(self):
+    def test_wrong_submission_does_not_signal_completion(self):
         response = views.submit_formula(self._post({"formula": "G a"}), self.published.id)
-        self.assertNotIn("HX-Trigger", response)
+        self.assertNotIn("exerciseSolved", triggers(response))
+
+    def test_grading_verdict_rides_the_trigger(self):
+        correct = views.submit_formula(self._post({"formula": "true"}), self.published.id)
+        self.assertTrue(triggers(correct)["answerGraded"]["correct"])
+        wrong = views.submit_formula(self._post({"formula": "G a"}), self.published.id)
+        self.assertFalse(triggers(wrong)["answerGraded"]["correct"])
+
+    def test_rejected_submission_sounds_like_a_wrong_answer(self):
+        response = views.submit_formula(self._post({"formula": "G ("}), self.published.id)
+        self.assertFalse(triggers(response)["answerGraded"]["correct"])
 
     def test_get_hint_route_removed(self):
         with self.assertRaises(NoReverseMatch):
@@ -128,10 +146,10 @@ class OperatorPaletteTests(StudentViewTestCase):
         self.published.allowed_operators = ["G", "F"]
         self.published.save(update_fields=["allowed_operators"])
         html = views.exercise_canvas(self._get(), self.published.id).content.decode()
-        self.assertIn("insertOp('G')", html)
-        self.assertIn("insertOp('F')", html)
-        self.assertNotIn("insertOp('U')", html)
-        self.assertNotIn("insertOp('¬')", html)  # ¬ hidden
+        self.assertIn('data-insert="G"', html)
+        self.assertIn('data-insert="F"', html)
+        self.assertNotIn('data-insert="U"', html)
+        self.assertNotIn('data-insert="¬"', html)  # ¬ hidden
 
 
 class OperatorEnforcementTests(StudentViewTestCase):
@@ -219,9 +237,9 @@ class EnglishExerciseTests(StudentViewTestCase):
 
     def test_solving_all_parts_triggers_completion(self):
         first = self._submit_part(self.part1, "G F (tea_chosen | coffee_chosen)")
-        self.assertNotIn("HX-Trigger", first)
+        self.assertNotIn("exerciseSolved", triggers(first))
         second = self._submit_part(self.part2, "F coffee_chosen")
-        self.assertEqual(second["HX-Trigger"], "exerciseSolved")
+        self.assertIn("exerciseSolved", triggers(second))
         self.assertIn(self.english.id, solved_exercise_ids(self.student))
 
     def test_partial_parts_not_solved(self):
@@ -329,11 +347,11 @@ class PathExhibitExerciseTests(StudentViewTestCase):
 
     def test_solving_all_parts_triggers_completion(self):
         first = self._submit_trace(self.part_a, "[]", '["s0", "s1"]')
-        self.assertNotIn("HX-Trigger", first)
+        self.assertNotIn("exerciseSolved", triggers(first))
         # prefix [s0] cycle [s1,s0] is the same word ({a}{b})^omega: position 1
         # is {b}, so X b holds; edges s0->s1, s1->s0 and wrap s0->s1 all exist
         second = self._submit_trace(self.part_b, '["s0"]', '["s1", "s0"]')
-        self.assertEqual(second["HX-Trigger"], "exerciseSolved")
+        self.assertIn("exerciseSolved", triggers(second))
         self.assertIn(self.path.id, solved_exercise_ids(self.student))
 
     def test_submit_404_for_draft_path_exercise(self):
@@ -478,10 +496,10 @@ class JudgeExerciseTests(StudentViewTestCase):
 
     def test_solving_all_parts_triggers_completion(self):
         first = self._submit_verdict(self.part_true, {"verdict": "holds"})
-        self.assertNotIn("HX-Trigger", first)
+        self.assertNotIn("exerciseSolved", triggers(first))
         second = self._submit_verdict(
             self.part_false,
             {"verdict": "violated", "trace_prefix": "[]", "trace_cycle": '["s0", "s1"]'},
         )
-        self.assertEqual(second["HX-Trigger"], "exerciseSolved")
+        self.assertIn("exerciseSolved", triggers(second))
         self.assertIn(self.judge.id, solved_exercise_ids(self.student))
