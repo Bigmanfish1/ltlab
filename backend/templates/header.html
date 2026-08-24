@@ -12,8 +12,8 @@
       </nav>
       <div class="flex items-center gap-3 shrink-0">
           {% if request.supabase_user %}
-          <button type="button" id="sound-toggle" aria-pressed="false" title="Sound on — click to mute"
-              class="text-base leading-none text-text-secondary hover:text-text-primary transition-colors cursor-pointer">🔊</button>
+          <button type="button" id="sound-toggle" aria-pressed="false" aria-label="Sound" title="Sound on — click to mute"
+              class="flex items-center text-text-secondary hover:text-text-primary transition-colors cursor-pointer"></button>
           <div class="hidden md:flex items-center">{% include "components/view_as_toggle.html" %}</div>
           <span class="hidden lg:block font-mono text-[11px] text-text-secondary truncate max-w-[180px]">{{ request.supabase_user.email }}</span>
           <form method="post" action="{% url 'accounts:logout' %}" class="hidden md:flex items-center">

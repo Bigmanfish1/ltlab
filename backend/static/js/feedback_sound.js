@@ -24,11 +24,18 @@
     paintToggle();
   }
 
+  const SPEAKER = '<polygon points="4 9 8 9 13 5 13 19 8 15 4 15"/>';
+  const ICON_ON = SPEAKER + '<path d="M16.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M19 7a7 7 0 0 1 0 10"/>';
+  const ICON_OFF = SPEAKER + '<line x1="17" y1="9.5" x2="21.5" y2="14.5"/><line x1="21.5" y1="9.5" x2="17" y2="14.5"/>';
+
   function paintToggle() {
     const btn = document.getElementById("sound-toggle");
     if (!btn) return;
     const off = muted();
-    btn.textContent = off ? "🔇" : "🔊";
+    btn.innerHTML =
+      '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+      (off ? ICON_OFF : ICON_ON) + "</svg>";
     btn.setAttribute("aria-pressed", off ? "true" : "false");
     btn.title = off ? "Sound off — click to enable" : "Sound on — click to mute";
   }
