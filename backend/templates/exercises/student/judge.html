@@ -14,7 +14,7 @@
             <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">TASK</h2>
             <p class="text-text-primary text-base leading-relaxed">{{ exercise.description }}</p>
             <p class="text-text-secondary text-sm mt-2">
-                Decide for each formula whether it holds universally on the model.
+                Decide for each formula whether it holds universally on the structure.
                 If you claim it does not hold, trace a counterexample path on the graph:
                 start at the initial state, click a state already on your path to close the loop.
             </p>
@@ -22,7 +22,7 @@
 
         <div class="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-8">
             <div>
-                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE MODEL</h2>
+                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE STRUCTURE</h2>
                 <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex" style="height: 460px;">
                     {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="460px" elements_json=elements_json readonly=True %}
                 </div>
