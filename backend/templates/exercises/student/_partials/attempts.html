@@ -1,0 +1,24 @@
+{# Attempt history for model_check. Rendered inline on page load and swapped
+   out-of-band from submit_formula so it refreshes without a page reload. #}
+<div id="attempts-panel" class="mb-6"{% if oob %} hx-swap-oob="true"{% endif %}>
+    {% if attempts %}
+    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR ATTEMPTS</h2>
+    <div class="space-y-2">
+        {% for attempt in attempts %}
+        <div class="bg-bg-secondary border border-border-primary rounded p-3">
+            <div class="flex items-center justify-between mb-2">
+                <span class="font-mono text-xs {% if attempt.is_correct %}text-accent-lime{% else %}text-accent-orange{% endif %}">
+                    {% if attempt.is_correct %}✓ CORRECT{% else %}✗ INCORRECT{% endif %}
+                </span>
+                <span class="font-mono text-xs text-text-secondary">
+                    {{ attempt.created_at|date:"M d, Y H:i" }}
+                </span>
+            </div>
+            <div class="font-mono text-sm text-text-primary bg-bg-tertiary rounded px-2 py-1">
+                {{ attempt.formula_input }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>

@@ -106,9 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    document.body.addEventListener('exerciseSolved', () => {
-        setTimeout(() => location.reload(), 1400);
-    });
 });
 </script>
+<script src="{% static 'js/exercise_progress.js' %}"></script>
 {% endblock %}

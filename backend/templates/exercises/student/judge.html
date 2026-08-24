@@ -37,9 +37,8 @@
                         class="bg-bg-secondary border {% if row.solved %}border-accent-lime{% else %}border-border-primary{% endif %} rounded p-4">
                         <div class="flex items-center justify-between mb-2">
                             <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">FORMULA {{ row.number }}</span>
-                            {% if row.solved %}
-                            <span class="font-mono text-[11px] text-accent-lime">✓ SOLVED</span>
-                            {% endif %}
+                            <span data-solved-badge
+                                class="font-mono text-[11px] text-accent-lime{% if not row.solved %} hidden{% endif %}">✓ SOLVED</span>
                         </div>
                         <div class="font-mono text-base text-text-primary mb-3">{{ row.part.formula }}</div>
                         <div class="flex items-center gap-2">
@@ -140,9 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
         warnTimer = setTimeout(() => box.classList.add('hidden'), 3000);
     });
 
-    document.body.addEventListener('exerciseSolved', () => {
-        setTimeout(() => location.reload(), 1200);
-    });
 });
 </script>
+<script src="{% static 'js/exercise_progress.js' %}"></script>
 {% endblock %}

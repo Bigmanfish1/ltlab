@@ -24,9 +24,8 @@
                     <div data-part-card class="bg-bg-secondary border {% if row.solved %}border-accent-lime{% else %}border-border-primary{% endif %} rounded p-4">
                         <div class="flex items-center justify-between mb-3">
                             <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">REQUIREMENT {{ row.number }}</span>
-                            {% if row.solved %}
-                            <span class="font-mono text-[11px] text-accent-lime">✓ SOLVED</span>
-                            {% endif %}
+                            <span data-solved-badge
+                                class="font-mono text-[11px] text-accent-lime{% if not row.solved %} hidden{% endif %}">✓ SOLVED</span>
                         </div>
                         <p class="text-text-primary text-sm leading-relaxed mb-4">“{{ row.part.prompt }}”</p>
 
@@ -85,11 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // reload after the final part is solved so COMPLETED and SOLVED badges refresh
-    document.body.addEventListener('exerciseSolved', () => {
-        setTimeout(() => location.reload(), 1200);
-    });
 });
 </script>
 <script src="{% static 'js/part_hints.js' %}"></script>
+<script src="{% static 'js/exercise_progress.js' %}"></script>
 {% endblock %}

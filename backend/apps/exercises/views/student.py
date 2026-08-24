@@ -67,7 +67,9 @@ def exercise_canvas(request, exercise_id):
     if exercise.exercise_type == "buchi_word":
         return _buchi_word_canvas(request, exercise)
 
-    attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
+    attempts = Attempt.objects.filter(
+        exercise=exercise, student=request.profile
+    ).order_by("-created_at")
     is_completed = Attempt.objects.filter(
         exercise=exercise, student=request.profile, is_correct=True
     ).exists()

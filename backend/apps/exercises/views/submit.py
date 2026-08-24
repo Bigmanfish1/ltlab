@@ -2,6 +2,7 @@ import json
 import logging
 
 from django.shortcuts import get_object_or_404, render
+from django.template.loader import render_to_string
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import supabase_login_required
@@ -26,6 +27,10 @@ from ..models import Attempt, ExercisePart
 from .common import _clamped_hints, _completion_trigger, published_exercises
 
 logger = logging.getLogger(__name__)
+
+
+def _attempt_history(exercise, student):
+    return Attempt.objects.filter(exercise=exercise, student=student).order_by("-created_at")
 
 
 def record_attempt(request, **fields):
@@ -96,6 +101,11 @@ def submit_formula(request, exercise_id):
 
     context = build_result_context(result, json.dumps(result["kripke_graph"]))
     response = render(request, "sandbox/result.html", context)
+    response.write(render_to_string(
+        "exercises/student/_partials/attempts.html",
+        {"attempts": _attempt_history(exercise, student), "oob": True},
+        request=request,
+    ))
     if is_correct:
         response["HX-Trigger"] = "exerciseSolved"
     return response

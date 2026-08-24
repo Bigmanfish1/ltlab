@@ -126,9 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
         warnTimer = setTimeout(() => document.getElementById('draw-warning').classList.add('hidden'), 3000);
     });
 
-    document.body.addEventListener('exerciseSolved', () => {
-        setTimeout(() => location.reload(), 1400);
-    });
 });
 </script>
+<script src="{% static 'js/exercise_progress.js' %}"></script>
 {% endblock %}
