@@ -50,6 +50,20 @@ def _elements_json(structure):
     return json.dumps(array) if array else ""
 
 
+def graph_aps(structure):
+    """Sorted atomic propositions labelling any state of a stored structure."""
+    if not structure or not isinstance(structure, dict):
+        return []
+    nodes = (structure.get("elements") or {}).get("nodes") or []
+    found = set()
+    for node in nodes:
+        data = node.get("data") or {}
+        if data.get("phantom"):
+            continue
+        found.update(data.get("props") or [])
+    return sorted(found)
+
+
 def _topic_exists(pk):
     """Existence check that tolerates empty/malformed UUID input from forms."""
     if not pk:

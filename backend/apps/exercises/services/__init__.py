@@ -10,7 +10,7 @@ from .analytics import (
     students_roster,
     topic_completion,
 )
-from .common import BUILDER_EXERCISE_TYPES, _elements_json, type_locked
+from .common import BUILDER_EXERCISE_TYPES, _elements_json, graph_aps, type_locked
 from .forms import parse_exercise_form
 from .persist import persist_exercise
 from .validation import (
@@ -26,6 +26,7 @@ __all__ = [
     "dashboard_stats",
     "exercise_rows",
     "formula_satisfiable",
+    "graph_aps",
     "judge_answer_key",
     "misconception_breakdown",
     "parse_exercise_form",

@@ -4,7 +4,7 @@ from apps.accounts.middleware import supabase_login_required
 
 from ..constants import BUILDER_OPERATORS, EXERCISE_TYPE_BADGES, OPERATOR_LABELS
 from ..models import Attempt
-from ..services import _elements_json, solved_exercise_ids
+from ..services import _elements_json, graph_aps, solved_exercise_ids
 from .common import published_exercises
 
 
@@ -79,6 +79,7 @@ def exercise_canvas(request, exercise_id):
         'exercise_number': exercise_number,
         'elements_json': _elements_json(exercise.kripke_structure),
         'operator_buttons': _operator_buttons(exercise),
+        'declared_aps': graph_aps(exercise.kripke_structure),
         'attempts': attempts,
         'is_completed': is_completed,
         'prev_exercise': prev_exercise,
