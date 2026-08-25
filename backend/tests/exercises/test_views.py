@@ -95,8 +95,16 @@ class PublishValidationTests(TeacherViewTestCase):
         ex = Exercise.objects.get(title="Draft Ex")
         self.assertFalse(ex.is_published)
 
-    def test_no_operators_warns_teacher(self):
+    def test_publish_without_operators_rejected(self):
         request = self._req("post", self.teacher, self._form(action="publish", allowed_operators="[]"))
+        response = views.exercise_builder(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
+        errors = [m.message for m in get_messages(request) if m.level == messages.ERROR]
+        self.assertTrue(any("No operators are enabled" in m for m in errors))
+
+    def test_draft_without_operators_only_warns(self):
+        request = self._req("post", self.teacher, self._form(action="draft", allowed_operators="[]"))
         views.exercise_builder(request)
         warnings = [m.message for m in get_messages(request) if m.level == messages.WARNING]
         self.assertTrue(any("No operators" in m for m in warnings))
@@ -432,3 +440,26 @@ class JudgeBuilderTests(TeacherViewTestCase):
         response = views.exercise_builder(self._req("post", self.teacher, data))
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Exercise.objects.get(title="New Ex").is_published)
+
+
+@override_settings(STORAGES=PLAIN_STATIC)
+class ShownFormulaOperatorTests(TeacherViewTestCase):
+    """Judge and path students never type a formula — they pick a verdict or
+    trace a path — so allowed_operators must not gate publishing there."""
+
+    def _publish(self, exercise_type, parts, allowed):
+        data = self._form(
+            exercise_type=exercise_type, parts=parts,
+            allowed_operators=allowed, action="publish",
+        )
+        return views.exercise_builder(self._req("post", self.teacher, data))
+
+    def test_judge_publishes_with_no_operators_enabled(self):
+        response = self._publish("judge", JUDGE_PARTS, "[]")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Exercise.objects.get(title="New Ex").is_published)
+
+    def test_path_publishes_with_no_operators_enabled(self):
+        response = self._publish("path_exhibit", PATH_PARTS, "[]")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Exercise.objects.get(title="New Ex").is_published)

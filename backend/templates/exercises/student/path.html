@@ -14,14 +14,14 @@
             <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">TASK</h2>
             <p class="text-text-primary text-base leading-relaxed">{{ exercise.description }}</p>
             <p class="text-text-secondary text-sm mt-2">
-                For the active formula below, click states in the model to trace an infinite path that satisfies it.
+                For the active formula on the right, click states in the structure to trace an infinite path that satisfies it.
                 Start at the initial state; click a state already on your path to close the repeating loop.
             </p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-8">
             <div>
-                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE MODEL</h2>
+                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE STRUCTURE</h2>
                 <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex" style="height: 460px;">
                     {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="460px" elements_json=elements_json readonly=True %}
                 </div>
@@ -36,9 +36,8 @@
                         class="part-card cursor-pointer bg-bg-secondary border {% if row.solved %}border-accent-lime{% else %}border-border-primary{% endif %} rounded p-4 transition-colors">
                         <div class="flex items-center justify-between mb-2">
                             <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">FORMULA {{ row.number }}</span>
-                            {% if row.solved %}
-                            <span class="font-mono text-[11px] text-accent-lime">✓ SOLVED</span>
-                            {% endif %}
+                            <span data-solved-badge
+                                class="font-mono text-[11px] text-accent-lime{% if not row.solved %} hidden{% endif %}">✓ SOLVED</span>
                         </div>
                         <div class="font-mono text-base text-text-primary mb-3">π ⊨ {{ row.part.formula }}</div>
                         <button type="button" data-submit-part
@@ -101,13 +100,14 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('[data-part-card]').forEach((c) => {
                 c.classList.remove('border-accent-orange');
             });
-            card.classList.add('border-accent-orange');
+            // a solved card keeps its lime border rather than reading as selected
+            if (!card.classList.contains('border-accent-lime')) {
+                card.classList.add('border-accent-orange');
+            }
         });
     });
 
-    document.body.addEventListener('exerciseSolved', () => {
-        setTimeout(() => location.reload(), 1200);
-    });
 });
 </script>
+<script src="{% static 'js/exercise_progress.js' %}"></script>
 {% endblock %}

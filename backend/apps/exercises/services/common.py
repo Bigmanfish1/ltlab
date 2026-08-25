@@ -41,13 +41,33 @@ def _short_date(dt):
     return timezone.localtime(dt).strftime("%d %b") if dt else ""
 
 
+# The rendered JSON sits inside a <script> block, so these three characters have
+# to leave as escapes — a state named "</script>" would otherwise close the tag
+# and run whatever followed. Same set django.utils.html.json_script uses.
+_SCRIPT_ESCAPES = {ord(">"): "\\u003E", ord("<"): "\\u003C", ord("&"): "\\u0026"}
+
+
 def _elements_json(structure):
     """Flatten a stored Kripke structure's nodes+edges into a Cytoscape JSON array."""
     if not structure or not isinstance(structure, dict):
         return ""
     elements = structure.get("elements") or {}
     array = (elements.get("nodes") or []) + (elements.get("edges") or [])
-    return json.dumps(array) if array else ""
+    return json.dumps(array).translate(_SCRIPT_ESCAPES) if array else ""
+
+
+def graph_aps(structure):
+    """Sorted atomic propositions labelling any state of a stored structure."""
+    if not structure or not isinstance(structure, dict):
+        return []
+    nodes = (structure.get("elements") or {}).get("nodes") or []
+    found = set()
+    for node in nodes:
+        data = node.get("data") or {}
+        if data.get("phantom"):
+            continue
+        found.update(data.get("props") or [])
+    return sorted(found)
 
 
 def _topic_exists(pk):

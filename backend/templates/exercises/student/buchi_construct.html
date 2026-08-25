@@ -15,7 +15,7 @@
             <p class="text-text-primary text-base leading-relaxed">{{ exercise.description }}</p>
             <p class="text-text-secondary text-sm mt-2">
                 Draw a Büchi automaton that accepts exactly the language of the target formula.
-                Double-click the canvas to add a state, use the edge tool to connect states and press
+                Click the canvas to add a state, use the transition tool to connect states and press
                 <span class="font-mono text-text-primary">L</span> to label a transition with a symbol
                 (or a set like <span class="font-mono text-text-primary">a,b</span>),
                 <span class="font-mono text-text-primary">I</span> to mark an initial state
@@ -126,9 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
         warnTimer = setTimeout(() => document.getElementById('draw-warning').classList.add('hidden'), 3000);
     });
 
-    document.body.addEventListener('exerciseSolved', () => {
-        setTimeout(() => location.reload(), 1400);
-    });
 });
 </script>
+<script src="{% static 'js/exercise_progress.js' %}"></script>
 {% endblock %}

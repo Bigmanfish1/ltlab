@@ -1,3 +1,5 @@
+import json
+
 from django.test import TestCase
 
 from apps.accounts.models import Profile
@@ -166,3 +168,54 @@ class MultiPartAnalyticsTests(TestCase):
     def test_class_metrics_accuracy_stays_attempt_level(self):
         # 5 correct of 8 attempts = 62.5 -> half-up 63
         self.assertEqual(services.class_metrics()["avg_accuracy"], 63)
+
+
+class ElementsJsonEscapingTests(TestCase):
+    """The serialized graph is rendered inside a <script> block, so a state name
+    must not be able to close the tag."""
+
+    def test_script_breakout_is_escaped(self):
+        structure = {"elements": {"nodes": [
+            {"data": {"id": "s0", "name": "</script><img src=x onerror=alert(1)>", "props": []}}
+        ], "edges": []}}
+        out = services._elements_json(structure)
+        self.assertNotIn("</script>", out)
+        self.assertNotIn("<img", out)
+        self.assertIn("\\u003C", out)
+
+    def test_escaping_keeps_it_valid_json(self):
+        structure = {"elements": {"nodes": [
+            {"data": {"id": "s0", "name": "a<b>c&d", "props": []}}
+        ], "edges": []}}
+        decoded = json.loads(services._elements_json(structure))
+        self.assertEqual(decoded[0]["data"]["name"], "a<b>c&d")
+
+
+class WholeGradedReportingTests(TestCase):
+    """build_kripke keeps its requirements as parts but is graded as one whole
+    model, so teacher reports must not wait for per-part attempts."""
+
+    def setUp(self):
+        self.teacher = Profile.objects.create(email="t2@x.com", name="T", role=Profile.ROLE_TEACHER)
+        self.student = Profile.objects.create(email="s3@x.com", name="S", role=Profile.ROLE_STUDENT)
+        self.topic = Topic.objects.create(title="T2", created_by=self.teacher)
+        self.exercise = Exercise.objects.create(
+            topic=self.topic, title="Build one", description="d", difficulty="beginner",
+            hint="h", exercise_type="build_kripke", is_published=True,
+        )
+        ExercisePart.objects.create(exercise=self.exercise, position=0, formula="G p")
+        ExercisePart.objects.create(exercise=self.exercise, position=1, formula="F q")
+        Attempt.objects.create(
+            exercise=self.exercise, student=self.student, is_correct=True, part=None
+        )
+
+    def test_counts_as_solved_for_the_student(self):
+        self.assertIn(self.exercise.id, services.solved_exercise_ids(self.student))
+
+    def test_teacher_completion_matches(self):
+        row = next(r for r in services.exercise_rows() if r["id"] == self.exercise.id)
+        self.assertEqual(row["completion"], 100)
+
+    def test_roster_counts_it_done(self):
+        row = next(r for r in services.students_roster() if r["id"] == self.student.id)
+        self.assertEqual(row["exercises_done"], 1)

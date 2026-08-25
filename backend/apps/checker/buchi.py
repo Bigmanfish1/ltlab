@@ -159,6 +159,9 @@ def build_buchi(automaton_json, symbols):
 
 def _onehot_automaton(symbols):
     """Automaton accepting exactly the words with one symbol of Σ at every step."""
+    if not symbols:
+        # an empty Σ would build the unparseable "G()" and surface as a 500
+        raise ValueError("The alphabet is empty — add at least one symbol.")
     terms = _onehot_terms(symbols)
     formula = "G(" + " | ".join(terms[s] for s in symbols) + ")"
     return spot.translate(formula, "BA", "sbacc")
@@ -224,17 +227,17 @@ def parse_word_lasso(text, symbols):
     """Parse the module's lasso notation into (prefix, cycle, error).
 
     Students write an infinite word as prefix·(cycle)ω — the notation the path
-    picker already uses for lassos (MCL8 p.24) — e.g. `a → (b)ω`. Separators may
-    be arrows, commas or spaces. Returns (None, None, message) on any problem.
+    picker already uses for lassos (MCL8 p.24) — e.g. `a, (b)ω`. Separators may
+    be commas, spaces or arrows. Returns (None, None, message) on any problem.
     """
     raw = (text or "").strip()
     if not raw:
-        return None, None, "Enter a word — for example  a \u2192 (b)\u03c9."
+        return None, None, "Enter a word — for example  a, (b)\u03c9."
     match = _LASSO_RE.match(raw)
     if not match:
         return None, None, (
             "Mark the part that repeats forever with parentheses, "
-            "for example  a \u2192 (b)\u03c9."
+            "for example  a, (b)\u03c9."
         )
     prefix = _split_symbols(match.group(1))
     cycle = _split_symbols(match.group(2))

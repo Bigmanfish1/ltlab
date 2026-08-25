@@ -10,11 +10,10 @@
                     <span class="font-mono text-[11px] px-2 py-1 bg-bg-secondary border border-border-secondary text-text-secondary rounded">
                         {{ type_badge|upper }}
                     </span>
-                    {% if is_completed %}
-                    <span class="font-mono text-[11px] px-2 py-1 bg-accent-lime text-bg-primary rounded">
+                    <span id="exercise-completed-badge"
+                        class="font-mono text-[11px] px-2 py-1 bg-accent-lime text-bg-primary rounded{% if not is_completed %} hidden{% endif %}">
                         ✓ COMPLETED
                     </span>
-                    {% endif %}
                 </div>
             </div>
             <div class="flex items-center gap-2">

@@ -1,3 +1,5 @@
+import json
+
 from ..models import Exercise
 from ..services import solved_exercise_ids
 
@@ -17,9 +19,22 @@ def _clamped_hints(request, hints):
         return 0
 
 
+def add_trigger(response, name, detail=True):
+    """Merge an HTMX trigger, so a graded verdict and a completion can coexist."""
+    existing = response.get("HX-Trigger")
+    payload = json.loads(existing) if existing else {}
+    payload[name] = detail
+    response["HX-Trigger"] = json.dumps(payload)
+    return response
+
+
+def graded_trigger(response, correct):
+    return add_trigger(response, "answerGraded", {"correct": bool(correct)})
+
+
 def _completion_trigger(response, request, exercise):
     if exercise.id in solved_exercise_ids(
         request.profile, Exercise.objects.filter(pk=exercise.pk)
     ):
-        response["HX-Trigger"] = "exerciseSolved"
+        add_trigger(response, "exerciseSolved")
     return response

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% load static %}<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -27,6 +27,11 @@
                         'sans': ['Inter', 'system-ui', 'sans-serif'],
                         'mono': ['JetBrains Mono', 'monospace'],
                     },
+                    fontSize: {
+                        'xs': ['0.875rem', { lineHeight: '1.25rem' }],
+                        'sm': ['1rem', { lineHeight: '1.5rem' }],
+                        'base': ['1.125rem', { lineHeight: '1.75rem' }],
+                    },
                 }
             }
         }
@@ -35,6 +40,17 @@
         body {
             font-family: 'Inter', system-ui, sans-serif;
         }
+        /* App-wide readability, in one place. Most of the UI sizes text with
+           Tailwind arbitrary values, which the fontSize theme above cannot
+           reach, so the generated classes are restated here — `body .x` beats
+           Tailwind's single-class specificity without !important. These class
+           names no longer state their rendered size: change sizes here, not in
+           the templates. */
+        body .text-\[9px\]  { font-size: 11px }
+        body .text-\[10px\] { font-size: 12px }
+        body .text-\[11px\] { font-size: 13px }
+        body .text-\[12px\] { font-size: 14px }
+        body .text-\[13px\] { font-size: 15px }
         .app-toast {
             animation: app-toast-in .25s ease both;
             transition: opacity .25s ease, transform .25s ease;
@@ -87,6 +103,7 @@
         {% block content %}{% endblock %}
     </main>
 
+    <script src="{% static 'js/feedback_sound.js' %}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

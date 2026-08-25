@@ -14,7 +14,7 @@
             <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">TASK</h2>
             <p class="text-text-primary text-base leading-relaxed">{{ exercise.description }}</p>
             <p class="text-text-secondary text-sm mt-2">
-                Decide for each formula whether it holds universally on the model.
+                Decide for each formula whether it holds universally on the structure.
                 If you claim it does not hold, trace a counterexample path on the graph:
                 start at the initial state, click a state already on your path to close the loop.
             </p>
@@ -22,7 +22,7 @@
 
         <div class="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-8">
             <div>
-                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE MODEL</h2>
+                <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE STRUCTURE</h2>
                 <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex" style="height: 460px;">
                     {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="460px" elements_json=elements_json readonly=True %}
                 </div>
@@ -37,13 +37,12 @@
                         class="bg-bg-secondary border {% if row.solved %}border-accent-lime{% else %}border-border-primary{% endif %} rounded p-4">
                         <div class="flex items-center justify-between mb-2">
                             <span class="font-mono text-[11px] tracking-[0.12em] text-text-secondary">FORMULA {{ row.number }}</span>
-                            {% if row.solved %}
-                            <span class="font-mono text-[11px] text-accent-lime">✓ SOLVED</span>
-                            {% endif %}
+                            <span data-solved-badge
+                                class="font-mono text-[11px] text-accent-lime{% if not row.solved %} hidden{% endif %}">✓ SOLVED</span>
                         </div>
                         <div class="font-mono text-base text-text-primary mb-3">{{ row.part.formula }}</div>
                         <div class="flex items-center gap-2">
-                            <button type="button"
+                            <button type="button" data-claim-holds
                                 hx-post="{% url 'submit_part' exercise.id row.part.id %}"
                                 hx-target="#part-result-{{ row.part.id }}"
                                 hx-swap="innerHTML"
@@ -108,18 +107,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     boot();
 
+    function closeAllViolatedPanels() {
+        document.querySelectorAll('[data-violated-panel]').forEach((p) => p.classList.add('hidden'));
+        document.querySelectorAll('[data-part-card]').forEach((c) => c.classList.remove('border-accent-orange'));
+    }
+
     document.querySelectorAll('[data-claim-violated]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const card = btn.closest('[data-part-card]');
             const panel = card.querySelector('[data-violated-panel]');
             const wasOpen = !panel.classList.contains('hidden');
-            document.querySelectorAll('[data-violated-panel]').forEach((p) => p.classList.add('hidden'));
-            document.querySelectorAll('[data-part-card]').forEach((c) => c.classList.remove('border-accent-orange'));
+            closeAllViolatedPanels();
             if (!wasOpen) {
                 panel.classList.remove('hidden');
                 card.classList.add('border-accent-orange');
             }
         });
+    });
+
+    document.querySelectorAll('[data-claim-holds]').forEach((btn) => {
+        btn.addEventListener('click', closeAllViolatedPanels);
     });
 
     let warnTimer = null;
@@ -132,9 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
         warnTimer = setTimeout(() => box.classList.add('hidden'), 3000);
     });
 
-    document.body.addEventListener('exerciseSolved', () => {
-        setTimeout(() => location.reload(), 1200);
-    });
 });
 </script>
+<script src="{% static 'js/exercise_progress.js' %}"></script>
 {% endblock %}

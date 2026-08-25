@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ exercise.title }} - ModelCheck Edu{% endblock %}
 
@@ -24,7 +25,7 @@
 
                 <!-- Kripke Model Visualization -->
                 <div class="mb-6">
-                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE MODEL</h2>
+                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">KRIPKE STRUCTURE</h2>
                     <div class="relative bg-bg-secondary border border-border-primary rounded overflow-hidden flex mb-4" style="height: 420px;">
                         {% include "components/kripke_editor.html" with id="memo" input_name="graph_data" height="420px" elements_json=elements_json readonly=True %}
                         <div id="result-drawer"
@@ -37,27 +38,8 @@
                 <!-- Formula Input Bar -->
                 <div class="mb-6">
                     <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR FORMULA</h2>
-                    <div class="bg-bg-secondary border-2 border-border-primary rounded p-4">
-                        <div class="flex items-center gap-1 pb-3 mb-3 flex-wrap">
-                            {% for b in operator_buttons %}
-                            <button type="button" onclick="insertOp('{{ b.op }}')" title="{{ b.label }}"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">{{ b.op }}</button>
-                            {% endfor %}
-                            <button type="button" onclick="insertParens()" title="Parentheses"
-                                class="op-btn font-mono text-xs text-text-secondary hover:text-text-primary hover:bg-bg-primary px-2 py-1 rounded transition-colors border border-transparent hover:border-border-secondary">()</button>
-                        </div>
-                        <div class="bg-bg-primary border border-border-secondary focus-within:border-accent-orange transition-colors rounded px-3 py-2">
-                            <input
-                                type="text"
-                                id="formula-input"
-                                name="formula"
-                                placeholder="Enter your formula (e.g., GF q)"
-                                class="w-full bg-transparent text-text-primary font-mono text-lg outline-none"
-                                autocomplete="off"
-                            />
-                        </div>
-                        <input type="hidden" id="hints-used" name="hints_used" value="0" />
-                    </div>
+                    {% include "components/formula_editor.html" with input_id="formula-input" aps=declared_aps placeholder="Enter your formula (e.g., GF q)" %}
+                    <input type="hidden" id="hints-used" name="hints_used" value="0" />
                     <div class="flex items-center mt-3">
                         <div class="flex gap-2">
                             <button 
@@ -95,29 +77,7 @@
                 </div>
                 {{ exercise.hints|json_script:"exercise-hints-data" }}
 
-                <!-- Previous Attempts -->
-                {% if attempts %}
-                <div class="mb-6">
-                    <h2 class="text-sm font-mono text-text-secondary tracking-wider mb-3">YOUR ATTEMPTS</h2>
-                    <div class="space-y-2">
-                        {% for attempt in attempts %}
-                        <div class="bg-bg-secondary border border-border-primary rounded p-3">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="font-mono text-xs {% if attempt.is_correct %}text-accent-lime{% else %}text-accent-orange{% endif %}">
-                                    {% if attempt.is_correct %}✓ CORRECT{% else %}✗ INCORRECT{% endif %}
-                                </span>
-                                <span class="font-mono text-xs text-text-secondary">
-                                    {{ attempt.timestamp|date:"M d, Y H:i" }}
-                                </span>
-                            </div>
-                            <div class="font-mono text-sm text-text-primary bg-bg-tertiary rounded px-2 py-1">
-                                {{ attempt.formula_input }}
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
+                {% include "exercises/student/_partials/attempts.html" %}
 
                 <!-- Operators Reference -->
                 <div>
@@ -142,35 +102,8 @@
     </div>
 </div>
 
+<script src="{% static 'js/formula_input.js' %}"></script>
 <script>
-
-function insertOp(op) {
-    const input = document.getElementById('formula-input');
-    const start = input.selectionStart;
-    const end = input.selectionEnd;
-    const text = input.value;
-
-    input.value = text.slice(0, start) + op + text.slice(end);
-
-    const newPos = start + op.length;
-    input.focus();
-    input.setSelectionRange(newPos, newPos);
-}
-
-function insertParens() {
-    const input = document.getElementById('formula-input');
-    const start = input.selectionStart;
-    const end = input.selectionEnd;
-    const text = input.value;
-    const selected = text.slice(start, end);
-
-    input.value = text.slice(0, start) + '(' + selected + ')' + text.slice(end);
-
-    const newPos = selected ? start + selected.length + 2 : start + 1;
-    input.focus();
-    input.setSelectionRange(newPos, newPos);
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     const hintsData = JSON.parse(
         document.getElementById('exercise-hints-data').textContent || '[]'
@@ -224,11 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // reload after a correct answer so the COMPLETED badge and attempts refresh
-    document.body.addEventListener('exerciseSolved', () => {
-        setTimeout(() => location.reload(), 1200);
-    });
 });
 
 </script>
+<script src="{% static 'js/exercise_progress.js' %}"></script>
 {% endblock %}

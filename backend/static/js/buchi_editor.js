@@ -264,6 +264,9 @@
     }
 
     // ── Tool selection ──────────────────────────────────────────────────────
+    // internal tool ids stay node/edge; the UI speaks automaton terms
+    const TOOL_LABELS = { node: "STATE", edge: "TRANSITION", label: "LABEL", delete: "DELETE" };
+
     function setTool(tool) {
       if (!editable) return;
       if (edgeSource) {
@@ -285,7 +288,7 @@
           activeBtn.classList.add("text-[#FAFAFA]");
         }
       }
-      setIndicator("MODE: " + tool.toUpperCase());
+      setIndicator("MODE: " + (TOOL_LABELS[tool] || tool.toUpperCase()));
       cy.userPanningEnabled(tool !== "edge");
     }
     function setIndicator(text) {
@@ -352,6 +355,7 @@
       if (cy.nodes().filter((n) => !n.data("phantom")).length === 0) return;
       saveSnapshot();
       cy.elements().remove();
+      nodeCounter = 0;
       updateInitialHint();
       updateEmptyCanvasHint();
       syncGraphData();
@@ -592,7 +596,7 @@
           if (!edgeSource) {
             edgeSource = node;
             node.addClass("edge-source");
-            setIndicator("MODE: EDGE — click target (or same node for self-loop)");
+            setIndicator("MODE: TRANSITION — click target (or same state for self-loop)");
           } else if (edgeSource.id() === node.id()) {
             if (cy.edges(`[source = "${node.id()}"][target = "${node.id()}"]`).length > 0) {
               warn("A self-loop already exists on state <b>" + (node.data("name") || node.id()) + "</b>.");
@@ -603,7 +607,7 @@
             }
             edgeSource.removeClass("edge-source");
             edgeSource = null;
-            setIndicator("MODE: EDGE");
+            setIndicator("MODE: TRANSITION");
           } else {
             const srcId = edgeSource.id();
             const tgtId = node.id();
@@ -616,7 +620,7 @@
             }
             edgeSource.removeClass("edge-source");
             edgeSource = null;
-            setIndicator("MODE: EDGE");
+            setIndicator("MODE: TRANSITION");
           }
           return;
         }
@@ -639,12 +643,13 @@
         if (currentTool === "edge" && edgeSource) {
           edgeSource.removeClass("edge-source");
           edgeSource = null;
-          setIndicator("MODE: EDGE");
+          setIndicator("MODE: TRANSITION");
         }
       });
 
-      cy.on("dblclick", function (evt) {
+      cy.on("tap", function (evt) {
         if (evt.target !== cy) return;
+        if (currentTool !== "node") return;
         saveSnapshot();
         const nid = nextNodeId();
         const isFirst = cy.nodes().filter((n) => !n.data("phantom")).length === 0;
@@ -707,6 +712,7 @@
             else if (action === "redo") redoAction();
             else if (action === "toggle-initial") toggleInitial();
             else if (action === "toggle-accepting") toggleAccepting();
+            else if (action === "recenter") cy.fit(cy.elements("[!phantom]"), 80);
             else if (action === "clear") clearCanvas();
           });
         });

@@ -64,12 +64,15 @@
     const textInput = config.textInput ? document.querySelector(config.textInput) : null;
     const undoBtn = config.undoBtn ? document.querySelector(config.undoBtn) : null;
     const resetBtn = config.resetBtn ? document.querySelector(config.resetBtn) : null;
+    const inputErrorEl = document.querySelector(config.inputError || "#trace-input-error");
 
     const styles = cy.style().json().concat(PICKER_STYLES);
     cy.style().fromJson(styles).update();
 
     let path = [];        // clicked node ids, in order
     let closedAt = -1;    // index in path where the cycle starts; -1 = open
+    // set when sync() rewrites an unfocused input, whose caret then sits at 0
+    let caretStale = false;
 
     function realNodes() {
       return cy.nodes().filter((n) => !n.data("phantom"));
@@ -106,6 +109,8 @@
       if (readoutEl) readoutEl.textContent = renderReadout(parts);
       if (textInput && document.activeElement !== textInput) {
         textInput.value = canonicalText();
+        caretStale = true;
+        showArrowError(false);
       }
       updateControls();
       if (config.onChange) config.onChange(getState());
@@ -134,11 +139,11 @@
         // the readout is display-only, so it keeps the "unfinished" marker that
         // canonicalText must not carry (canonicalText feeds the text input,
         // where a trailing … would fight the user mid-type)
-        return path.map(name).join(" → ") + " → …";
+        return path.map(name).join(", ") + ", …";
       }
-      const prefixStr = parts.prefix.map(name).join(" → ");
-      const cycleStr = "(" + parts.cycle.map(name).join(" → ") + ")ω";
-      return prefixStr ? prefixStr + " → " + cycleStr : cycleStr;
+      const prefixStr = parts.prefix.map(name).join(", ");
+      const cycleStr = "(" + parts.cycle.map(name).join(", ") + ")ω";
+      return prefixStr ? prefixStr + ", " + cycleStr : cycleStr;
     }
 
     function paint() {
@@ -249,9 +254,13 @@
       return null;
     }
 
+    const ARROW_RE = /→|->/;
+    const ARROW_MESSAGE =
+      "→ means implication in formulas. Separate path states with commas: s0, (s1)ω.";
+
     function tokenize(part) {
       return part
-        .split(/→|->|,|\s+/)
+        .split(/,|\s+/)
         .map((t) => t.trim())
         .filter(Boolean);
     }
@@ -264,7 +273,8 @@
         return false;
       };
       const raw = String(text || "").trim();
-      if (!raw) return fail("Type a path like s0 → (s1 → s2)ω.");
+      if (!raw) return fail("Type a path like s0, (s1, s2)ω.");
+      if (ARROW_RE.test(raw)) return fail(ARROW_MESSAGE);
       const match = raw.match(/^([^()]*)\(([^()]*)\)\s*(ω|\^ω|\^w|w)?\s*$/);
       if (!match) return fail("Wrap the repeating cycle in parentheses: prefix (cycle)ω.");
       const prefixTokens = tokenize(match[1]);
@@ -299,10 +309,10 @@
     function canonicalText() {
       const parts = split();
       if (!path.length) return "";
-      if (closedAt < 0) return path.join(" → ");
-      const pre = parts.prefix.join(" → ");
-      const cyc = "(" + parts.cycle.join(" → ") + ")ω";
-      return pre ? pre + " → " + cyc : cyc;
+      if (closedAt < 0) return path.join(", ");
+      const pre = parts.prefix.join(", ");
+      const cyc = "(" + parts.cycle.join(", ") + ")ω";
+      return pre ? pre + ", " + cyc : cyc;
     }
 
     // Typed entry highlights the graph as you go: a complete closed lasso paints
@@ -313,9 +323,17 @@
       return tokenize(cleaned);
     }
 
+    function showArrowError(show) {
+      if (!inputErrorEl) return;
+      inputErrorEl.textContent = show ? ARROW_MESSAGE : "";
+      inputErrorEl.classList.toggle("hidden", !show);
+    }
+
     function applyLive(text) {
       const raw = String(text || "").trim();
+      showArrowError(ARROW_RE.test(raw));
       if (!raw) { reset(); return; }
+      if (ARROW_RE.test(raw)) return;
       if (/^[^()]*\([^()]*\)\s*(ω|\^ω|\^w|w)?\s*$/.test(raw) && applyText(raw, true)) return;
       const tokens = statesFromText(raw);
       const ids = [];
@@ -330,12 +348,14 @@
 
     function insertToken(tok) {
       if (!textInput) return;
-      const start = textInput.selectionStart != null ? textInput.selectionStart : textInput.value.length;
-      const end = textInput.selectionEnd != null ? textInput.selectionEnd : textInput.value.length;
+      const len = textInput.value.length;
+      const start = caretStale || textInput.selectionStart == null ? len : textInput.selectionStart;
+      const end = caretStale || textInput.selectionEnd == null ? len : textInput.selectionEnd;
       textInput.value = textInput.value.slice(0, start) + tok + textInput.value.slice(end);
       const caret = start + tok.length;
       textInput.focus();
       textInput.setSelectionRange(caret, caret);
+      caretStale = false;
       applyLive(textInput.value);
     }
 
@@ -357,20 +377,31 @@
     }
 
     if (textInput) {
+      ["focus", "click", "keyup"].forEach((evt) => {
+        textInput.addEventListener(evt, () => { caretStale = false; });
+      });
       textInput.addEventListener("input", () => applyLive(textInput.value));
       textInput.addEventListener("change", () => {
         if (textInput.value.indexOf("(") >= 0) applyText(textInput.value, false);
       });
     }
     buildBar(config.symbolBar, [
-      { label: "→", tok: " → " },
+      { label: ",", tok: ", " },
       { label: "(", tok: "(" },
       { label: ")", tok: ")" },
       { label: "ω", tok: "ω" },
     ], "text-text-primary", (it) => insertToken(it.tok));
+    function needsSeparator() {
+      if (!textInput) return false;
+      const len = textInput.value.length;
+      const at = caretStale || textInput.selectionStart == null ? len : textInput.selectionStart;
+      const before = textInput.value.slice(0, at).replace(/\s+$/, "");
+      return before !== "" && !/[,(]$/.test(before);
+    }
+
     buildBar(config.stateBar,
       realNodes().map((n) => ({ label: n.data("name") || n.id() })),
-      "text-text-primary", (it) => insertToken(it.label));
+      "text-text-primary", (it) => insertToken(needsSeparator() ? ", " + it.label : it.label));
 
     cy.on("tap", "node", handleTap);
     paint();

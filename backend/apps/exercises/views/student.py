@@ -4,7 +4,7 @@ from apps.accounts.middleware import supabase_login_required
 
 from ..constants import BUILDER_OPERATORS, EXERCISE_TYPE_BADGES, OPERATOR_LABELS
 from ..models import Attempt
-from ..services import _elements_json, solved_exercise_ids
+from ..services import _elements_json, graph_aps, solved_exercise_ids
 from .common import published_exercises
 
 
@@ -67,7 +67,9 @@ def exercise_canvas(request, exercise_id):
     if exercise.exercise_type == "buchi_word":
         return _buchi_word_canvas(request, exercise)
 
-    attempts = Attempt.objects.filter(exercise=exercise, student=request.profile)
+    attempts = Attempt.objects.filter(
+        exercise=exercise, student=request.profile
+    ).order_by("-created_at")
     is_completed = Attempt.objects.filter(
         exercise=exercise, student=request.profile, is_correct=True
     ).exists()
@@ -79,6 +81,7 @@ def exercise_canvas(request, exercise_id):
         'exercise_number': exercise_number,
         'elements_json': _elements_json(exercise.kripke_structure),
         'operator_buttons': _operator_buttons(exercise),
+        'declared_aps': graph_aps(exercise.kripke_structure),
         'attempts': attempts,
         'is_completed': is_completed,
         'prev_exercise': prev_exercise,
@@ -97,7 +100,12 @@ def _part_rows(exercise, student):
         ).values_list("part_id", flat=True)
     )
     return [
-        {"part": p, "number": i, "solved": p.id in correct_part_ids}
+        {
+            "part": p,
+            "number": i,
+            "solved": p.id in correct_part_ids,
+            "input_id": f"formula-{p.id}",
+        }
         for i, p in enumerate(parts, start=1)
     ]
 
@@ -195,6 +203,10 @@ def _buchi_word_canvas(request, exercise):
         "declared_aps": list(exercise.declared_aps or []),
         "elements_json": _elements_json(exercise.kripke_structure),
         "last_word": (last.answer or {}).get("word", "") if last else "",
+        "word_symbols": [
+            {"op": ",", "token": ", ", "label": "Separator"},
+            {"op": "ω", "label": "Omega"},
+        ],
         "is_completed": Attempt.objects.filter(
             exercise=exercise, student=request.profile, is_correct=True
         ).exists(),
