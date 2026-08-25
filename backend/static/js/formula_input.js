@@ -51,8 +51,17 @@
       undoStack.push(input.value);
     }
 
+    // An input the user has never touched reports a caret of 0, so a chip
+    // clicked against pre-filled text would prepend. Append until they place
+    // the caret themselves.
+    let caretPlaced = false;
+    ["focus", "click", "keyup"].forEach((evt) => {
+      input.addEventListener(evt, () => { caretPlaced = true; });
+    });
+
     function caretRange() {
       const len = input.value.length;
+      if (!caretPlaced) return [len, len];
       return [
         input.selectionStart == null ? len : input.selectionStart,
         input.selectionEnd == null ? len : input.selectionEnd,

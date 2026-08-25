@@ -18,7 +18,7 @@
     if (!card) return;
     const badge = card.querySelector("[data-solved-badge]");
     if (badge) badge.classList.remove("hidden");
-    card.classList.remove("border-border-primary");
+    card.classList.remove("border-border-primary", "border-accent-orange");
     card.classList.add("border-accent-lime");
   }
 

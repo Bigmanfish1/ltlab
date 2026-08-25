@@ -377,6 +377,9 @@
     }
 
     if (textInput) {
+      ["focus", "click", "keyup"].forEach((evt) => {
+        textInput.addEventListener(evt, () => { caretStale = false; });
+      });
       textInput.addEventListener("input", () => applyLive(textInput.value));
       textInput.addEventListener("change", () => {
         if (textInput.value.indexOf("(") >= 0) applyText(textInput.value, false);
