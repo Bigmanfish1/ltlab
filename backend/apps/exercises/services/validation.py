@@ -93,8 +93,6 @@ def _validate_judge_parts(form, graph, errors):
             validate_request(graph, part["formula"])
         except ValueError as exc:
             errors.append(f"Formula {i}: {exc}")
-            continue
-        _check_operators(part["formula"], form["allowed_operators"], f"Formula {i}", errors)
 
 
 def judge_answer_key(exercise):
@@ -135,8 +133,6 @@ def _validate_path_parts(form, graph, errors):
                 f"Formula {i} ({part['formula']}) has no satisfying path on this "
                 "structure — students could never solve it."
             )
-            continue
-        _check_operators(part["formula"], form["allowed_operators"], f"Formula {i}", errors)
 
 
 def _validate_build_kripke_parts(form, errors):

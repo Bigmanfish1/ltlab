@@ -443,37 +443,23 @@ class JudgeBuilderTests(TeacherViewTestCase):
 
 
 @override_settings(STORAGES=PLAIN_STATIC)
-class ShownFormulaOperatorGateTests(TeacherViewTestCase):
-    """Judge and path formulas are shown to students, so they must stay inside
-    the operators the exercise permits."""
+class ShownFormulaOperatorTests(TeacherViewTestCase):
+    """Judge and path students never type a formula — they pick a verdict or
+    trace a path — so allowed_operators must not gate publishing there."""
 
-    def _rejected(self, exercise_type, parts, allowed):
+    def _publish(self, exercise_type, parts, allowed):
         data = self._form(
             exercise_type=exercise_type, parts=parts,
             allowed_operators=allowed, action="publish",
         )
-        request = self._req("post", self.teacher, data)
-        response = views.exercise_builder(request)
-        errors = [m.message for m in get_messages(request) if m.level == messages.ERROR]
-        return response, errors
+        return views.exercise_builder(self._req("post", self.teacher, data))
 
-    def test_judge_formula_using_disabled_operator_rejected(self):
-        response, errors = self._rejected("judge", JUDGE_PARTS, '["F"]')
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
-        self.assertTrue(any("operators students can't enter" in m for m in errors))
-
-    def test_judge_formula_within_allowed_operators_publishes(self):
-        data = self._form(
-            exercise_type="judge", parts=JUDGE_PARTS,
-            allowed_operators='["G", "F"]', action="publish",
-        )
-        response = views.exercise_builder(self._req("post", self.teacher, data))
+    def test_judge_publishes_with_no_operators_enabled(self):
+        response = self._publish("judge", JUDGE_PARTS, "[]")
         self.assertEqual(response.status_code, 302)
         self.assertTrue(Exercise.objects.get(title="New Ex").is_published)
 
-    def test_path_formula_using_disabled_operator_rejected(self):
-        response, errors = self._rejected("path_exhibit", PATH_PARTS, '["F"]')
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(Exercise.objects.filter(title="New Ex").exists())
-        self.assertTrue(any("operators students can't enter" in m for m in errors))
+    def test_path_publishes_with_no_operators_enabled(self):
+        response = self._publish("path_exhibit", PATH_PARTS, "[]")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Exercise.objects.get(title="New Ex").is_published)
