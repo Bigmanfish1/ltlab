@@ -33,9 +33,16 @@ def _attempt_matrix():
     return matrix
 
 
+# build_kripke stores its requirements as parts, but a submission is graded as
+# one whole model and recorded as a single partless attempt. Reporting it as
+# part-based leaves it permanently unsolved in every teacher metric.
+WHOLE_GRADED_TYPES = ("build_kripke",)
+
+
 def _part_counts():
     return dict(
-        ExercisePart.objects.values("exercise_id")
+        ExercisePart.objects.exclude(exercise__exercise_type__in=WHOLE_GRADED_TYPES)
+        .values("exercise_id")
         .annotate(n=Count("id"))
         .values_list("exercise_id", "n")
     )
@@ -195,10 +202,8 @@ def solved_exercise_ids(student, exercises=None):
         .annotate(n=Count("id"))
         .values_list("exercise_id", "n")
     )
-    # build_kripke stores requirements as parts but is graded as one whole
-    # model, so completion is a single correct (partless) attempt, not per-part
     whole_exercise_ids = set(
-        Exercise.objects.filter(id__in=ids, exercise_type="build_kripke")
+        Exercise.objects.filter(id__in=ids, exercise_type__in=WHOLE_GRADED_TYPES)
         .values_list("id", flat=True)
     )
     correct = (
