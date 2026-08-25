@@ -43,7 +43,7 @@ def _rejected(request, message):
 def _operator_rejection(exercise, bad):
     """Name the operators the student used and the ones they may use instead."""
     used = ", ".join(sorted(operator_label(t) for t in bad))
-    allowed = ", ".join(exercise.allowed_operators or [])
+    allowed = ", ".join(operator_label(t) for t in (exercise.allowed_operators or []))
     message = f"These operators aren't allowed for this exercise: {used}."
     return f"{message} Allowed here: {allowed}." if allowed else message
 
@@ -305,6 +305,8 @@ def submit_buchi_word(request, exercise_id):
         return _rejected(request, "This exercise is not an accepting-word task.")
 
     word = (request.POST.get("word") or "").strip()
+    if not word:
+        return _rejected(request, "Enter a word to check.")
     if len(word) > MAX_FORMULA_CHARS:
         return _rejected(
             request, f"Word is too long — at most {MAX_FORMULA_CHARS} characters."
