@@ -1,6 +1,7 @@
 from .analytics import (
     class_metrics,
     dashboard_stats,
+    enrolled_ids,
     exercise_rows,
     misconception_breakdown,
     recent_activity,
@@ -24,6 +25,7 @@ __all__ = [
     "_elements_json",
     "class_metrics",
     "dashboard_stats",
+    "enrolled_ids",
     "exercise_rows",
     "formula_satisfiable",
     "graph_aps",

@@ -1,3 +1,4 @@
+import csv
 import json
 import logging
 
@@ -5,12 +6,13 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Max
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from apps.accounts.middleware import teacher_page, teacher_required
+from apps.accounts.participant import participant_code
 from apps.checker.tasks import (
     run_buchi_target_check,
     run_ltl_check,
@@ -23,10 +25,11 @@ from ..constants import (
     EXERCISE_TYPE_BADGES,
     FORMULA_INPUT_TYPES,
 )
-from ..models import Exercise, Topic
+from ..models import Attempt, Exercise, Topic
 from ..services import (
     BUILDER_EXERCISE_TYPES,
     _elements_json,
+    enrolled_ids,
     exercise_rows,
     formula_satisfiable,
     judge_answer_key,
@@ -59,6 +62,48 @@ def teacher_exercises(request):
         "exercises": exercise_rows(),
         "type_filters": type_filters,
     })
+
+
+EXPORT_COLUMNS = [
+    "participant_code", "exercise_position", "exercise_title", "exercise_type",
+    "part_position", "attempt_number", "is_correct", "hints_used", "created_at",
+]
+
+
+@teacher_required
+def export_attempts(request, topic_id):
+    # Research export: keyed only by participant code, never name, email or account id.
+    topic = get_object_or_404(Topic, pk=topic_id)
+    attempts = (
+        Attempt.objects.filter(exercise__topic=topic, student_id__in=enrolled_ids())
+        .select_related("exercise", "part", "student")
+        .order_by("student_id", "exercise__position", "created_at")
+    )
+
+    codes_by_student = {}
+    rows = []
+    attempt_numbers = {}
+    for a in attempts:
+        code = codes_by_student.setdefault(a.student_id, participant_code(a.student))
+        key = (a.student_id, a.exercise_id)
+        attempt_numbers[key] = attempt_numbers.get(key, 0) + 1
+        rows.append([
+            code, a.exercise.position, a.exercise.title, a.exercise.exercise_type,
+            a.part.position if a.part_id else "", attempt_numbers[key],
+            a.is_correct, a.hints_used, a.created_at.isoformat(),
+        ])
+
+    # A truncated HMAC can collide; two students sharing a code would silently merge in the
+    # analysis, so refuse to export rather than hand over ambiguous data.
+    if len(set(codes_by_student.values())) != len(codes_by_student):
+        return HttpResponse("Participant code collision; export aborted.", status=409)
+
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="attempts-{topic.pk}.csv"'
+    writer = csv.writer(response)
+    writer.writerow(EXPORT_COLUMNS)
+    writer.writerows(rows)
+    return response
 
 
 @teacher_page()

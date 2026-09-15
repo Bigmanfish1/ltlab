@@ -1,3 +1,4 @@
+  {% load participant %}
   {% if request.is_previewing %}
   <div class="bg-accent-lime/10 border-b border-accent-lime/40 px-6 py-1.5 flex items-center justify-center gap-2 text-center">
       <span class="font-mono text-[10px] tracking-[0.12em] uppercase text-accent-lime">Viewing as student · nothing you submit is recorded</span>
@@ -16,6 +17,9 @@
               class="flex items-center text-text-secondary hover:text-text-primary transition-colors cursor-pointer"></button>
           <div class="hidden md:flex items-center">{% include "components/view_as_toggle.html" %}</div>
           <span class="hidden lg:block font-mono text-[11px] text-text-secondary truncate max-w-[180px]">{{ request.supabase_user.email }}</span>
+          {% if request.profile %}
+          <span class="hidden md:block font-mono text-[11px] text-text-primary whitespace-nowrap" title="Your participant code">Code {{ request.profile|participant_code }}</span>
+          {% endif %}
           <form method="post" action="{% url 'accounts:logout' %}" class="hidden md:flex items-center">
               {% csrf_token %}
               <button type="submit" class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-accent-orange transition-colors cursor-pointer">
@@ -39,6 +43,9 @@
           {% if request.supabase_user %}
           {% include "components/view_as_toggle.html" %}
           <span class="font-mono text-[11px] text-text-secondary break-all">{{ request.supabase_user.email }}</span>
+          {% if request.profile %}
+          <span class="font-mono text-[11px] text-text-primary">Participant code {{ request.profile|participant_code }}</span>
+          {% endif %}
           <form method="post" action="{% url 'accounts:logout' %}">
               {% csrf_token %}
               <button type="submit" class="font-mono text-[11px] tracking-[0.12em] uppercase text-text-secondary hover:text-accent-orange transition-colors cursor-pointer">
