@@ -33,6 +33,7 @@
                             {% if module.visible %}Visible to Students{% else %}Hidden{% endif %}
                         </button>
                     </form>
+                    <a href="{% url 'export_attempts' module.id %}" class="font-mono text-[10px] tracking-[0.12em] uppercase text-text-secondary hover:text-text-primary transition-colors" title="Download attempts as CSV, keyed by participant code">Export CSV</a>
                     <button type="button" class="js-edit-module text-text-secondary hover:text-text-primary transition-colors" title="Edit module"
                         data-action="{% url 'topic_update' module.id %}"
                         data-title="{{ module.title }}"
