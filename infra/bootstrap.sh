@@ -58,12 +58,14 @@ gcloud artifacts repositories describe "$REPO" --location="$REGION" >/dev/null 2
        --repository-format=docker --location="$REGION" \
        --description="LTLab container images"
 
-echo "==> Artifact Registry cleanup policy (0.5GB free tier — prune aggressively)"
+echo "==> Artifact Registry cleanup policy (0.5GB free tier — CI tags every image, so tagged versions need their own Delete rule)"
 CLEANUP_FILE="$(mktemp)"
 cat > "$CLEANUP_FILE" <<'JSON'
 [
   {"name": "delete-untagged-30d", "action": {"type": "Delete"},
    "condition": {"tagState": "untagged", "olderThan": "2592000s"}},
+  {"name": "delete-tagged-60d", "action": {"type": "Delete"},
+   "condition": {"tagState": "tagged", "olderThan": "5184000s"}},
   {"name": "keep-recent-3", "action": {"type": "Keep"},
    "mostRecentVersions": {"keepCount": 3}}
 ]
@@ -182,7 +184,7 @@ if gcloud run services describe "$SERVICE" --region="$REGION" >/dev/null 2>&1; t
 else
   gcloud run deploy "$SERVICE" --region="$REGION" --image="$PLACEHOLDER" \
     --service-account="$RUN_SA" \
-    --min-instances=0 --max-instances=20 --concurrency=8 --cpu=1 --memory=512Mi --timeout=300 \
+    --min-instances=0 --max-instances=5 --concurrency=8 --cpu=1 --memory=512Mi --timeout=300 \
     --cpu-boost --allow-unauthenticated --env-vars-file="$ENV_FILE" --set-secrets="$SECRETS_FLAG"
 fi
 
