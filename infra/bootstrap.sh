@@ -184,7 +184,7 @@ if gcloud run services describe "$SERVICE" --region="$REGION" >/dev/null 2>&1; t
 else
   gcloud run deploy "$SERVICE" --region="$REGION" --image="$PLACEHOLDER" \
     --service-account="$RUN_SA" \
-    --min-instances=0 --max-instances=20 --concurrency=8 --cpu=1 --memory=512Mi --timeout=300 \
+    --min-instances=0 --max-instances=5 --concurrency=8 --cpu=1 --memory=512Mi --timeout=300 \
     --cpu-boost --allow-unauthenticated --env-vars-file="$ENV_FILE" --set-secrets="$SECRETS_FLAG"
 fi
 
