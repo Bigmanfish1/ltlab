@@ -191,6 +191,25 @@ def save(fig, out, name):
     plt.close(fig)
 
 
+def order_balanced_gain(people):
+    """Unweighted mean of the two order groups' mean gains: a fixed form-difficulty
+    difference enters the AB and BA gains with opposite sign, so it cancels."""
+    by = defaultdict(list)
+    for p in people:
+        by[p["order"]].append(p["gain"])
+    return statistics.mean([statistics.mean(by["AB"]), statistics.mean(by["BA"])])
+
+
+def form_by_position(people):
+    cells = defaultdict(list)
+    for p in people:
+        for form in "AB":
+            position = "first" if p["order"][0] == form else "second"
+            cells[f"{form}_{position}"].append(
+                sum(v["correct"] for (f, _), v in p["items"].items() if f == form))
+    return {k: {"n": len(v), "mean": statistics.mean(v)} for k, v in sorted(cells.items())}
+
+
 def fig_concepts(people, out):
     n = len(people)
     keys = list(CONCEPTS)
@@ -332,7 +351,9 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     people = read_form(args.group1, "AB") + read_form(args.group2, "BA")
-    people.sort(key=lambda p: p["submitted"])
+    # Numbered by keyed-hash code, not submission time, so a participant number cannot be
+    # matched to the day someone took part.
+    people.sort(key=lambda p: p["code"])
     for i, p in enumerate(people, start=1):
         p["label"] = f"S{i}"
     codes = {p["code"] for p in people}
@@ -425,6 +446,15 @@ def main():
                     "mean_gain": statistics.mean(p["gain"] for p in v)}
                 for k, v in by_order.items()},
             "form_mean_score": {f: statistics.mean(s) for f, s in form_scores.items()},
+            "form_mean_by_position": form_by_position(people),
+            "order_balanced_gain": order_balanced_gain(people),
+            "leave_one_out": {
+                p["label"]: {
+                    "pooled_gain": statistics.mean(q["gain"] for q in people if q is not p),
+                    "order_balanced_gain": order_balanced_gain([q for q in people if q is not p]),
+                    "form_mean_by_position": form_by_position([q for q in people if q is not p]),
+                }
+                for p in people},
             "per_concept_pct_pre_post": {},
             "per_concept_item_transitions": {},
         },
@@ -455,7 +485,8 @@ def main():
 
     for k, name, _ in LIKERT:
         vals = sorted(p["likert"][k] for p in people)
-        q = statistics.quantiles(vals, n=4, method="inclusive")
+        half = len(vals) // 2
+        q = (statistics.median(vals[:half]), None, statistics.median(vals[-half:]))
         summary["likert"][k] = {
             "construct": name, "counts": {i: vals.count(i) for i in range(1, 6)},
             "median": statistics.median(vals), "q1": q[0], "q3": q[2],
