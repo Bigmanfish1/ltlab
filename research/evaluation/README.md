@@ -27,6 +27,13 @@ python -m venv .venv
 Figures (PDF and PNG) and `summary.json` are written to `output/`, or to `--out DIR` if given.
 `--open-answers FILE` also writes the open-ended answers to a text file for coding.
 
+## Engine checks
+
+`verify_engine.py` re-runs two checks reported in the write-up: the tool's lasso evaluator agrees
+with Spot on 3,000 random formula and lasso pairs, and the answer keys of the path-reading test
+items hold. It imports the application code, so run it from the repository root with the backend
+dependencies installed: `python research/evaluation/verify_engine.py`.
+
 ## Data availability
 
 Participants consented to their responses being reported as group totals and under participant
