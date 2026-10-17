@@ -36,6 +36,14 @@ E3 and E4 sample paths are valid and satisfy their formulas, and the E1 and E2 t
 tool's formula checks). It imports the application code, so run it from the repository root with the backend
 dependencies installed: `python research/evaluation/verify_engine.py`.
 
+## Instruments
+
+`instruments/create_forms.gs` is the Google Apps Script that built the two study forms (order AB and
+order BA): the consent statement, background questions, both test forms with their answer keys, the
+eight Likert statements and the open questions. Its question titles and options match both forms'
+response exports exactly. Run `createBothForms` at script.google.com to rebuild the forms; the
+manual settings it cannot apply are listed at the end of the file.
+
 ## Data availability
 
 Participants consented to their responses being reported as group totals and under participant
