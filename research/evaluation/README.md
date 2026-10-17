@@ -29,10 +29,20 @@ Figures (PDF and PNG) and `summary.json` are written to `output/`, or to `--out 
 
 ## Engine checks
 
-`verify_engine.py` re-runs two checks reported in the write-up: the tool's lasso evaluator agrees
-with Spot on 3,000 random formula and lasso pairs, and the answer keys of the path-reading test
-items hold. It imports the application code, so run it from the repository root with the backend
+`verify_engine.py` re-runs the checks reported in the write-up: the tool's lasso evaluator agrees
+with Spot on 3,000 random formula and lasso pairs; the answer keys of the path-reading test items
+hold; and the evaluation exercises' answer keys hold (E5 and E6 verdicts match Huth and Ryan, the
+E3 and E4 sample paths are valid and satisfy their formulas, and the E1 and E2 targets pass the
+tool's formula checks). It imports the application code, so run it from the repository root with the backend
 dependencies installed: `python research/evaluation/verify_engine.py`.
+
+## Instruments
+
+`instruments/create_forms.gs` is the Google Apps Script that built the two study forms (order AB and
+order BA): the consent statement, background questions, both test forms with their answer keys, the
+eight Likert statements and the open questions. Its question titles and options match both forms'
+response exports exactly. Run `createBothForms` at script.google.com to rebuild the forms; the
+manual settings it cannot apply are listed at the end of the file.
 
 ## Data availability
 
