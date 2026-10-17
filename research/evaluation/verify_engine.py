@@ -5,6 +5,9 @@
 1. The tool's own lasso evaluator agrees with Spot's word-membership test on random formulas.
 2. The answer keys of the path-reading test items (A6, B6) and the formula facts the
    distractors rely on hold according to Spot.
+3. The evaluation exercises' answer keys: the judge verdicts for E5 and E6 match Huth and Ryan's,
+   the sample paths for E3 and E4 are valid and satisfy their formulas, and every target formula
+   for E1 and E2 is accepted by the tool's formula checks.
 """
 
 import os
@@ -17,6 +20,8 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.test")
 
 import spot  # noqa: E402
 
+from apps.checker.equivalence import validate_formula_submission  # noqa: E402
+from apps.checker.tasks import run_ltl_check, run_trace_check  # noqa: E402
 from apps.checker.traces import evaluate_lasso  # noqa: E402
 
 APS = ["p", "q", "r"]
@@ -91,5 +96,72 @@ def check_test_items():
     return ok
 
 
+def structure(states, edges, initial):
+    nodes = [{"data": {"id": s, "props": props, "initial": s == initial}}
+             for s, props in states.items()]
+    links = [{"data": {"id": f"e{i}", "source": a, "target": b}} for i, (a, b) in enumerate(edges)]
+    return {"elements": {"nodes": nodes, "edges": links}}
+
+
+# The evaluation module's structures, as seeded: Baier and Katoen Ex. 2.2, and Huth and Ryan
+# Figs 3.7 (first-attempt protocol) and 3.8 (repaired protocol).
+VENDING = structure(
+    {"pay": ["pay"], "select": ["select"], "soda": ["soda"], "beer": ["beer"]},
+    [("pay", "select"), ("select", "soda"), ("select", "beer"), ("soda", "pay"), ("beer", "pay")],
+    "pay",
+)
+M1 = structure(
+    {"s0": ["n1", "n2"], "s1": ["t1", "n2"], "s5": ["n1", "t2"], "s2": ["c1", "n2"],
+     "s3": ["t1", "t2"], "s6": ["n1", "c2"], "s4": ["c1", "t2"], "s7": ["t1", "c2"]},
+    [("s0", "s1"), ("s0", "s5"), ("s1", "s2"), ("s1", "s3"), ("s5", "s3"), ("s5", "s6"),
+     ("s2", "s0"), ("s6", "s0"), ("s3", "s4"), ("s3", "s7"), ("s4", "s5"), ("s7", "s1")],
+    "s0",
+)
+M2 = structure(
+    {"s0": ["n1", "n2"], "s1": ["t1", "n2"], "s5": ["n1", "t2"], "s2": ["c1", "n2"],
+     "s3": ["t1", "t2"], "s9": ["t1", "t2"], "s6": ["n1", "c2"], "s4": ["c1", "t2"],
+     "s7": ["t1", "c2"]},
+    [("s0", "s1"), ("s0", "s5"), ("s1", "s2"), ("s1", "s3"), ("s5", "s9"), ("s5", "s6"),
+     ("s2", "s0"), ("s6", "s0"), ("s3", "s4"), ("s9", "s7"), ("s4", "s5"), ("s7", "s1")],
+    "s0",
+)
+MUTEX_APS = ["n1", "t1", "c1", "n2", "t2", "c2"]
+JUDGE_PARTS = ["G !(c1 & c2)", "G (t1 -> F c1)", "G (t2 -> F c2)"]
+
+
+def check_exercises():
+    ok = True
+
+    def expect(name, cond):
+        nonlocal ok
+        ok = ok and cond
+        print(f"[{'PASS' if cond else 'FAIL'}] {name}")
+
+    for target in ("G (!p)", "F p", "G (p -> F q)"):
+        validate_formula_submission(target, ["p", "q"])
+        expect(f"E1 target accepted: {target}", True)
+    for target in ("G !(c1 & c2)", "G (t1 -> F c1)", "G F c1"):
+        validate_formula_submission(target, MUTEX_APS)
+        expect(f"E2 target accepted: {target}", True)
+
+    for name, graph, formula, prefix, cycle in (
+        ("E3.1", VENDING, "F soda", ["pay"], ["select", "soda", "pay"]),
+        ("E3.2", VENDING, "G F beer", [], ["pay", "select", "beer"]),
+        ("E3.3", VENDING, "!soda U beer", [], ["pay", "select", "beer"]),
+        ("E4.1", M1, "F (t1 & G !c1)", ["s0"], ["s1", "s3", "s7"]),
+        ("E4.2", M1, "F (c1 & X ((!c1) U c1))", ["s0"], ["s5", "s3", "s4"]),
+    ):
+        r = run_trace_check(graph, formula, prefix, cycle)
+        expect(f"{name} sample path valid and satisfies {formula}", bool(r["path_ok"] and r["holds"]))
+
+    # Verdicts from Huth and Ryan p.189 (first attempt) and Remark 3.11 (repaired protocol).
+    for name, graph, verdicts in (("E5", M1, [True, False, False]), ("E6", M2, [True, True, True])):
+        for formula, expected in zip(JUDGE_PARTS, verdicts):
+            holds = run_ltl_check(graph, formula)["result"] == "satisfied"
+            expect(f"{name} {formula} {'holds' if expected else 'is violated'}", holds == expected)
+    return ok
+
+
 if __name__ == "__main__":
-    sys.exit(0 if cross_check_evaluator() & check_test_items() else 1)
+    results = [cross_check_evaluator(), check_test_items(), check_exercises()]
+    sys.exit(0 if all(results) else 1)
